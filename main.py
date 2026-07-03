@@ -55,21 +55,35 @@ _SESSION_COOKIE = "dva_session"
 _SESSION_HOURS = 8
 
 
+_VALID_ROLES = ("admin", "analyst", "readonly")
+
+
 def _load_users() -> dict:
-    """username -> bcrypt hash. From AUTH_USERS env JSON or users.json file."""
+    """username -> {"hash": bcrypt_hash, "role": admin|analyst|readonly}.
+    From AUTH_USERS env JSON or users.json file. Accepts both the new
+    dict shape and the legacy flat `username -> hash` shape (legacy
+    entries are treated as "admin" to preserve their pre-RBAC full access)."""
+    raw = {}
     env = os.getenv("AUTH_USERS", "").strip()
     if env:
         try:
-            return json.loads(env)
+            raw = json.loads(env)
         except Exception:
-            pass
-    if os.path.exists(_USERS_PATH):
+            raw = {}
+    elif os.path.exists(_USERS_PATH):
         try:
             with open(_USERS_PATH, "r", encoding="utf-8") as fh:
-                return json.load(fh)
+                raw = json.load(fh)
         except Exception:
-            pass
-    return {}
+            raw = {}
+    users = {}
+    for uname, val in raw.items():
+        if isinstance(val, dict):
+            role = val.get("role") if val.get("role") in _VALID_ROLES else "analyst"
+            users[uname] = {"hash": val.get("hash", ""), "role": role}
+        else:
+            users[uname] = {"hash": val, "role": "admin"}
+    return users
 
 
 _USERS = _load_users()
@@ -97,19 +111,34 @@ def hash_password(plain: str) -> str:
     return _bcrypt.hashpw(plain.encode("utf-8")[:72], _bcrypt.gensalt()).decode("ascii")
 
 
-def _make_session_token(username: str) -> str:
+def _make_session_token(username: str, role: str = "analyst") -> str:
     import jwt
     exp = datetime.now(timezone.utc) + timedelta(hours=_SESSION_HOURS)
-    return jwt.encode({"sub": username, "exp": int(exp.timestamp())},
+    return jwt.encode({"sub": username, "role": role, "exp": int(exp.timestamp())},
                       JWT_SECRET, algorithm="HS256")
 
 
 def _verify_session_token(token: str):
+    """Returns {"username": str, "role": str} or None."""
     import jwt
     try:
-        return jwt.decode(token, JWT_SECRET, algorithms=["HS256"]).get("sub")
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        username = payload.get("sub")
+        if not username:
+            return None
+        return {"username": username, "role": payload.get("role") or "analyst"}
     except Exception:
         return None
+
+
+def _require_role(request: Request, *allowed: str):
+    """Block if the logged-in session's role isn't in `allowed`. No-op when
+    login auth is disabled (dev mode) or for sessions predating RBAC."""
+    role = getattr(request.state, "session_role", None)
+    if role is None:
+        return  # no session system active (dev mode / workspace-only auth)
+    if role not in allowed:
+        raise HTTPException(403, f"Role '{role}' cannot perform this action (requires: {', '.join(allowed)}).")
 
 MODEL_ID = os.getenv("BEDROCK_MODEL_ID", "")
 
@@ -119,7 +148,7 @@ _scheduler_mod = None
 try:
     from workspace import db as ws_db
     from workspace.db import init_db as ws_init_db
-    from workspace.auth import WorkspaceAuthMiddleware, get_current_user
+    from workspace.auth import WorkspaceAuthMiddleware, get_current_user, require_role as _ws_require_role
     from workspace.connectors import BaseConnector
     from workspace import scheduler as _scheduler_mod
     app.add_middleware(WorkspaceAuthMiddleware)
@@ -129,6 +158,9 @@ except Exception as _ws_err:  # pragma: no cover
 
     def get_current_user(request: Request) -> str:  # type: ignore
         return os.getenv("WORKSPACE_DEV_USER", "localdev")
+
+    def _ws_require_role(request: Request, *allowed: str):  # type: ignore
+        pass
 
 
 @app.on_event("startup")
@@ -173,12 +205,13 @@ async def _session_auth(request: Request, call_next):
     path = request.url.path
     if any(path.startswith(p) for p in _AUTH_EXEMPT):
         return await call_next(request)
-    user = _verify_session_token(request.cookies.get(_SESSION_COOKIE, ""))
-    if not user:
+    session = _verify_session_token(request.cookies.get(_SESSION_COOKIE, ""))
+    if not session:
         if path.startswith("/api") or path.startswith("/analyze") or path.startswith("/chat"):
             return JSONResponse({"detail": "Not authenticated"}, status_code=401)
         return RedirectResponse("/login", status_code=302)
-    request.state.session_user = user
+    request.state.session_user = session["username"]
+    request.state.session_role = session["role"]
     return await call_next(request)
 
 
@@ -224,8 +257,25 @@ def _get_bedrock_client():
     return session.client("bedrock-runtime")
 
 
-def _ask_llm(messages, system=None):
-    """Call Bedrock converse(). Returns text; raises on failure."""
+# --- Multi-provider LLM layer ---------------------------------------------
+# Primary provider is LLM_PROVIDER (default bedrock); if it fails or isn't
+# configured, automatically falls back through any other provider that has
+# an API key set. This lets Groq/Gemini free tiers keep AI features working
+# even when AWS Bedrock credits are unavailable.
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "bedrock").lower()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
+
+AI_CONFIGURED = bool(MODEL_ID or GROQ_API_KEY or GOOGLE_API_KEY or OPENAI_API_KEY or ANTHROPIC_API_KEY)
+
+
+def _ask_llm_bedrock(messages, system=None):
     if not MODEL_ID:
         raise RuntimeError("BEDROCK_MODEL_ID not configured.")
     client = _get_bedrock_client()
@@ -239,6 +289,79 @@ def _ask_llm(messages, system=None):
         kwargs["system"] = [{"text": system}]
     resp = client.converse(**kwargs)
     return resp["output"]["message"]["content"][0]["text"]
+
+
+def _ask_llm_groq(messages, system=None):
+    """Groq's API is OpenAI-compatible, so the `openai` SDK works pointed
+    at Groq's base URL — free tier, no separate SDK dependency needed."""
+    if not GROQ_API_KEY:
+        raise RuntimeError("GROQ_API_KEY not configured.")
+    from openai import OpenAI
+    client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
+    full = ([{"role": "system", "content": system}] if system else []) + messages
+    resp = client.chat.completions.create(
+        model=GROQ_MODEL, messages=full, max_tokens=2000, temperature=0.2)
+    return resp.choices[0].message.content
+
+
+def _ask_llm_gemini(messages, system=None):
+    if not GOOGLE_API_KEY:
+        raise RuntimeError("GOOGLE_API_KEY not configured.")
+    import google.generativeai as genai
+    genai.configure(api_key=GOOGLE_API_KEY)
+    model = genai.GenerativeModel(GEMINI_MODEL, system_instruction=system or None)
+    convo = "\n\n".join(f"{m['role'].upper()}: {m['content']}" for m in messages)
+    resp = model.generate_content(
+        convo, generation_config={"max_output_tokens": 2000, "temperature": 0.2})
+    return resp.text
+
+
+def _ask_llm_openai(messages, system=None):
+    if not OPENAI_API_KEY:
+        raise RuntimeError("OPENAI_API_KEY not configured.")
+    from openai import OpenAI
+    client = OpenAI(api_key=OPENAI_API_KEY)
+    full = ([{"role": "system", "content": system}] if system else []) + messages
+    resp = client.chat.completions.create(
+        model=OPENAI_MODEL, messages=full, max_tokens=2000, temperature=0.2)
+    return resp.choices[0].message.content
+
+
+def _ask_llm_anthropic(messages, system=None):
+    if not ANTHROPIC_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY not configured.")
+    from anthropic import Anthropic
+    client = Anthropic(api_key=ANTHROPIC_API_KEY)
+    resp = client.messages.create(
+        model=ANTHROPIC_MODEL, max_tokens=2000, temperature=0.2,
+        system=system or "", messages=messages)
+    return resp.content[0].text
+
+
+_LLM_PROVIDERS = {
+    "bedrock": _ask_llm_bedrock,
+    "groq": _ask_llm_groq,
+    "gemini": _ask_llm_gemini,
+    "openai": _ask_llm_openai,
+    "anthropic": _ask_llm_anthropic,
+}
+_LLM_FALLBACK_ORDER = ["groq", "gemini", "bedrock", "openai", "anthropic"]
+
+
+def _ask_llm(messages, system=None):
+    """Call the configured primary LLM provider; auto-fallback through any
+    other provider that has credentials configured if the primary fails."""
+    order = [LLM_PROVIDER] + [p for p in _LLM_FALLBACK_ORDER if p != LLM_PROVIDER]
+    last_err = RuntimeError("No LLM provider configured.")
+    for provider in order:
+        fn = _LLM_PROVIDERS.get(provider)
+        if not fn:
+            continue
+        try:
+            return fn(messages, system)
+        except Exception as e:
+            last_err = e
+    raise last_err
 
 
 def _ask_llm_safe(messages, system=None):
@@ -940,6 +1063,66 @@ def _content_based_diff(df1, df2, common_cols):
     }
 
 
+# --- Complex Reconciliation: side/quantity extraction from free text -----
+# For trade data with no clean join key (e.g. a single "description" column
+# like "BUY 500 shares AAPL" / "sold x200"), extract a buy/sell side and a
+# quantity to use as a synthetic composite key so rows can still be matched.
+
+_SIDE_BUY_RX = re.compile(r"\b(BUY|BOUGHT|LONG|PURCHASE[D]?)\b", re.I)
+_SIDE_SELL_RX = re.compile(r"\b(SELL|SOLD|SHORT|SALE)\b", re.I)
+_QTY_RX = re.compile(
+    r"(?:QTY|QUANTITY|X)\s*[:#]?\s*([\d,]+(?:\.\d+)?)"
+    r"|([\d,]+(?:\.\d+)?)\s*(?:SHARES?|UNITS?|LOTS?)\b",
+    re.I,
+)
+
+
+def _extract_side_quantity(text) -> dict:
+    """Best-effort buy/sell + quantity extraction from a free-text field."""
+    t = str(text or "")
+    side = None
+    if _SIDE_BUY_RX.search(t):
+        side = "BUY"
+    elif _SIDE_SELL_RX.search(t):
+        side = "SELL"
+    qty = None
+    m = _QTY_RX.search(t)
+    if m:
+        raw = m.group(1) or m.group(2)
+        try:
+            qty = float(raw.replace(",", ""))
+        except ValueError:
+            qty = None
+    return {"side": side, "quantity": qty}
+
+
+def complex_reconciliation(df1, df2, text_col, common_cols):
+    """Fallback reconciliation when no clean key exists: derives a synthetic
+    (side, quantity) key from a free-text description column on each side
+    and reuses the standard keyed diff engine against it."""
+    if text_col not in df1.columns or text_col not in df2.columns:
+        return {"error": f"Column '{text_col}' not found in both files."}
+
+    d1, d2 = df1.copy(), df2.copy()
+    for d in (d1, d2):
+        extracted = d[text_col].map(_extract_side_quantity)
+        d["_side_extracted"] = [e["side"] or "" for e in extracted]
+        d["_qty_extracted"] = [
+            (f"{e['quantity']:g}" if e["quantity"] is not None else "") for e in extracted
+        ]
+
+    synthetic_keys = ["_side_extracted", "_qty_extracted"]
+    data_cols = [c for c in common_cols if c not in synthetic_keys]
+    result = _key_based_diff(d1, d2, synthetic_keys, data_cols)
+    result["method"] = "complex-recon (side/quantity extracted from free text)"
+    result["source_column"] = text_col
+    result["extraction_coverage"] = {
+        "file1_pct": round(float((d1["_side_extracted"] != "").mean() * 100), 1) if len(d1) else 0,
+        "file2_pct": round(float((d2["_side_extracted"] != "").mean() * 100), 1) if len(d2) else 0,
+    }
+    return result
+
+
 def _col_stats(df1, df2, common_cols):
     stats = {}
     for c in common_cols:
@@ -1084,6 +1267,68 @@ def _coerce_dt(series):
     return pd.to_datetime(series.replace("", np.nan), errors="coerce")
 
 
+# --- BFSI identifier checksum validators (structural regex above only
+# confirms shape; these confirm the check digit) ---------------------------
+
+def _validate_isin_checksum(isin: str) -> bool:
+    """ISO 6166 — Luhn (mod 10) over the letter-expanded 12-char ISIN."""
+    digits = ""
+    for ch in isin:
+        digits += ch if ch.isdigit() else str(ord(ch) - 55)  # A=10 .. Z=35
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        d = int(ch)
+        if i % 2 == 1:
+            d *= 2
+            if d > 9:
+                d -= 9
+        total += d
+    return total % 10 == 0
+
+
+def _validate_cusip_checksum(cusip: str) -> bool:
+    """9-char CUSIP modulus-10 weighted check digit."""
+    total = 0
+    for i, ch in enumerate(cusip[:-1]):
+        if ch.isdigit():
+            v = int(ch)
+        elif ch == "*":
+            v = 36
+        elif ch == "@":
+            v = 37
+        elif ch == "#":
+            v = 38
+        else:
+            v = ord(ch) - 55  # A=10 .. Z=35
+        if i % 2 == 1:
+            v *= 2
+        total += v // 10 + v % 10
+    check = (10 - (total % 10)) % 10
+    return check == int(cusip[-1]) if cusip[-1].isdigit() else False
+
+
+def _validate_lei_checksum(lei: str) -> bool:
+    """ISO 17442 — mod-97 == 1 over the letter-expanded 20-char LEI."""
+    converted = "".join(ch if ch.isdigit() else str(ord(ch) - 55) for ch in lei)
+    return int(converted) % 97 == 1
+
+
+def _validate_iban_checksum(iban: str) -> bool:
+    """ISO 13616 — mod-97 == 1 after moving the first 4 chars to the end."""
+    rearranged = iban[4:] + iban[:4]
+    converted = "".join(ch if ch.isdigit() else str(ord(ch) - 55) for ch in rearranged)
+    return int(converted) % 97 == 1
+
+
+_BFSI_CHECKSUM_VALIDATORS = {
+    "isin": _validate_isin_checksum,
+    "cusip": _validate_cusip_checksum,
+    "lei": _validate_lei_checksum,
+    "iban": _validate_iban_checksum,
+    # bic has no ISO check-digit — structural regex above is the full check
+}
+
+
 def _apply_rule(series, rule):
     """Apply one rule to a Series. Returns {passed, failed, skipped, total, ...}."""
     rtype = rule.get("type", "")
@@ -1191,7 +1436,19 @@ def _apply_rule(series, rule):
         elif rtype in _DQ_FORMAT_PATTERNS or rtype.replace("_format", "") in _DQ_FORMAT_PATTERNS:
             key = rtype.replace("_format", "")
             rx = _DQ_FORMAT_PATTERNS[key]
-            _mask_fail(~nonnull.str.upper().map(lambda v: bool(rx.match(v))), nonnull)
+            checksum_fn = _BFSI_CHECKSUM_VALIDATORS.get(key)
+            if checksum_fn:
+                def _fmt_ok(v, _rx=rx, _fn=checksum_fn):
+                    v = v.upper()
+                    if not _rx.match(v):
+                        return False
+                    try:
+                        return _fn(v)
+                    except (ValueError, ZeroDivisionError):
+                        return False
+                _mask_fail(~nonnull.map(_fmt_ok), nonnull)
+            else:
+                _mask_fail(~nonnull.str.upper().map(lambda v: bool(rx.match(v))), nonnull)
         elif rtype in ("row_count_min", "row_count_max"):
             ok = (total >= int(rule["value"])) if rtype == "row_count_min" else (total <= int(rule["value"]))
             out["passed"], out["failed"] = (total, 0) if ok else (0, total)
@@ -1253,6 +1510,8 @@ def analyze_quality(df, name="dataset", data_dict=None, rules=None, user_hints=N
     rules = rules or []
     col_reports = []
     rule_results = []
+    near_keys = []
+    numeric_cols = []
 
     for c in cols:
         s = df[c].astype(str).str.strip()
@@ -1260,6 +1519,8 @@ def analyze_quality(df, name="dataset", data_dict=None, rules=None, user_hints=N
         nulls = n - len(nonnull)
         completeness = (len(nonnull) / n * 100) if n else 0.0
         uniqueness = (df[c].nunique() / n * 100) if n else 0.0
+        if 80.0 <= uniqueness < 95.0:
+            near_keys.append(c)
         report = {
             "column": c,
             "completeness_pct": round(completeness, 2),
@@ -1271,6 +1532,7 @@ def analyze_quality(df, name="dataset", data_dict=None, rules=None, user_hints=N
         num = _coerce_num(nonnull)
         is_numeric = num.notna().sum() > max(1, 0.8 * len(nonnull)) if len(nonnull) else False
         if is_numeric:
+            numeric_cols.append(c)
             valid = num.dropna()
             mean, std = float(valid.mean()), float(valid.std() or 0)
             skew = float(valid.skew()) if len(valid) > 2 else 0.0
@@ -1346,6 +1608,20 @@ def analyze_quality(df, name="dataset", data_dict=None, rules=None, user_hints=N
     dup_rows = int(df.duplicated().sum())
     score, dims = _dq_score(n, dup_rows, col_reports, rule_results)
 
+    # Cross-column correlations (numeric pairs, |r| > 0.7) — pandas .corr()
+    # does pairwise-complete NaN handling, so per-column null counts differing
+    # is fine.
+    correlations = []
+    if len(numeric_cols) >= 2:
+        numeric_df = df[numeric_cols].apply(
+            lambda col: pd.to_numeric(col.astype(str).str.strip(), errors="coerce"))
+        corr_matrix = numeric_df.corr()
+        for i, c1 in enumerate(numeric_cols):
+            for c2 in numeric_cols[i + 1:]:
+                r = corr_matrix.loc[c1, c2]
+                if pd.notna(r) and abs(r) > 0.7:
+                    correlations.append({"col_a": c1, "col_b": c2, "r": round(float(r), 3)})
+
     return {
         "name": name,
         "rows": n,
@@ -1357,6 +1633,8 @@ def analyze_quality(df, name="dataset", data_dict=None, rules=None, user_hints=N
         "columns_detail": col_reports,
         "rules_evaluated": len(rule_results),
         "rules_failed": sum(1 for r in rule_results if r["failed"] > 0),
+        "near_key_columns": near_keys,
+        "correlations": correlations,
     }
 
 
@@ -1471,7 +1749,7 @@ def analyze_mapping(df1, df2, file1_name="file1", file2_name="file2", ref=None):
 
     # Step 4: LLM semantic match for any remaining columns
     llm_used = False
-    if MODEL_ID and remaining1 and remaining2:
+    if AI_CONFIGURED and remaining1 and remaining2:
         sys = ("Match source columns to target columns by meaning. "
                f"Source (unmatched): {remaining1}. Target (unmatched): {remaining2}. "
                "Return ONLY a JSON list of {source, target, confidence} (0-1). "
@@ -1734,7 +2012,7 @@ def _apply_parse_cols(df, parse_cols):
 def _extract_lineage_params(query, cols1, cols2):
     """Use the LLM to turn a natural-language reconciliation request into
     {parse_cols, col_map, transforms, agg}. Returns {} if no LLM / parse fails."""
-    if not MODEL_ID or not query:
+    if not AI_CONFIGURED or not query:
         return {}
     sys = (
         "Convert the user's reconciliation request into JSON with keys: "
@@ -1793,7 +2071,7 @@ def analyze_lineage(df1, df2, transforms=None, col_map=None, manual_keys=None,
 def parse_unstructured(raw_bytes, filename):
     enc = _detect_encoding(raw_bytes)
     text = raw_bytes.decode(enc, errors="replace")
-    if not MODEL_ID:
+    if not AI_CONFIGURED:
         # fallback: best-effort delimited parse
         try:
             df = _parse_text(raw_bytes, enc)
@@ -1844,10 +2122,10 @@ async def login_submit(request: Request,
                        username: str = Form(...), password: str = Form(...)):
     if not AUTH_ENABLED:
         return RedirectResponse("/", status_code=302)
-    hashed = _USERS.get(username)
-    if not hashed or not _verify_password(password, hashed):
+    record = _USERS.get(username)
+    if not record or not _verify_password(password, record["hash"]):
         return RedirectResponse("/login?error=Invalid+credentials", status_code=302)
-    token = _make_session_token(username)
+    token = _make_session_token(username, record["role"])
     resp = RedirectResponse("/", status_code=302)
     resp.set_cookie(_SESSION_COOKIE, token, httponly=True, samesite="lax",
                     max_age=_SESSION_HOURS * 3600)
@@ -1872,6 +2150,7 @@ def license_status():
 
 @app.post("/api/license/activate")
 async def license_activate(request: Request):
+    _require_role(request, "admin")
     body = await request.json()
     return _sanitize_json(lic.activate_license(body.get("token", "")))
 
@@ -1912,6 +2191,7 @@ async def analyze(
     conn_b_id: str = Form(""),
     conn_source_id: str = Form(""),
 ):
+    _require_role(request, "admin", "analyst")
     keys = [k.strip() for k in key_cols.split(",") if k.strip()]
     excludes = [c.strip() for c in exclude_cols.split(",") if c.strip()]
     delim = delimiter or None
@@ -1932,7 +2212,7 @@ async def analyze(
         if uploads:
             ref = _load_and_classify_ref_docs(uploads)
 
-    feat = "parse" if action == "parse" else action
+    feat = "parse" if action == "parse" else ("compare" if action == "complex_recon" else action)
     _require_feature(feat)
 
     async def _load_primary(upload, conn_id, label):
@@ -1964,6 +2244,20 @@ async def analyze(
             rules=hint_obj.get("rules") or (ref or {}).get("rules"),
             user_hints=hint_obj,
         )
+        if WS_ENABLED:
+            try:
+                dims = result.get("dimensions") or {}
+                ws_db.insert_dq_history(
+                    file_name=result.get("name") or "dataset",
+                    username=user,
+                    score=result.get("score"),
+                    grade=result.get("grade"),
+                    completeness=dims.get("completeness"),
+                    uniqueness=dims.get("uniqueness"),
+                    validity=dims.get("validity"),
+                )
+            except Exception:
+                pass
     elif action == "mapping":
         df1 = await _load_primary(file1, conn_a_id, "file1")
         df2 = await _load_primary(file2, conn_b_id, "file2")
@@ -1984,6 +2278,14 @@ async def analyze(
             query=hint_obj.get("query"),
             manual_keys=keys or None,
         )
+    elif action == "complex_recon":
+        df1 = await _load_primary(file1, conn_a_id, "file1")
+        df2 = await _load_primary(file2, conn_b_id, "file2")
+        common = [c for c in df1.columns if c in set(df2.columns)]
+        text_col = hint_obj.get("text_col") or (keys[0] if keys else None)
+        if not text_col:
+            raise HTTPException(400, "complex_recon requires hints.text_col (or key_cols) naming the free-text description column.")
+        result = complex_reconciliation(df1, df2, text_col, common)
     elif action == "parse":
         if not file1:
             raise HTTPException(400, "parse requires file1.")
@@ -2032,6 +2334,7 @@ def get_rules(fingerprint: str):
 
 @app.post("/api/rules/{fingerprint}")
 async def add_rule(fingerprint: str, request: Request):
+    _require_role(request, "admin", "analyst")
     body = await request.json()
     idx, queued = fb.save_rule(
         fingerprint, body.get("rule", ""),
@@ -2042,13 +2345,15 @@ async def add_rule(fingerprint: str, request: Request):
 
 
 @app.delete("/api/rules/{fingerprint}/{index}")
-def remove_rule(fingerprint: str, index: int):
+def remove_rule(fingerprint: str, index: int, request: Request):
+    _require_role(request, "admin", "analyst")
     ok, queued = fb.delete_rule(fingerprint, index)
     return {"deleted": ok, "queued": queued}
 
 
 @app.put("/api/rules/{fingerprint}/{index}")
 async def edit_rule(fingerprint: str, index: int, request: Request):
+    _require_role(request, "admin", "analyst")
     body = await request.json()
     ok, queued = fb.update_rule(
         fingerprint, index,
@@ -2099,7 +2404,7 @@ async def suggest_rules(request: Request):
                             "reason": "low-cardinality categorical"})
 
     # Optional LLM enrichment
-    if MODEL_ID and profile:
+    if AI_CONFIGURED and profile:
         sys = ("Suggest data-quality rules for this column. Reply with a JSON list "
                f"of objects {{type, reason}}. Valid types: {_SUGGESTABLE_RULES}. "
                "Return ONLY JSON.")
@@ -2395,6 +2700,7 @@ def ws_list_connections(request: Request):
 @app.post("/api/ws/connections")
 async def ws_create_connection(request: Request):
     _ws_guard()
+    _ws_require_role(request, "admin", "analyst")
     body = await request.json()
     cid = ws_db.save_connection(get_current_user(request), body["name"],
                                 body["source_type"], body.get("config", {}),
@@ -2420,6 +2726,7 @@ def ws_get_connection(conn_id: int, request: Request):
 @app.put("/api/ws/connections/{conn_id}")
 async def ws_update_connection(conn_id: int, request: Request):
     _ws_guard()
+    _ws_require_role(request, "admin", "analyst")
     body = await request.json()
     ws_db.save_connection(get_current_user(request), body["name"],
                           body["source_type"], body.get("config", {}),
@@ -2430,6 +2737,7 @@ async def ws_update_connection(conn_id: int, request: Request):
 @app.delete("/api/ws/connections/{conn_id}")
 def ws_delete_connection(conn_id: int, request: Request):
     _ws_guard()
+    _ws_require_role(request, "admin", "analyst")
     ws_db.delete_connection(conn_id, get_current_user(request))
     return {"deleted": True}
 
@@ -2472,6 +2780,7 @@ def ws_list_rulesets(request: Request):
 @app.post("/api/ws/rulesets")
 async def ws_create_ruleset(request: Request):
     _ws_guard()
+    _ws_require_role(request, "admin", "analyst")
     body = await request.json()
     rid = ws_db.save_ruleset(get_current_user(request), body["name"],
                              body.get("description", ""), body.get("rules", []),
@@ -2491,6 +2800,7 @@ def ws_get_ruleset(rs_id: int, request: Request):
 @app.put("/api/ws/rulesets/{rs_id}")
 async def ws_update_ruleset(rs_id: int, request: Request):
     _ws_guard()
+    _ws_require_role(request, "admin", "analyst")
     body = await request.json()
     ws_db.save_ruleset(get_current_user(request), body["name"],
                        body.get("description", ""), body.get("rules", []),
@@ -2501,6 +2811,7 @@ async def ws_update_ruleset(rs_id: int, request: Request):
 @app.delete("/api/ws/rulesets/{rs_id}")
 def ws_delete_ruleset(rs_id: int, request: Request):
     _ws_guard()
+    _ws_require_role(request, "admin", "analyst")
     ws_db.delete_ruleset(rs_id, get_current_user(request))
     return {"deleted": True}
 
@@ -2515,6 +2826,7 @@ def ws_list_jobs(request: Request):
 @app.post("/api/ws/jobs")
 async def ws_create_job(request: Request):
     _ws_guard()
+    _ws_require_role(request, "admin", "analyst")
     user = get_current_user(request)
     body = await request.json()
     jid = ws_db.save_job(
@@ -2546,6 +2858,7 @@ def ws_get_job(job_id: int, request: Request):
 @app.put("/api/ws/jobs/{job_id}")
 async def ws_update_job(job_id: int, request: Request):
     _ws_guard()
+    _ws_require_role(request, "admin", "analyst")
     user = get_current_user(request)
     body = await request.json()
     ws_db.save_job(
@@ -2567,6 +2880,7 @@ async def ws_update_job(job_id: int, request: Request):
 @app.delete("/api/ws/jobs/{job_id}")
 def ws_delete_job(job_id: int, request: Request):
     _ws_guard()
+    _ws_require_role(request, "admin", "analyst")
     _scheduler_mod.unregister_job(job_id)
     ws_db.delete_job(job_id, get_current_user(request))
     return {"deleted": True}
@@ -2575,6 +2889,7 @@ def ws_delete_job(job_id: int, request: Request):
 @app.post("/api/ws/jobs/{job_id}/run")
 def ws_run_job(job_id: int, request: Request):
     _ws_guard()
+    _ws_require_role(request, "admin", "analyst")
     run_id = _scheduler_mod.trigger_job_now(job_id, get_current_user(request))
     return {"run_id": run_id}
 
@@ -2595,6 +2910,7 @@ def ws_list_saved_runs(request: Request):
 @app.post("/api/ws/saved-runs")
 async def ws_save_run(request: Request):
     _ws_guard()
+    _ws_require_role(request, "admin", "analyst")
     body = await request.json()
     session_id = body.get("session_id", "")
     ctx = _results_store.get(session_id, {})
@@ -2610,8 +2926,45 @@ async def ws_save_run(request: Request):
 @app.delete("/api/ws/saved-runs/{run_id}")
 def ws_delete_saved_run(run_id: int, request: Request):
     _ws_guard()
+    _ws_require_role(request, "admin", "analyst")
     ws_db.delete_saved_run(run_id, get_current_user(request))
     return {"deleted": True}
+
+
+# ---- User role management (admin only) ------------------------------------
+@app.get("/api/ws/users")
+def ws_list_users(request: Request):
+    _ws_guard()
+    _ws_require_role(request, "admin")
+    return _sanitize_json(ws_db.list_users())
+
+
+@app.put("/api/ws/users/{username}/role")
+async def ws_set_user_role(username: str, request: Request):
+    _ws_guard()
+    _ws_require_role(request, "admin")
+    body = await request.json()
+    role = body.get("role")
+    if role not in ("admin", "analyst", "readonly"):
+        raise HTTPException(400, "role must be one of: admin, analyst, readonly")
+    ws_db.set_user_role(username, role)
+    return {"username": username, "role": role}
+
+
+# ---- DQ score history -----------------------------------------------------
+@app.get("/api/dq/history/{file_name}")
+def dq_history(file_name: str, request: Request, days: int = 30):
+    _ws_guard()
+    return _sanitize_json(ws_db.get_dq_history(file_name, get_current_user(request), days=days))
+
+
+@app.get("/api/dq/baseline/{file_name}")
+def dq_baseline(file_name: str, request: Request):
+    _ws_guard()
+    baseline = ws_db.get_dq_baseline(file_name, get_current_user(request))
+    if not baseline:
+        raise HTTPException(404, "No DQ history recorded for this file yet.")
+    return _sanitize_json(baseline)
 
 
 if __name__ == "__main__":

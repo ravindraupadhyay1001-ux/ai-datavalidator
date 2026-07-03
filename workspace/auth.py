@@ -14,7 +14,7 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-from workspace.db import ensure_user
+from workspace.db import ensure_user, get_user_role
 
 WS_ENABLED = True
 
@@ -41,6 +41,7 @@ class WorkspaceAuthMiddleware(BaseHTTPMiddleware):
         ensure_user(username, display_name, email)
         request.state.username = username
         request.state.display_name = display_name
+        request.state.role = get_user_role(username)
         return await call_next(request)
 
 
@@ -72,3 +73,14 @@ def get_current_user(request: Request) -> str:
         from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Not authenticated")
     return username
+
+
+def get_current_role(request: Request) -> str:
+    return getattr(request.state, "role", None) or "analyst"
+
+
+def require_role(request: Request, *allowed: str):
+    role = get_current_role(request)
+    if role not in allowed:
+        from fastapi import HTTPException
+        raise HTTPException(403, f"Role '{role}' cannot perform this action (requires: {', '.join(allowed)}).")

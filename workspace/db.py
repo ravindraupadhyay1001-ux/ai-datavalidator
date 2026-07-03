@@ -16,7 +16,7 @@ import base64
 import json
 import os
 import threading
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 _DB_KIND = os.getenv("WORKSPACE_DB", "sqlite").lower()
 _SQLITE_PATH = os.getenv("WORKSPACE_SQLITE_PATH", "workspace.db")
@@ -90,8 +90,11 @@ _DDL = [
         username TEXT PRIMARY KEY,
         display_name TEXT,
         email TEXT,
+        role TEXT DEFAULT 'analyst',
         created_at TEXT
     )""",
+    # migration for pre-existing databases created before the role column existed
+    "ALTER TABLE ws_users ADD COLUMN role TEXT DEFAULT 'analyst'",
     """CREATE TABLE IF NOT EXISTS ws_connections (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL,
@@ -160,6 +163,19 @@ _DDL = [
         session_id TEXT,
         created_at TEXT
     )""",
+    """CREATE TABLE IF NOT EXISTS ws_dq_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_name TEXT,
+        username TEXT,
+        score REAL,
+        grade TEXT,
+        completeness REAL,
+        uniqueness REAL,
+        validity REAL,
+        run_at TEXT
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_dq_file ON ws_dq_history(file_name)",
+    "CREATE INDEX IF NOT EXISTS idx_dq_user ON ws_dq_history(username)",
 ]
 
 
@@ -184,12 +200,37 @@ def ensure_user(username, display_name=None, email=None):
     cur = conn.cursor()
     cur.execute(f"SELECT username FROM ws_users WHERE username={_ph()}", (username,))
     if not cur.fetchall():
+        # bootstrap: the very first user ever seen becomes admin so there's
+        # always someone able to promote/demote others.
+        cur.execute("SELECT COUNT(*) FROM ws_users")
+        is_first = list(cur.fetchall())[0][0] == 0
+        role = "admin" if is_first else "analyst"
         cur.execute(
-            f"INSERT INTO ws_users (username, display_name, email, created_at) "
-            f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()})",
-            (username, display_name or username, email or "", _now()),
+            f"INSERT INTO ws_users (username, display_name, email, role, created_at) "
+            f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
+            (username, display_name or username, email or "", role, _now()),
         )
         conn.commit()
+
+
+def get_user_role(username) -> str:
+    cur = _conn().cursor()
+    cur.execute(f"SELECT role FROM ws_users WHERE username={_ph()}", (username,))
+    rows = _rows(cur)
+    return (rows[0].get("role") or "analyst") if rows else "analyst"
+
+
+def set_user_role(username, role):
+    conn = _conn()
+    conn.cursor().execute(
+        f"UPDATE ws_users SET role={_ph()} WHERE username={_ph()}", (role, username))
+    conn.commit()
+
+
+def list_users():
+    cur = _conn().cursor()
+    cur.execute("SELECT username, display_name, email, role, created_at FROM ws_users ORDER BY created_at ASC")
+    return _rows(cur)
 
 
 # --------------------------------------------------------------------------
@@ -469,3 +510,46 @@ def insert_audit(username, action, detail, session_id=None):
         (username, action, detail, session_id, _now()),
     )
     conn.commit()
+
+
+# --------------------------------------------------------------------------
+# DQ score history
+# --------------------------------------------------------------------------
+def insert_dq_history(file_name, username, score, grade,
+                      completeness=None, uniqueness=None, validity=None):
+    conn = _conn()
+    cur = conn.cursor()
+    cur.execute(
+        f"INSERT INTO ws_dq_history "
+        f"(file_name, username, score, grade, completeness, uniqueness, validity, run_at) "
+        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
+        (file_name, username, score, grade, completeness, uniqueness, validity, _now()),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def get_dq_history(file_name, username, days=30):
+    """DQ score trend for a file, most recent `days` days, oldest first."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cur = _conn().cursor()
+    cur.execute(
+        f"SELECT file_name, score, grade, completeness, uniqueness, validity, run_at "
+        f"FROM ws_dq_history "
+        f"WHERE file_name={_ph()} AND username={_ph()} AND run_at >= {_ph()} "
+        f"ORDER BY run_at ASC",
+        (file_name, username, cutoff),
+    )
+    return _rows(cur)
+
+
+def get_dq_baseline(file_name, username):
+    """Earliest recorded score for a file — used as the comparison baseline."""
+    cur = _conn().cursor()
+    cur.execute(
+        f"SELECT file_name, score, grade, run_at FROM ws_dq_history "
+        f"WHERE file_name={_ph()} AND username={_ph()} ORDER BY run_at ASC LIMIT 1",
+        (file_name, username),
+    )
+    rows = _rows(cur)
+    return rows[0] if rows else None
