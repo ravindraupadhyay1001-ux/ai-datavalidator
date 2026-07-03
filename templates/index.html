@@ -6,30 +6,45 @@
   <title>Data Validation Agent</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
-    :root{ --bg:#070b18; --line:#1e2740; }
-    body{ background:
-        radial-gradient(1200px 600px at 110% -10%, rgba(56,189,248,.10), transparent 60%),
-        radial-gradient(900px 500px at -10% 110%, rgba(168,85,247,.12), transparent 55%),
-        var(--bg); color:#e6edf6; }
-    .card{ background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015));
-      border:1px solid var(--line); backdrop-filter:blur(6px); box-shadow:0 12px 32px -20px rgba(0,0,0,.85); }
+    /* "Midnight Slate" design system */
+    :root{
+      --bg:#0f1117; --surface:#1a1d27; --surface-2:#20243a;
+      --line:rgba(255,255,255,.06); --border-soft:rgba(255,255,255,.06);
+      --primary:#4f8ef7; --primary-mid:rgba(79,142,247,.25); --primary-dim:rgba(79,142,247,.15);
+      --accent:#38bdf8; --success:#22c55e; --warning:#f59e0b; --danger:#ef4444;
+      --txt-primary:#f1f5f9; --txt-secondary:#c8d3e0; --txt-muted:#64748b; --txt-dim:#3d4a5c;
+      --font-ui:'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif;
+      --font-mono:'Fira Mono','Consolas','Cascadia Code',monospace;
+    }
+    body{ font-family:var(--font-ui); background:
+        radial-gradient(1200px 600px at 110% -10%, var(--primary-dim), transparent 60%),
+        radial-gradient(900px 500px at -10% 110%, rgba(124,58,237,.12), transparent 55%),
+        var(--bg); color:var(--txt-primary); }
+    .card{ background:linear-gradient(180deg, var(--surface), var(--surface-2));
+      border:1px solid var(--line); backdrop-filter:blur(6px); box-shadow:0 12px 32px -20px rgba(0,0,0,.85); border-radius:12px; }
     .tab-btn{ transition:all .15s; border:1px solid transparent; }
-    .tab-btn:hover{ background:rgba(56,189,248,.08); }
-    .tab-active{ background:linear-gradient(90deg, rgba(56,189,248,.22), rgba(168,85,247,.18));
-      border-color:rgba(56,189,248,.35); color:#7dd3fc; font-weight:600; }
-    .grad-text{ background:linear-gradient(90deg,#38bdf8,#a855f7); -webkit-background-clip:text; background-clip:text; color:transparent; }
-    .btn{ background:linear-gradient(90deg,#0ea5e9,#6366f1); transition:filter .15s, transform .05s; color:#fff; }
+    .tab-btn:hover{ background:var(--primary-dim); }
+    .tab-active{ background:linear-gradient(90deg, var(--primary-mid), rgba(124,58,237,.18));
+      border-color:var(--primary); color:#93c5fd; font-weight:600; border-top:2px solid var(--primary); }
+    .grad-text{ background:linear-gradient(90deg,var(--primary),#7c3aed); -webkit-background-clip:text; background-clip:text; color:transparent; }
+    .btn{ background:linear-gradient(90deg,var(--primary),#6366f1); transition:filter .15s, transform .05s; color:#fff; border-radius:8px; }
     .btn:hover{ filter:brightness(1.13); } .btn:active{ transform:translateY(1px); }
     .btn-emerald{ background:linear-gradient(90deg,#059669,#10b981); }
-    .btn-indigo{ background:linear-gradient(90deg,#6366f1,#a855f7); }
-    .btn-ghost{ background:rgba(255,255,255,.06); border:1px solid var(--line); }
+    .btn-indigo{ background:linear-gradient(90deg,#6366f1,#7c3aed); }
+    .btn-ghost{ background:rgba(255,255,255,.06); border:1px solid var(--line); border-radius:8px; }
     .badge{ padding:2px 10px; border-radius:9999px; font-weight:700; font-size:11px; }
-    .inp{ background:rgba(8,12,24,.7); border:1px solid var(--line); border-radius:8px; padding:6px 10px; }
-    .inp:focus{ outline:none; border-color:#38bdf8; box-shadow:0 0 0 3px rgba(56,189,248,.15); }
-    pre{ white-space:pre-wrap; word-break:break-word; }
-    ::-webkit-scrollbar{width:10px;height:10px} ::-webkit-scrollbar-thumb{background:#27314d;border-radius:6px}
-    table tbody tr:hover{ background:rgba(56,189,248,.06); }
+    .inp{ background:rgba(8,12,24,.7); border:1px solid var(--line); border-radius:8px; padding:6px 10px; color:var(--txt-primary); }
+    .inp:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-dim); }
+    .logo-mark{ width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center;
+      background:linear-gradient(135deg,#4361ee,#7c3aed); transform:rotate(45deg); flex-shrink:0; }
+    .logo-mark span{ transform:rotate(-45deg); font-weight:800; color:#fff; font-size:15px; }
+    pre{ white-space:pre-wrap; word-break:break-word; font-family:var(--font-mono); }
+    code, .font-mono{ font-family:var(--font-mono) !important; }
+    ::-webkit-scrollbar{width:10px;height:10px} ::-webkit-scrollbar-thumb{background:var(--surface-2);border-radius:6px}
+    table tbody tr:hover{ background:var(--primary-dim); }
   </style>
 </head>
 <body class="min-h-screen">
@@ -37,18 +52,18 @@
   <!-- Sidebar -->
   <aside class="w-60 flex flex-col border-r border-[var(--line)]" style="background:linear-gradient(180deg,#0b1120,#0a0f1e);">
     <div class="p-5 flex items-center gap-2">
-      <div class="text-2xl">&#128737;&#65039;</div>
+      <div class="logo-mark"><span>D</span></div>
       <div><div class="text-lg font-bold grad-text leading-none">Data Validator</div>
         <div class="text-[10px] uppercase tracking-widest text-gray-500 mt-0.5">AI reconciliation</div></div>
     </div>
     <nav class="flex flex-col gap-1 px-3 text-sm">
-      <button data-tab="compare" class="tab-btn text-left px-3 py-2 rounded-lg tab-active">&#128202; Compare</button>
-      <button data-tab="quality" class="tab-btn text-left px-3 py-2 rounded-lg">&#9989; Quality</button>
-      <button data-tab="mapping" class="tab-btn text-left px-3 py-2 rounded-lg">&#128279; Mapping</button>
+      <button data-tab="compare" class="tab-btn text-left px-3 py-2 rounded-lg tab-active">&#10005; Reconciliation</button>
+      <button data-tab="quality" class="tab-btn text-left px-3 py-2 rounded-lg">&#9989; Data Quality</button>
+      <button data-tab="profile" class="tab-btn text-left px-3 py-2 rounded-lg">&#128269; Data Profile</button>
       <button data-tab="governance" class="tab-btn text-left px-3 py-2 rounded-lg">&#128274; Governance</button>
-      <button data-tab="lineage" class="tab-btn text-left px-3 py-2 rounded-lg">&#129516; Lineage</button>
-      <button data-tab="parse" class="tab-btn text-left px-3 py-2 rounded-lg">&#128196; Parse</button>
-      <button data-tab="workspace" class="tab-btn text-left px-3 py-2 rounded-lg">&#128451;&#65039; Workspace</button>
+      <button data-tab="parse" class="tab-btn text-left px-3 py-2 rounded-lg">&#128206; Parse</button>
+      <button data-tab="xref" class="tab-btn text-left px-3 py-2 rounded-lg">&#128279; Cross Reference</button>
+      <button data-tab="workspace" class="tab-btn text-left px-3 py-2 rounded-lg">&#9889; Workspace</button>
       <button data-tab="settings" class="tab-btn text-left px-3 py-2 rounded-lg">&#9881;&#65039; Settings</button>
     </nav>
     <div class="mt-auto p-3 m-3 card rounded-lg text-xs text-gray-400" id="licbar">license&hellip;</div>
@@ -94,16 +109,13 @@
       <div id="q-history" class="mt-4"></div>
     </section>
 
-    <!-- MAPPING -->
-    <section id="tab-mapping" class="tab-panel hidden">
-      <h2 class="text-2xl font-bold mb-1 grad-text">Column Mapping</h2>
-      <p class="text-sm text-gray-500 mb-4">Exact &rarr; fuzzy &rarr; content &rarr; LLM matching.</p>
-      <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-4 max-w-3xl">
-        <div><label class="text-sm text-gray-400">Source file</label><input id="map-f1" type="file" class="block w-full text-sm mt-1"></div>
-        <div><label class="text-sm text-gray-400">Target file</label><input id="map-f2" type="file" class="block w-full text-sm mt-1"></div>
-      </div>
-      <button onclick="runMapping()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Map Columns</button>
-      <div id="map-out" class="mt-6"></div>
+    <!-- DATA PROFILE -->
+    <section id="tab-profile" class="tab-panel hidden">
+      <h2 class="text-2xl font-bold mb-1 grad-text">Data Profile</h2>
+      <p class="text-sm text-gray-500 mb-4">Column stats, correlations, near-key candidates.</p>
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl"><label class="text-sm text-gray-400">File</label><input id="prof-f1" type="file" class="block w-full text-sm mt-1"></div>
+      <button onclick="runProfile()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Run Data Profile</button>
+      <div id="prof-out" class="mt-6"></div>
     </section>
 
     <!-- GOVERNANCE -->
@@ -115,19 +127,19 @@
       <div id="gov-out" class="mt-6"></div>
     </section>
 
-    <!-- LINEAGE -->
-    <section id="tab-lineage" class="tab-panel hidden">
-      <h2 class="text-2xl font-bold mb-1 grad-text">Lineage Reconciliation</h2>
-      <p class="text-sm text-gray-500 mb-4">Apply transforms / aggregation, then reconcile.</p>
+    <!-- CROSS REFERENCE -->
+    <section id="tab-xref" class="tab-panel hidden">
+      <h2 class="text-2xl font-bold mb-1 grad-text">Cross Reference</h2>
+      <p class="text-sm text-gray-500 mb-4">Match an identifier (ISIN/CUSIP/LEI/trade_id) across 2&ndash;4 sources; coverage matrix + conflicts.</p>
       <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-4 max-w-3xl">
-        <div><label class="text-sm text-gray-400">File 1 (transformed)</label><input id="lin-f1" type="file" class="block w-full text-sm mt-1"></div>
-        <div><label class="text-sm text-gray-400">File 2 (target)</label><input id="lin-f2" type="file" class="block w-full text-sm mt-1"></div>
-        <div class="col-span-2"><label class="text-sm text-gray-400">Transforms JSON (optional)</label>
-          <textarea id="lin-tr" rows="2" placeholder='[{"op":"multiply","col":"price","params":{"value":2}}]' class="inp w-full mt-1 text-sm font-mono"></textarea></div>
-        <div><label class="text-sm text-gray-400">Key columns (optional)</label><input id="lin-keys" class="inp w-full mt-1 text-sm"></div>
+        <div><label class="text-sm text-gray-400">Source 1</label><input id="xref-f1" type="file" class="block w-full text-sm mt-1"></div>
+        <div><label class="text-sm text-gray-400">Source 2</label><input id="xref-f2" type="file" class="block w-full text-sm mt-1"></div>
+        <div><label class="text-sm text-gray-400">Source 3 (optional)</label><input id="xref-f3" type="file" class="block w-full text-sm mt-1"></div>
+        <div><label class="text-sm text-gray-400">Source 4 (optional)</label><input id="xref-f4" type="file" class="block w-full text-sm mt-1"></div>
+        <div class="col-span-2"><label class="text-sm text-gray-400">Identifier key</label><input id="xref-key" placeholder="e.g. isin, cusip, lei, trade_id" class="inp w-full mt-1 text-sm"></div>
       </div>
-      <button onclick="runLineage()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Reconcile</button>
-      <div id="lin-out" class="mt-6"></div>
+      <button onclick="runCrossReference()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Run Cross Reference</button>
+      <div id="xref-out" class="mt-6"></div>
     </section>
 
     <!-- PARSE -->
@@ -381,22 +393,30 @@ function bar(pct){ const c=pct>=90?'#10b981':pct>=60?'#f59e0b':'#ef4444';
 }
 
 // ---------- Mapping ----------
-async function runMapping(){
-  const out=document.getElementById('map-out'); out.innerHTML='<span class="text-gray-400">Mapping&hellip;</span>';
-  const {ok,data}=await postForm('mapping',[['file1','map-f1'],['file2','map-f2']]);
+async function runProfile(){
+  const out=document.getElementById('prof-out'); out.innerHTML='<span class="text-gray-400">Profiling&hellip;</span>';
+  const {ok,data}=await postForm('quality',[['file1','prof-f1']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   SESSION=data.session_id;
-  const mcol={exact_name:'#10b981',fuzzy_name:'#38bdf8',content_jaccard:'#a855f7',llm_semantic:'#f59e0b'};
-  let html=`<div class="card rounded-xl overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400">
-    <tr><th class="text-left p-2">Source</th><th class="text-left">Target</th><th>Method</th><th>Confidence</th><th>Exceptions</th></tr></thead><tbody>`;
-  (data.field_specs||[]).forEach((s,i)=>{ const m=data.matched[i]||{};
-    html+=`<tr class="border-t border-[var(--line)]"><td class="p-2">${esc(s.source_column)}</td><td>${esc(s.target_column)}</td>
-      <td class="text-center"><span class="badge" style="background:${(mcol[m.method]||'#64748b')}22;color:${mcol[m.method]||'#94a3b8'}">${m.method||''}</span></td>
-      <td class="text-center">${bar(Math.round((m.confidence||0)*100))}</td>
-      <td class="text-center text-amber-300">${(s.exceptions||[]).map(e=>e.type+(e.count?` (${e.count})`:'')).join(', ')||'&mdash;'}</td></tr>`;});
-  html+='</tbody></table></div>';
-  if(data.unmatched_file1?.length||data.unmatched_file2?.length)
-    html+=`<div class="text-sm text-amber-400 mt-3">Unmatched &mdash; source: ${data.unmatched_file1.join(', ')||'none'} &middot; target: ${data.unmatched_file2.join(', ')||'none'}</div>`;
+  let html=`<div class="grid grid-cols-3 gap-3 mb-4 text-sm">
+    ${stat('Rows', data.rows, '#a855f7')}${stat('Columns', data.columns, '#38bdf8')}${stat('Duplicate rows', data.duplicate_rows, '#f59e0b')}</div>
+    <div class="card rounded-xl p-3 overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400">
+    <tr><th class="text-left p-2">Column</th><th>Type</th><th>Nulls</th><th>Distinct</th><th>Unique%</th><th>Min/Max</th></tr></thead><tbody>
+    ${(data.columns_detail||[]).map(c=>`<tr class="border-t border-[var(--line)]"><td class="p-2">${esc(c.column)}</td>
+      <td class="text-center text-sky-300">${c.numeric?'numeric':(c.detected_format||'string')}</td>
+      <td class="text-center">${c.null_count}</td><td class="text-center">${c.distinct}</td>
+      <td class="text-center">${bar(c.uniqueness_pct)}</td>
+      <td class="text-center text-gray-400">${c.numeric?`${c.numeric.min}&ndash;${c.numeric.max}`:(c.string?`${c.string.min_length}&ndash;${c.string.max_length} chars`:'&mdash;')}</td></tr>`).join('')}</tbody></table></div>`;
+  if(data.near_key_columns?.length||data.correlations?.length){
+    html+=`<div class="grid grid-cols-2 gap-4 mt-4 text-sm">
+    ${data.near_key_columns?.length?`<div class="card rounded-xl p-4">
+      <div class="text-xs text-gray-400 mb-2">Near-key columns <span class="text-gray-600">(80&ndash;95% unique)</span></div>
+      <div class="flex flex-wrap gap-1">${data.near_key_columns.map(c=>`<span class="badge" style="background:rgba(168,85,247,.18);color:#c4b5fd">${esc(c)}</span>`).join('')}</div></div>`:''}
+    ${data.correlations?.length?`<div class="card rounded-xl p-4">
+      <div class="text-xs text-gray-400 mb-2">Correlated columns <span class="text-gray-600">(|r| &gt; 0.7)</span></div>
+      <div class="space-y-1">${data.correlations.map(c=>`<div>${esc(c.col_a)} &harr; ${esc(c.col_b)}: <span class="${Math.abs(c.r)>0.9?'text-emerald-300':'text-amber-300'}">${c.r}</span></div>`).join('')}</div></div>`:''}
+    </div>`;
+  }
   out.innerHTML=html;
 }
 
@@ -427,24 +447,31 @@ async function runGovernance(){
     scales:{x:{ticks:{color:'#94a3b8'}},y:{ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}}}}});
 }
 
-// ---------- Lineage ----------
-async function runLineage(){
-  const out=document.getElementById('lin-out'); out.innerHTML='<span class="text-gray-400">Reconciling&hellip;</span>';
-  let hints; try{ const tr=lin_tr.value.trim(); hints=JSON.stringify({transforms:tr?JSON.parse(tr):[]}); }
-  catch(e){ out.innerHTML='<span class="text-red-400">Transforms must be valid JSON</span>'; return; }
-  const {ok,data}=await postForm('lineage',[['file1','lin-f1'],['file2','lin-f2']],{hints,key_cols:lin_keys.value});
-  if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
+// ---------- Cross Reference ----------
+async function runCrossReference(){
+  const out=document.getElementById('xref-out'); out.innerHTML='<span class="text-gray-400">Cross-referencing&hellip;</span>';
+  const key=document.getElementById('xref-key').value.trim();
+  if(!key){ out.innerHTML='<div class="text-red-400">Enter the identifier key column name first.</div>'; return; }
+  const fd=new FormData(); fd.append('action','cross_reference'); fd.append('key_cols',key);
+  [['file1','xref-f1'],['file2','xref-f2'],['file3','xref-f3'],['file4','xref-f4']].forEach(([field,id])=>{
+    const f=document.getElementById(id).files[0]; if(f) fd.append(field,f); });
+  const r=await fetch('/analyze',{method:'POST',body:fd}); const data=await r.json();
+  if(!r.ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   SESSION=data.session_id; const c=data.counts||{};
-  out.innerHTML=`<div class="grid grid-cols-4 gap-3 mb-4">
-    ${stat('Matched',c.matched??'&mdash;','#10b981')}${stat('Only File 1',c.file1_only??0,'#f59e0b')}
-    ${stat('Only File 2',c.file2_only??0,'#f59e0b')}${stat('Modified',c.modified??0,'#38bdf8')}</div>
-    <div class="card rounded-xl p-4 mb-3"><canvas id="linChart" height="120"></canvas></div>
-    <div class="text-sm text-gray-400">Transforms applied: ${(data.transforms_applied||[]).length} &middot; keys: ${(data.keys||[]).join(', ')||data.method||'n/a'}</div>
-    <a href="/download/${data.session_id}" class="inline-block mt-3 btn-emerald btn rounded-lg px-4 py-2 text-sm">&#11015; Download Excel</a>`;
-  chart('linChart',{type:'bar',data:{labels:['Matched','File1 only','File2 only','Modified'],
-    datasets:[{data:[c.matched||0,c.file1_only||0,c.file2_only||0,c.modified||0],
-      backgroundColor:['#10b981','#f59e0b','#f59e0b','#38bdf8'],borderRadius:6}]},
-    options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#94a3b8'}},y:{ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}}}}});
+  let html=`<div class="grid grid-cols-3 gap-3 mb-4">
+    ${stat('Total identifiers', c.total_identifiers??0, '#38bdf8')}
+    ${stat('In all sources', c.in_all_sources??0, '#10b981')}
+    ${stat('Conflicts', c.conflicts??0, '#ef4444')}</div>
+    <div class="card rounded-xl p-3 overflow-auto mb-4"><table class="w-full text-xs"><thead class="text-gray-400">
+    <tr><th class="text-left p-2">${esc(data.identifier_key||'identifier')}</th>${(data.sources||[]).map(s=>`<th class="text-center">${esc(s)}</th>`).join('')}</tr></thead><tbody>
+    ${(data.coverage_matrix||[]).slice(0,100).map(row=>`<tr class="border-t border-[var(--line)]"><td class="p-2">${esc(row.identifier)}</td>
+      ${(data.sources||[]).map(s=>`<td class="text-center">${row[s]?'<span class=\"text-emerald-400\">&check;</span>':'<span class=\"text-gray-600\">&times;</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+  if(data.conflicts?.length){
+    html+=`<h3 class="font-semibold mt-2 mb-2 text-amber-300">Conflicts</h3><div class="space-y-2">`+
+      data.conflicts.slice(0,30).map(c=>`<div class="card rounded-lg p-2 text-xs"><b class="text-sky-300">${esc(c.identifier)}</b> &middot; ${esc(c.field)}: `+
+        Object.entries(c.values).map(([src,v])=>`${esc(src)}=<span class="text-amber-300">${esc(v)}</span>`).join(' &middot; ')+`</div>`).join('')+`</div>`;
+  }
+  out.innerHTML=html;
 }
 
 // ---------- Parse ----------

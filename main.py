@@ -1664,6 +1664,62 @@ def _jaccard_values(s1, s2, sample=2000):
     return len(a & b) / len(a | b)
 
 
+def cross_reference_sources(dfs, names, identifier_key):
+    """Match records across 2-4 sources by an identifier column (ISIN/CUSIP/
+    LEI/trade_id/etc.): a coverage matrix of which sources have which
+    identifiers, and a conflicts table for identifiers present in 2+
+    sources whose shared fields disagree."""
+    indexed = []
+    for df in dfs:
+        if identifier_key not in df.columns:
+            indexed.append({})
+            continue
+        d = df.copy()
+        d[identifier_key] = d[identifier_key].astype(str).str.strip()
+        d = d[~d[identifier_key].str.lower().isin(_NULL_SENTINELS)]
+        d = d.drop_duplicates(subset=[identifier_key], keep="first")
+        indexed.append(d.set_index(identifier_key).to_dict("index"))
+
+    all_ids = sorted(set().union(*[set(idx.keys()) for idx in indexed]))[:2000]
+
+    coverage = []
+    for ident in all_ids:
+        row = {"identifier": ident}
+        for i, name in enumerate(names):
+            row[name] = ident in indexed[i]
+        coverage.append(row)
+
+    common_cols = None
+    for df in dfs:
+        cols = set(df.columns) - {identifier_key}
+        common_cols = cols if common_cols is None else common_cols & cols
+    common_cols = sorted(common_cols or [])[:10]
+
+    conflicts = []
+    for ident in all_ids:
+        present = [i for i in range(len(dfs)) if ident in indexed[i]]
+        if len(present) < 2:
+            continue
+        for col in common_cols:
+            values = {names[i]: str(indexed[i][ident].get(col, "")).strip() for i in present}
+            if len(set(values.values())) > 1:
+                conflicts.append({"identifier": ident, "field": col, "values": values})
+        if len(conflicts) >= 500:
+            break
+
+    return {
+        "identifier_key": identifier_key,
+        "sources": names,
+        "coverage_matrix": coverage[:500],
+        "conflicts": conflicts[:200],
+        "counts": {
+            "total_identifiers": len(all_ids),
+            "conflicts": len(conflicts),
+            "in_all_sources": sum(1 for r in coverage if all(r[n] for n in names)),
+        },
+    }
+
+
 def analyze_mapping(df1, df2, file1_name="file1", file2_name="file2", ref=None):
     cols1 = list(df1.columns)
     cols2 = list(df2.columns)
@@ -2185,6 +2241,8 @@ async def analyze(
     action: str = Form("compare"),
     file1: UploadFile = File(None),
     file2: UploadFile = File(None),
+    file3: UploadFile = File(None),
+    file4: UploadFile = File(None),
     ref_doc: list[UploadFile] = File(None),
     key_cols: str = Form(""),
     exclude_cols: str = Form(""),
@@ -2215,7 +2273,9 @@ async def analyze(
         if uploads:
             ref = _load_and_classify_ref_docs(uploads)
 
-    feat = "parse" if action == "parse" else ("compare" if action == "complex_recon" else action)
+    feat = ("parse" if action == "parse" else
+           "compare" if action == "complex_recon" else
+           "lineage" if action == "cross_reference" else action)
     _require_feature(feat)
 
     async def _load_primary(upload, conn_id, label):
@@ -2293,6 +2353,18 @@ async def analyze(
         if not text_col:
             raise HTTPException(400, "complex_recon requires hints.text_col (or key_cols) naming the free-text description column.")
         result = complex_reconciliation(df1, df2, text_col, common)
+    elif action == "cross_reference":
+        uploads = [(f, f"file{i+1}") for i, f in enumerate([file1, file2, file3, file4]) if f and f.filename]
+        if len(uploads) < 2:
+            raise HTTPException(400, "cross_reference requires at least 2 files.")
+        dfs, names = [], []
+        for f, label in uploads:
+            dfs.append(load_file(f.filename, await f.read(), delim))
+            names.append(f.filename or label)
+        identifier_key = hint_obj.get("identifier_key") or (keys[0] if keys else None)
+        if not identifier_key:
+            raise HTTPException(400, "cross_reference requires hints.identifier_key (or key_cols) naming the identifier column (e.g. ISIN, CUSIP, LEI, trade_id).")
+        result = cross_reference_sources(dfs, names, identifier_key)
     elif action == "parse":
         if not file1:
             raise HTTPException(400, "parse requires file1.")
