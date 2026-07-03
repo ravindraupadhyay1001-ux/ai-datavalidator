@@ -79,7 +79,16 @@
     <section id="tab-quality" class="tab-panel hidden">
       <h2 class="text-2xl font-bold mb-1 grad-text">Data Quality</h2>
       <p class="text-sm text-gray-500 mb-4">7-dimension scoring with rule checks.</p>
-      <div class="card rounded-xl p-5 mb-4 max-w-3xl"><label class="text-sm text-gray-400">File</label><input id="q-f1" type="file" class="block w-full text-sm mt-1"></div>
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl grid grid-cols-2 gap-4">
+        <div><label class="text-sm text-gray-400">File</label><input id="q-f1" type="file" class="block w-full text-sm mt-1"></div>
+        <div><label class="text-sm text-gray-400">BFSI Rule Pack</label>
+          <select id="q-rulepack" class="inp w-full mt-1 text-sm">
+            <option value="none">None</option>
+            <option value="trade_order">Trade/Order</option>
+            <option value="payments">Payments</option>
+            <option value="mifid_ii">MiFID II</option>
+          </select></div>
+      </div>
       <button onclick="runQuality()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Analyze</button>
       <div id="q-out" class="mt-6"></div>
       <div id="q-history" class="mt-4"></div>
@@ -307,7 +316,8 @@ async function runComplexRecon(){
 // ---------- Quality ----------
 async function runQuality(){
   const out=document.getElementById('q-out'); out.innerHTML='<span class="text-gray-400">Analyzing&hellip;</span>';
-  const {ok,data}=await postForm('quality',[['file1','q-f1']]);
+  const rulePack = document.getElementById('q-rulepack').value;
+  const {ok,data}=await postForm('quality',[['file1','q-f1']], {hints: JSON.stringify({rule_pack: rulePack})});
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   SESSION=data.session_id; const dim=data.dimensions||{};
   const gradeColor={A:'#10b981',B:'#84cc16',C:'#f59e0b',D:'#f97316',F:'#ef4444'}[data.grade]||'#38bdf8';

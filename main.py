@@ -1138,6 +1138,60 @@ _DQ_FORMAT_PATTERNS = {
     "mic": _re.compile(r"^[A-Z0-9]{4}$"),
 }
 
+# --- BFSI Rule Packs -------------------------------------------------------
+# Named presets: column-name substrings (matched case-insensitively) that
+# imply a rule when present in a dataset, so a user can pick "Trade/Order"
+# etc. instead of hand-building rules for every ISIN/quantity/side column.
+_BFSI_RULE_PACKS = {
+    "trade_order": [
+        (("trade_id", "order_id", "tradeid", "orderid"), [
+            {"type": "not_null"}, {"type": "unique"}]),
+        (("isin",), [{"type": "isin_format"}]),
+        (("cusip",), [{"type": "cusip_format"}]),
+        (("quantity", "qty", "notional"), [{"type": "positive"}]),
+        (("price", "rate"), [{"type": "non_negative"}]),
+        (("side", "buy_sell", "buysell"), [
+            {"type": "allowed_values", "value": ["BUY", "SELL", "B", "S"]}]),
+    ],
+    "payments": [
+        (("iban",), [{"type": "iban_format"}]),
+        (("bic", "swift"), [{"type": "bic_format"}]),
+        (("amount",), [{"type": "positive"}]),
+        (("currency", "ccy"), [{"type": "currency_code_format"}]),
+        (("payment_id", "paymentid", "remittance_id"), [
+            {"type": "not_null"}, {"type": "unique"}]),
+    ],
+    "mifid_ii": [
+        (("lei",), [{"type": "lei_format"}]),
+        (("isin",), [{"type": "isin_format"}]),
+        (("trade_date", "tradedate", "execution_date", "timestamp"), [
+            {"type": "not_null"}, {"type": "not_future_date"}]),
+        (("uti", "transaction_ref", "transactionref"), [
+            {"type": "not_null"}, {"type": "unique"}]),
+    ],
+}
+
+
+def _apply_rule_pack(columns, pack_name):
+    """Scan `columns` for names matching a rule pack's patterns and emit
+    auto-generated rules for each hit (same shape as analyze_quality's
+    own auto-detected rules)."""
+    pack = _BFSI_RULE_PACKS.get(pack_name)
+    if not pack:
+        return []
+    out = []
+    for c in columns:
+        nm = c.lower().replace(" ", "_")
+        for patterns, rule_templates in pack:
+            if any(p in nm for p in patterns):
+                for tmpl in rule_templates:
+                    rule = dict(tmpl)
+                    rule["column"] = c
+                    rule["auto"] = True
+                    rule["rule_pack"] = pack_name
+                    out.append(rule)
+    return out
+
 
 def _grade(score):
     if score >= 90:
@@ -1399,7 +1453,10 @@ def analyze_quality(df, name="dataset", data_dict=None, rules=None, user_hints=N
     n = len(df)
     cols = list(df.columns)
     user_hints = user_hints or {}
-    rules = rules or []
+    rules = list(rules or [])
+    rule_pack = user_hints.get("rule_pack")
+    if rule_pack and rule_pack != "none":
+        rules += _apply_rule_pack(cols, rule_pack)
     col_reports = []
     rule_results = []
     near_keys = []
