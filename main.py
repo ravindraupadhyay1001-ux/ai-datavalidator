@@ -148,7 +148,7 @@ _scheduler_mod = None
 try:
     from workspace import db as ws_db
     from workspace.db import init_db as ws_init_db
-    from workspace.auth import WorkspaceAuthMiddleware, get_current_user, require_role as _ws_require_role
+    from workspace.auth import WorkspaceAuthMiddleware, get_current_user, require_role as _ws_require_role, _resolve_username as _ws_resolve_username
     from workspace.connectors import BaseConnector
     from workspace import scheduler as _scheduler_mod
     app.add_middleware(WorkspaceAuthMiddleware)
@@ -161,6 +161,9 @@ except Exception as _ws_err:  # pragma: no cover
 
     def _ws_require_role(request: Request, *allowed: str):  # type: ignore
         pass
+
+    def _ws_resolve_username(request: Request):  # type: ignore
+        return None
 
 
 @app.on_event("startup")
@@ -2232,10 +2235,14 @@ async def analyze(
         )
         if WS_ENABLED:
             try:
+                # Use the workspace identity (OS/IIS-resolved), NOT the login
+                # session user — /api/ws/dq/history queries resolve identity
+                # that way, and the two auth systems track separate usernames.
+                dq_user = _ws_resolve_username(request) or user
                 dims = result.get("dimensions") or {}
                 ws_db.insert_dq_history(
                     file_name=result.get("name") or "dataset",
-                    username=user,
+                    username=dq_user,
                     score=result.get("score"),
                     grade=result.get("grade"),
                     completeness=dims.get("completeness"),
@@ -2673,7 +2680,8 @@ def _ws_guard():
 def ws_me(request: Request):
     user = get_current_user(request)
     return {"username": user,
-            "display_name": getattr(request.state, "display_name", user)}
+            "display_name": getattr(request.state, "display_name", user),
+            "role": getattr(request.state, "role", None) or "analyst"}
 
 
 # ---- Connections --------------------------------------------------------
@@ -2938,13 +2946,15 @@ async def ws_set_user_role(username: str, request: Request):
 
 
 # ---- DQ score history -----------------------------------------------------
-@app.get("/api/dq/history/{file_name}")
+# NOTE: these live under /api/ws so WorkspaceAuthMiddleware resolves identity
+# for them (it only runs for paths under that prefix).
+@app.get("/api/ws/dq/history/{file_name}")
 def dq_history(file_name: str, request: Request, days: int = 30):
     _ws_guard()
     return _sanitize_json(ws_db.get_dq_history(file_name, get_current_user(request), days=days))
 
 
-@app.get("/api/dq/baseline/{file_name}")
+@app.get("/api/ws/dq/baseline/{file_name}")
 def dq_baseline(file_name: str, request: Request):
     _ws_guard()
     baseline = ws_db.get_dq_baseline(file_name, get_current_user(request))

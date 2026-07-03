@@ -66,7 +66,12 @@
         <div><label class="text-sm text-gray-400">Key columns (optional)</label><input id="cmp-keys" class="inp w-full mt-1 text-sm"></div>
         <div><label class="text-sm text-gray-400">Exclude columns (optional)</label><input id="cmp-excl" class="inp w-full mt-1 text-sm"></div>
       </div>
-      <button onclick="runCompare()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Compare</button>
+      <div class="flex gap-2 items-center">
+        <button onclick="runCompare()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Compare</button>
+        <span class="text-gray-500 text-xs">or, if there's no clean key column&hellip;</span>
+        <input id="cmp-textcol" placeholder="free-text column name" class="inp text-sm w-48">
+        <button onclick="runComplexRecon()" class="btn-indigo btn px-4 py-2 rounded-lg text-sm font-semibold" title="Match rows by extracting buy/sell side + quantity from a free-text description column">&#9889; Complex Recon</button>
+      </div>
       <div id="cmp-out" class="mt-6"></div>
     </section>
 
@@ -77,6 +82,7 @@
       <div class="card rounded-xl p-5 mb-4 max-w-3xl"><label class="text-sm text-gray-400">File</label><input id="q-f1" type="file" class="block w-full text-sm mt-1"></div>
       <button onclick="runQuality()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Analyze</button>
       <div id="q-out" class="mt-6"></div>
+      <div id="q-history" class="mt-4"></div>
     </section>
 
     <!-- MAPPING -->
@@ -268,6 +274,31 @@ async function runCompare(){
     options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#94a3b8'}},y:{ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}}}}});
 }
 
+// ---------- Complex Recon ----------
+async function runComplexRecon(){
+  const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Extracting side/quantity and matching&hellip;</span>';
+  const textCol = document.getElementById('cmp-textcol').value.trim();
+  if(!textCol){ out.innerHTML='<div class="text-red-400">Enter the free-text description column name first.</div>'; return; }
+  const {ok,data}=await postForm('complex_recon',[['file1','cmp-f1'],['file2','cmp-f2']], {key_cols:textCol});
+  if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
+  SESSION=data.session_id; const c=data.counts||{}; const cov=data.extraction_coverage||{};
+  out.innerHTML=`<div class="text-xs text-gray-400 mb-3">${esc(data.method||'')} &middot; column: <span class="text-sky-300">${esc(data.source_column||textCol)}</span>
+    &middot; extraction coverage: F1 ${cov.file1_pct??0}% / F2 ${cov.file2_pct??0}%</div>
+    <div class="grid grid-cols-4 gap-3 mb-4">
+    ${stat('Matched', c.matched??'&mdash;', '#10b981')}
+    ${stat('Only in File 1', c.file1_only??0, '#f59e0b')}
+    ${stat('Only in File 2', c.file2_only??0, '#f59e0b')}
+    ${stat('Modified', c.modified??0, '#38bdf8')}</div>`;
+  if(data.modified?.length){
+    out.innerHTML += `<h3 class="font-semibold mt-2 mb-2">Modified rows (sample)</h3><div class="space-y-2">`+
+      data.modified.slice(0,20).map(m=>`<div class="card rounded-lg p-2 text-xs"><b class="text-sky-300">${esc(m.key)}</b>: `+
+        Object.entries(m.changes).map(([k,v])=>`${esc(k)}: <span class="text-amber-300">${esc(v.file1)}</span>&rarr;<span class="text-emerald-300">${esc(v.file2)}</span>`).join(' &middot; ')+`</div>`).join('')+`</div>`;
+  }
+  out.innerHTML += `<div class="mt-4 flex gap-2">
+    <a href="/download/${data.session_id}" class="btn-emerald btn rounded-lg px-4 py-2 text-sm">&#11015; Download Excel</a>
+    <button onclick="saveToWorkspace()" class="btn-indigo btn rounded-lg px-4 py-2 text-sm">&#128190; Save to Workspace</button></div>`;
+}
+
 // ---------- Quality ----------
 async function runQuality(){
   const out=document.getElementById('q-out'); out.innerHTML='<span class="text-gray-400">Analyzing&hellip;</span>';
@@ -289,6 +320,14 @@ async function runQuality(){
       <td class="text-center">${bar(c.completeness_pct)}</td><td class="text-center">${bar(c.uniqueness_pct)}</td>
       <td class="text-center">${c.null_count}</td><td class="text-center">${c.distinct}</td>
       <td class="text-center text-sky-300">${c.detected_format||c.numeric?'num':''}</td></tr>`).join('')}</tbody></table></div>
+  ${(data.near_key_columns?.length||data.correlations?.length) ? `<div class="grid grid-cols-2 gap-4 mt-4 text-sm">
+    ${data.near_key_columns?.length ? `<div class="card rounded-xl p-4">
+      <div class="text-xs text-gray-400 mb-2">Near-key columns <span class="text-gray-600">(80&ndash;95% unique &mdash; candidate join keys)</span></div>
+      <div class="flex flex-wrap gap-1">${data.near_key_columns.map(c=>`<span class="badge" style="background:rgba(168,85,247,.18);color:#c4b5fd">${esc(c)}</span>`).join('')}</div></div>` : ''}
+    ${data.correlations?.length ? `<div class="card rounded-xl p-4">
+      <div class="text-xs text-gray-400 mb-2">Correlated columns <span class="text-gray-600">(|r| &gt; 0.7)</span></div>
+      <div class="space-y-1">${data.correlations.map(c=>`<div>${esc(c.col_a)} &harr; ${esc(c.col_b)}: <span class="${Math.abs(c.r)>0.9?'text-emerald-300':'text-amber-300'}">${c.r}</span></div>`).join('')}</div></div>` : ''}
+  </div>` : ''}
   <div class="mt-4 flex gap-2"><a href="/download/${data.session_id}" class="btn-emerald btn rounded-lg px-4 py-2 text-sm">&#11015; Download Excel</a>
     <button onclick="saveToWorkspace()" class="btn-indigo btn rounded-lg px-4 py-2 text-sm">&#128190; Save to Workspace</button></div>`;
   chart('qGauge',{type:'doughnut',data:{datasets:[{data:[data.score,100-data.score],
@@ -298,6 +337,25 @@ async function runQuality(){
   chart('qDims',{type:'bar',data:{labels:dk,datasets:[{data:dk.map(k=>dim[k]),
     backgroundColor:'#38bdf8',borderRadius:6}]},options:{indexAxis:'y',plugins:{legend:{display:false}},
     scales:{x:{max:100,ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}},y:{ticks:{color:'#cbd5e1'}}}}});
+  loadDqHistory(data.name);
+}
+
+async function loadDqHistory(fileName){
+  const box=document.getElementById('q-history'); box.innerHTML='';
+  if(!fileName) return;
+  let hist;
+  try{ hist = await J('GET', `/api/ws/dq/history/${encodeURIComponent(fileName)}?days=30`); }
+  catch(e){ return; }
+  if(!Array.isArray(hist) || hist.length < 2) return; // need at least 2 points for a trend
+  box.innerHTML = `<div class="card rounded-xl p-4">
+    <div class="text-xs text-gray-400 mb-2">DQ score trend &mdash; last 30 days (${hist.length} runs)</div>
+    <canvas id="qHistChart" height="80"></canvas></div>`;
+  chart('qHistChart',{type:'line',data:{
+    labels:hist.map(h=>new Date(h.run_at).toLocaleDateString()),
+    datasets:[{data:hist.map(h=>h.score),borderColor:'#38bdf8',backgroundColor:'rgba(56,189,248,.15)',
+      fill:true,tension:.3,pointRadius:3}]},
+    options:{plugins:{legend:{display:false}},
+      scales:{x:{ticks:{color:'#94a3b8'}},y:{min:0,max:100,ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}}}}});
 }
 function bar(pct){ const c=pct>=90?'#10b981':pct>=60?'#f59e0b':'#ef4444';
   return `<div style="background:#1e2740;border-radius:4px;height:14px;width:64px;display:inline-block;position:relative;vertical-align:middle">
@@ -454,6 +512,35 @@ async function activateLicense(){ const token=document.getElementById('lic-token
 (async()=>{ try{ const d=await fetch('/api/license/status').then(r=>r.json());
   document.getElementById('licbar').innerHTML=`<span class="grad-text font-semibold">${d.dev_mode?'DEV mode':d.tier}</span> &middot; <span class="${d.valid?'text-emerald-400':'text-red-400'}">${d.valid?'valid':'inactive'}</span>`;
 }catch(e){} })();
+
+// ---------- Role-aware UI ----------
+let CURRENT_ROLE = null;
+const roleColor = {admin:'#f59e0b', analyst:'#38bdf8', readonly:'#94a3b8'};
+(async()=>{ try{
+  const me = await fetch('/api/ws/me').then(r=>r.ok?r.json():null);
+  if(!me) return;
+  CURRENT_ROLE = me.role || 'analyst';
+  const badge = document.createElement('div');
+  badge.className = 'mx-3 mb-1 text-xs';
+  badge.innerHTML = `<span class="badge" style="background:${roleColor[CURRENT_ROLE]}22;color:${roleColor[CURRENT_ROLE]}">${esc(me.display_name||me.username)} &middot; ${esc(CURRENT_ROLE)}</span>`;
+  document.getElementById('licbar').before(badge);
+  if (CURRENT_ROLE === 'readonly') applyReadonlyUI();
+}catch(e){} })();
+
+function applyReadonlyUI(){
+  // Hide/disable write actions the backend also blocks for readonly users.
+  const hideSelectors = [
+    'button[onclick="saveToWorkspace()"]',
+    'button[onclick="saveConnection()"]',
+    'button[onclick="saveRuleset()"]',
+    'button[onclick="saveJob()"]',
+  ];
+  hideSelectors.forEach(sel => document.querySelectorAll(sel).forEach(el => el.style.display = 'none'));
+  const note = document.createElement('div');
+  note.className = 'mx-3 mb-2 text-[11px] text-gray-500';
+  note.textContent = 'Read-only access — analysis and saving are disabled.';
+  document.getElementById('licbar').before(note);
+}
 </script>
 </body>
 </html>
