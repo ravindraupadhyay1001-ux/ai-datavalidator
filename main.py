@@ -262,17 +262,15 @@ def _get_bedrock_client():
 # configured, automatically falls back through any other provider that has
 # an API key set. This lets Groq/Gemini free tiers keep AI features working
 # even when AWS Bedrock credits are unavailable.
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "bedrock").lower()
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
 
-AI_CONFIGURED = bool(MODEL_ID or GROQ_API_KEY or GOOGLE_API_KEY or OPENAI_API_KEY or ANTHROPIC_API_KEY)
+AI_CONFIGURED = bool(MODEL_ID or GROQ_API_KEY or GOOGLE_API_KEY or OPENAI_API_KEY)
 
 
 def _ask_llm_bedrock(messages, system=None):
@@ -327,25 +325,13 @@ def _ask_llm_openai(messages, system=None):
     return resp.choices[0].message.content
 
 
-def _ask_llm_anthropic(messages, system=None):
-    if not ANTHROPIC_API_KEY:
-        raise RuntimeError("ANTHROPIC_API_KEY not configured.")
-    from anthropic import Anthropic
-    client = Anthropic(api_key=ANTHROPIC_API_KEY)
-    resp = client.messages.create(
-        model=ANTHROPIC_MODEL, max_tokens=2000, temperature=0.2,
-        system=system or "", messages=messages)
-    return resp.content[0].text
-
-
 _LLM_PROVIDERS = {
     "bedrock": _ask_llm_bedrock,
     "groq": _ask_llm_groq,
     "gemini": _ask_llm_gemini,
     "openai": _ask_llm_openai,
-    "anthropic": _ask_llm_anthropic,
 }
-_LLM_FALLBACK_ORDER = ["groq", "gemini", "bedrock", "openai", "anthropic"]
+_LLM_FALLBACK_ORDER = ["groq", "gemini", "bedrock", "openai"]
 
 
 def _ask_llm(messages, system=None):
