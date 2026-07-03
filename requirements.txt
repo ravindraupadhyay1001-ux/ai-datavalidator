@@ -1,0 +1,34 @@
+fastapi
+uvicorn[standard]
+passlib[bcrypt]
+PyJWT[crypto]>=2.8
+cryptography>=41
+pandas>=2.2
+numpy
+openpyxl
+pyarrow
+python-multipart
+pydantic
+boto3
+
+chardet
+jinja2
+python-dotenv
+
+langchain-core>=1.2.21
+langchain-aws>=1.4.1
+
+pdfplumber
+fastavro
+
+pywin32; sys_platform == "win32" # Outlook email via win32com (Windows only)
+apscheduler>=3.10
+paramiko                         # SFTP (Unix/Linux servers)
+httpx                            # REST API
+pyodbc                           # Microsoft SQL Server (requires ODBC Driver 17 on host)
+psycopg2-binary                  # PostgreSQL
+pymysql                          # MySQL / MariaDB
+snowflake-connector-python       # Snowflake
+# Optional (install manually if needed):
+# cx_Oracle                      # Oracle DB
+# oracledb                       # Oracle DB (newer driver)

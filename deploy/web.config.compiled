@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <system.webServer>
+    <handlers>
+      <add name="DataValidationAgent" path="*" verb="*"
+           modules="httpPlatformHandler" resourceType="Unspecified"/>
+    </handlers>
+    <httpPlatform processPath="D:\Apps\datavalidation\datavalidation-agent.exe"
+                  arguments="--port %HTTP_PLATFORM_PORT%"
+                  stdoutLogEnabled="true"
+                  stdoutLogFile="C:\Logs\datavalidation\app.log"
+                  startupTimeLimit="120"
+                  requestTimeout="00:10:00">
+      <environmentVariables>
+        <environmentVariable name="APP_ROOT" value="D:\Apps\datavalidation"/>
+        <environmentVariable name="AWS_PROFILE" value="datavalidation"/>
+        <environmentVariable name="AWS_DEFAULT_REGION" value="us-east-1"/>
+        <environmentVariable name="BEDROCK_MODEL_ID" value=""/>
+        <environmentVariable name="LICENSE_KEY" value=""/>
+        <environmentVariable name="LICENSE_SERVER_URL" value="https://license.your-domain.com"/>
+        <environmentVariable name="LICENSE_PUBLIC_KEY" value=""/>
+        <environmentVariable name="WORKSPACE_DB" value="sqlite"/>
+        <environmentVariable name="JWT_SECRET" value="change-this-in-production"/>
+      </environmentVariables>
+    </httpPlatform>
+    <security>
+      <requestFiltering>
+        <requestLimits maxAllowedContentLength="104857600"/>
+      </requestFiltering>
+    </security>
+    <urlCompression doStaticCompression="true" doDynamicCompression="true"/>
+    <httpErrors errorMode="Custom" existingResponse="PassThrough"/>
+  </system.webServer>
+</configuration>

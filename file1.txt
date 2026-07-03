@@ -1,0 +1,23 @@
+SecurityID	Dep	ticker	Lol	toto
+12334	abc ltd	tol1		
+12335	abd ltd	tol2	dfd	
+12336	abc ltd	tol2		
+12335	abd ltd	tol4		
+12334	abc ltd	tol6		
+12333	abd ltd	tol8		
+12332	abc ltd	tol10		
+12331	abd ltd	tol12		
+12330	abc ltd	tol14		
+12329	abd ltd	tol16		
+12328	abc ltd	tol18		
+12327	abd ltd	tol20		
+12326	abc ltd	tol22		
+12325	abd ltd	tol24		
+12324	abc ltd	tol26		
+12323	abd ltd	tol28		
+12322	abc ltd	tol30		
+12321	abd ltd	tol32		
+12320	abc ltd	tol34		
+12319	abd ltd	tol36		
+12318	abc ltd	tol38		
+12317	abc ltd	tol40		

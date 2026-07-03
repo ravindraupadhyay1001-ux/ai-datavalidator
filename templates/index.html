@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Validation Agent</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    :root{ --bg:#070b18; --line:#1e2740; }
+    body{ background:
+        radial-gradient(1200px 600px at 110% -10%, rgba(56,189,248,.10), transparent 60%),
+        radial-gradient(900px 500px at -10% 110%, rgba(168,85,247,.12), transparent 55%),
+        var(--bg); color:#e6edf6; }
+    .card{ background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.015));
+      border:1px solid var(--line); backdrop-filter:blur(6px); box-shadow:0 12px 32px -20px rgba(0,0,0,.85); }
+    .tab-btn{ transition:all .15s; border:1px solid transparent; }
+    .tab-btn:hover{ background:rgba(56,189,248,.08); }
+    .tab-active{ background:linear-gradient(90deg, rgba(56,189,248,.22), rgba(168,85,247,.18));
+      border-color:rgba(56,189,248,.35); color:#7dd3fc; font-weight:600; }
+    .grad-text{ background:linear-gradient(90deg,#38bdf8,#a855f7); -webkit-background-clip:text; background-clip:text; color:transparent; }
+    .btn{ background:linear-gradient(90deg,#0ea5e9,#6366f1); transition:filter .15s, transform .05s; color:#fff; }
+    .btn:hover{ filter:brightness(1.13); } .btn:active{ transform:translateY(1px); }
+    .btn-emerald{ background:linear-gradient(90deg,#059669,#10b981); }
+    .btn-indigo{ background:linear-gradient(90deg,#6366f1,#a855f7); }
+    .btn-ghost{ background:rgba(255,255,255,.06); border:1px solid var(--line); }
+    .badge{ padding:2px 10px; border-radius:9999px; font-weight:700; font-size:11px; }
+    .inp{ background:rgba(8,12,24,.7); border:1px solid var(--line); border-radius:8px; padding:6px 10px; }
+    .inp:focus{ outline:none; border-color:#38bdf8; box-shadow:0 0 0 3px rgba(56,189,248,.15); }
+    pre{ white-space:pre-wrap; word-break:break-word; }
+    ::-webkit-scrollbar{width:10px;height:10px} ::-webkit-scrollbar-thumb{background:#27314d;border-radius:6px}
+    table tbody tr:hover{ background:rgba(56,189,248,.06); }
+  </style>
+</head>
+<body class="min-h-screen">
+<div class="flex h-screen">
+  <!-- Sidebar -->
+  <aside class="w-60 flex flex-col border-r border-[var(--line)]" style="background:linear-gradient(180deg,#0b1120,#0a0f1e);">
+    <div class="p-5 flex items-center gap-2">
+      <div class="text-2xl">&#128737;&#65039;</div>
+      <div><div class="text-lg font-bold grad-text leading-none">Data Validator</div>
+        <div class="text-[10px] uppercase tracking-widest text-gray-500 mt-0.5">AI reconciliation</div></div>
+    </div>
+    <nav class="flex flex-col gap-1 px-3 text-sm">
+      <button data-tab="compare" class="tab-btn text-left px-3 py-2 rounded-lg tab-active">&#128202; Compare</button>
+      <button data-tab="quality" class="tab-btn text-left px-3 py-2 rounded-lg">&#9989; Quality</button>
+      <button data-tab="mapping" class="tab-btn text-left px-3 py-2 rounded-lg">&#128279; Mapping</button>
+      <button data-tab="governance" class="tab-btn text-left px-3 py-2 rounded-lg">&#128274; Governance</button>
+      <button data-tab="lineage" class="tab-btn text-left px-3 py-2 rounded-lg">&#129516; Lineage</button>
+      <button data-tab="parse" class="tab-btn text-left px-3 py-2 rounded-lg">&#128196; Parse</button>
+      <button data-tab="workspace" class="tab-btn text-left px-3 py-2 rounded-lg">&#128451;&#65039; Workspace</button>
+      <button data-tab="settings" class="tab-btn text-left px-3 py-2 rounded-lg">&#9881;&#65039; Settings</button>
+    </nav>
+    <div class="mt-auto p-3 m-3 card rounded-lg text-xs text-gray-400" id="licbar">license&hellip;</div>
+  </aside>
+
+  <!-- Main -->
+  <main class="flex-1 overflow-auto p-6">
+    <!-- COMPARE -->
+    <section id="tab-compare" class="tab-panel">
+      <h2 class="text-2xl font-bold mb-1 grad-text">File Comparison</h2>
+      <p class="text-sm text-gray-500 mb-4">Upload two files; keys are inferred automatically.</p>
+      <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-4 max-w-3xl">
+        <div><label class="text-sm text-gray-400">File 1</label><input id="cmp-f1" type="file" class="block w-full text-sm mt-1"></div>
+        <div><label class="text-sm text-gray-400">File 2</label><input id="cmp-f2" type="file" class="block w-full text-sm mt-1"></div>
+        <div><label class="text-sm text-gray-400">Key columns (optional)</label><input id="cmp-keys" class="inp w-full mt-1 text-sm"></div>
+        <div><label class="text-sm text-gray-400">Exclude columns (optional)</label><input id="cmp-excl" class="inp w-full mt-1 text-sm"></div>
+      </div>
+      <button onclick="runCompare()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Compare</button>
+      <div id="cmp-out" class="mt-6"></div>
+    </section>
+
+    <!-- QUALITY -->
+    <section id="tab-quality" class="tab-panel hidden">
+      <h2 class="text-2xl font-bold mb-1 grad-text">Data Quality</h2>
+      <p class="text-sm text-gray-500 mb-4">7-dimension scoring with rule checks.</p>
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl"><label class="text-sm text-gray-400">File</label><input id="q-f1" type="file" class="block w-full text-sm mt-1"></div>
+      <button onclick="runQuality()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Analyze</button>
+      <div id="q-out" class="mt-6"></div>
+    </section>
+
+    <!-- MAPPING -->
+    <section id="tab-mapping" class="tab-panel hidden">
+      <h2 class="text-2xl font-bold mb-1 grad-text">Column Mapping</h2>
+      <p class="text-sm text-gray-500 mb-4">Exact &rarr; fuzzy &rarr; content &rarr; LLM matching.</p>
+      <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-4 max-w-3xl">
+        <div><label class="text-sm text-gray-400">Source file</label><input id="map-f1" type="file" class="block w-full text-sm mt-1"></div>
+        <div><label class="text-sm text-gray-400">Target file</label><input id="map-f2" type="file" class="block w-full text-sm mt-1"></div>
+      </div>
+      <button onclick="runMapping()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Map Columns</button>
+      <div id="map-out" class="mt-6"></div>
+    </section>
+
+    <!-- GOVERNANCE -->
+    <section id="tab-governance" class="tab-panel hidden">
+      <h2 class="text-2xl font-bold mb-1 grad-text">Governance &amp; PII</h2>
+      <p class="text-sm text-gray-500 mb-4">PII detection, sensitivity classification, risk.</p>
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl"><label class="text-sm text-gray-400">File</label><input id="gov-f1" type="file" class="block w-full text-sm mt-1"></div>
+      <button onclick="runGovernance()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Scan</button>
+      <div id="gov-out" class="mt-6"></div>
+    </section>
+
+    <!-- LINEAGE -->
+    <section id="tab-lineage" class="tab-panel hidden">
+      <h2 class="text-2xl font-bold mb-1 grad-text">Lineage Reconciliation</h2>
+      <p class="text-sm text-gray-500 mb-4">Apply transforms / aggregation, then reconcile.</p>
+      <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-4 max-w-3xl">
+        <div><label class="text-sm text-gray-400">File 1 (transformed)</label><input id="lin-f1" type="file" class="block w-full text-sm mt-1"></div>
+        <div><label class="text-sm text-gray-400">File 2 (target)</label><input id="lin-f2" type="file" class="block w-full text-sm mt-1"></div>
+        <div class="col-span-2"><label class="text-sm text-gray-400">Transforms JSON (optional)</label>
+          <textarea id="lin-tr" rows="2" placeholder='[{"op":"multiply","col":"price","params":{"value":2}}]' class="inp w-full mt-1 text-sm font-mono"></textarea></div>
+        <div><label class="text-sm text-gray-400">Key columns (optional)</label><input id="lin-keys" class="inp w-full mt-1 text-sm"></div>
+      </div>
+      <button onclick="runLineage()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Reconcile</button>
+      <div id="lin-out" class="mt-6"></div>
+    </section>
+
+    <!-- PARSE -->
+    <section id="tab-parse" class="tab-panel hidden">
+      <h2 class="text-2xl font-bold mb-1 grad-text">Unstructured Parser</h2>
+      <p class="text-sm text-gray-500 mb-4">Extract a clean table from any file.</p>
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl"><label class="text-sm text-gray-400">File</label><input id="par-f1" type="file" class="block w-full text-sm mt-1"></div>
+      <button onclick="runParse()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Parse</button>
+      <div id="par-out" class="mt-6"></div>
+    </section>
+
+    <!-- WORKSPACE -->
+    <section id="tab-workspace" class="tab-panel hidden">
+      <h2 class="text-2xl font-bold mb-4 grad-text">Workspace</h2>
+      <div class="flex gap-2 mb-4 text-sm">
+        <button onclick="wsTab('conn')" class="ws-tab tab-btn tab-active px-3 py-1 rounded-lg">Connections</button>
+        <button onclick="wsTab('rules')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Rulesets</button>
+        <button onclick="wsTab('jobs')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Jobs</button>
+        <button onclick="wsTab('saved')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Saved Runs</button>
+        <button onclick="wsTab('audit')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Audit</button>
+      </div>
+      <div id="ws-conn" class="ws-panel">
+        <div class="card rounded-xl p-4 mb-4 max-w-3xl grid grid-cols-2 gap-3 text-sm">
+          <input id="cn-name" placeholder="Name" class="inp">
+          <select id="cn-type" class="inp">
+            <option value="api">REST API</option><option value="s3">S3</option><option value="sftp">SFTP</option>
+            <option value="ftp">FTP</option><option value="mssql">MSSQL</option><option value="postgres">Postgres</option>
+            <option value="mysql">MySQL</option><option value="oracle">Oracle</option><option value="snowflake">Snowflake</option>
+          </select>
+          <textarea id="cn-config" rows="3" placeholder='{"url":"https://...","data_path":"items"}' class="inp col-span-2 font-mono"></textarea>
+          <button onclick="saveConnection()" class="btn rounded-lg px-3 py-1 w-32 font-medium">Save</button>
+        </div>
+        <div id="cn-list"></div>
+      </div>
+      <div id="ws-rules" class="ws-panel hidden">
+        <div class="card rounded-xl p-4 mb-4 max-w-3xl grid grid-cols-2 gap-3 text-sm">
+          <input id="rs-name" placeholder="Ruleset name" class="inp">
+          <input id="rs-desc" placeholder="Description" class="inp">
+          <textarea id="rs-rules" rows="3" placeholder='[{"type":"not_null","column":"id"}]' class="inp col-span-2 font-mono"></textarea>
+          <button onclick="saveRuleset()" class="btn rounded-lg px-3 py-1 w-32 font-medium">Save</button>
+        </div>
+        <div id="rs-list"></div>
+      </div>
+      <div id="ws-jobs" class="ws-panel hidden">
+        <div class="card rounded-xl p-4 mb-4 max-w-3xl grid grid-cols-2 gap-3 text-sm">
+          <input id="jb-name" placeholder="Job name" class="inp">
+          <select id="jb-action" class="inp"><option value="compare">compare</option><option value="quality">quality</option></select>
+          <input id="jb-conna" placeholder="conn_a / source id" class="inp">
+          <input id="jb-connb" placeholder="conn_b id (compare)" class="inp">
+          <input id="jb-cron" placeholder="cron e.g. 0 6 * * *" class="inp">
+          <input id="jb-email" placeholder="notify email" class="inp">
+          <button onclick="saveJob()" class="btn rounded-lg px-3 py-1 w-32 font-medium">Save</button>
+        </div>
+        <div id="jb-list"></div>
+      </div>
+      <div id="ws-saved" class="ws-panel hidden"><div id="sv-list"></div></div>
+      <div id="ws-audit" class="ws-panel hidden">
+        <div class="text-sm text-gray-400 mb-2">Live activity feed (SSE)</div>
+        <div id="au-log" class="card rounded-xl p-3 text-xs font-mono space-y-1 h-96 overflow-auto"></div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section id="tab-settings" class="tab-panel hidden">
+      <h2 class="text-2xl font-bold mb-4 grad-text">Settings &amp; License</h2>
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl">
+        <h3 class="font-semibold mb-2 text-sky-300">License</h3>
+        <div id="lic-state" class="text-sm text-gray-300 mb-3"></div>
+        <div class="flex gap-2">
+          <input id="lic-token" placeholder="Paste license JWT to activate" class="inp flex-1 text-sm font-mono">
+          <button onclick="activateLicense()" class="btn-emerald btn rounded-lg px-3 py-1 text-sm">Activate</button>
+          <button onclick="loadSettings()" class="btn-ghost rounded-lg px-3 py-1 text-sm">Refresh</button>
+        </div>
+      </div>
+      <pre id="set-out" class="card rounded-xl p-4 text-xs text-gray-300 max-w-3xl"></pre>
+    </section>
+  </main>
+
+  <!-- AI chat -->
+  <aside class="w-80 flex flex-col border-l border-[var(--line)]" style="background:linear-gradient(180deg,#0b1120,#0a0f1e);">
+    <div class="p-3 border-b border-[var(--line)] text-sm font-semibold text-sky-300">&#129302; AI Copilot</div>
+    <div id="chat-log" class="flex-1 overflow-auto p-3 space-y-2 text-sm"></div>
+    <div class="p-3 border-t border-[var(--line)] flex gap-2">
+      <input id="chat-in" placeholder="Ask about results&hellip;" class="inp flex-1 text-sm" onkeydown="if(event.key==='Enter')sendChat()">
+      <button onclick="sendChat()" class="btn rounded-lg px-3 text-sm">Send</button>
+    </div>
+  </aside>
+</div>
+
+<script>
+let SESSION = null;
+const _charts = {};
+function chart(id, cfg){ if(_charts[id])_charts[id].destroy(); const el=document.getElementById(id); if(el)_charts[id]=new Chart(el,cfg); }
+const esc = s => (''+s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+document.querySelectorAll('.tab-btn[data-tab]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tab-btn[data-tab]').forEach(x => x.classList.remove('tab-active'));
+  b.classList.add('tab-active');
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+  document.getElementById('tab-' + b.dataset.tab).classList.remove('hidden');
+  if (b.dataset.tab === 'settings') loadSettings();
+  if (b.dataset.tab === 'workspace') { wsTab('conn'); startAudit(); }
+});
+
+function stat(label, val, color){
+  color = color || '#38bdf8';
+  return `<div class="card rounded-xl p-4 stat-card" style="border-top:3px solid ${color}">
+    <div class="text-xs text-gray-400">${label}</div>
+    <div class="text-3xl font-extrabold" style="color:${color}">${val}</div></div>`;
+}
+
+async function postForm(action, fileInputs, extra){
+  const fd = new FormData(); fd.append('action', action);
+  for (const [field,id] of fileInputs){ const f=document.getElementById(id).files[0]; if(f) fd.append(field,f); }
+  for (const [k,v] of Object.entries(extra||{})) fd.append(k,v);
+  const r = await fetch('/analyze',{method:'POST',body:fd});
+  return { ok:r.ok, data: await r.json() };
+}
+const J = (m,u,b)=>fetch(u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}).then(r=>r.json());
+
+// ---------- Compare ----------
+async function runCompare(){
+  const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Comparing&hellip;</span>';
+  const {ok,data}=await postForm('compare',[['file1','cmp-f1'],['file2','cmp-f2']],
+    {key_cols:cmp_keys.value, exclude_cols:cmp_excl.value});
+  if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
+  SESSION=data.session_id; const c=data.counts||{};
+  out.innerHTML=`<div class="grid grid-cols-4 gap-3 mb-4">
+    ${stat('Matched', c.matched??'&mdash;', '#10b981')}
+    ${stat('Only in File 1', c.file1_only??0, '#f59e0b')}
+    ${stat('Only in File 2', c.file2_only??0, '#f59e0b')}
+    ${stat('Modified', c.modified??0, '#38bdf8')}</div>
+    <div class="grid grid-cols-2 gap-4 mb-4">
+      <div class="card rounded-xl p-4"><div class="text-xs text-gray-400 mb-2">Reconciliation breakdown</div><canvas id="cmpChart" height="160"></canvas></div>
+      <div class="card rounded-xl p-4 text-sm">
+        <div class="mb-2">Keys: <span class="badge" style="background:rgba(56,189,248,.18);color:#7dd3fc">${(data.keys||[]).join(', ')||data.method||'n/a'}</span></div>
+        <div class="text-gray-400 mb-1">Fingerprint: <span class="text-gray-200">${data.fingerprint||''}</span></div>
+        <div class="text-gray-400 mb-1">Type mismatches: <span class="text-amber-300">${(data.type_mismatches||[]).length}</span></div>
+        <div class="text-gray-400 mb-1">Null-column exceptions: <span class="text-amber-300">${(data.null_column_exceptions||[]).length}</span></div>
+        <div class="text-gray-400">Duplicates &mdash; F1: ${data.duplicates?.file1?.duplicate_rows??0} &middot; F2: ${data.duplicates?.file2?.duplicate_rows??0}</div>
+      </div></div>`;
+  if(data.modified?.length){
+    out.innerHTML += `<h3 class="font-semibold mt-2 mb-2">Modified rows (sample)</h3><div class="space-y-2">`+
+      data.modified.slice(0,20).map(m=>`<div class="card rounded-lg p-2 text-xs"><b class="text-sky-300">${esc(m.key)}</b>: `+
+        Object.entries(m.changes).map(([k,v])=>`${esc(k)}: <span class="text-amber-300">${esc(v.file1)}</span>&rarr;<span class="text-emerald-300">${esc(v.file2)}</span>`).join(' &middot; ')+`</div>`).join('')+`</div>`;
+  }
+  out.innerHTML += `<div class="mt-4 flex gap-2">
+    <a href="/download/${data.session_id}" class="btn-emerald btn rounded-lg px-4 py-2 text-sm">&#11015; Download Excel</a>
+    <button onclick="saveToWorkspace()" class="btn-indigo btn rounded-lg px-4 py-2 text-sm">&#128190; Save to Workspace</button></div>`;
+  chart('cmpChart',{type:'bar',data:{labels:['Matched','File1 only','File2 only','Modified'],
+    datasets:[{data:[c.matched||0,c.file1_only||0,c.file2_only||0,c.modified||0],
+      backgroundColor:['#10b981','#f59e0b','#f59e0b','#38bdf8'],borderRadius:6}]},
+    options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#94a3b8'}},y:{ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}}}}});
+}
+
+// ---------- Quality ----------
+async function runQuality(){
+  const out=document.getElementById('q-out'); out.innerHTML='<span class="text-gray-400">Analyzing&hellip;</span>';
+  const {ok,data}=await postForm('quality',[['file1','q-f1']]);
+  if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
+  SESSION=data.session_id; const dim=data.dimensions||{};
+  const gradeColor={A:'#10b981',B:'#84cc16',C:'#f59e0b',D:'#f97316',F:'#ef4444'}[data.grade]||'#38bdf8';
+  out.innerHTML=`<div class="grid grid-cols-3 gap-4 mb-4">
+    <div class="card rounded-xl p-4 flex flex-col items-center justify-center"><canvas id="qGauge" height="150"></canvas>
+      <div class="text-center -mt-2"><span class="text-3xl font-extrabold" style="color:${gradeColor}">${data.grade}</span>
+      <span class="text-gray-400 text-sm"> &middot; ${data.score}/100</span></div></div>
+    <div class="card rounded-xl p-4 col-span-2"><div class="text-xs text-gray-400 mb-2">Quality dimensions</div><canvas id="qDims" height="150"></canvas></div>
+  </div>
+  <div class="grid grid-cols-3 gap-3 mb-4 text-sm">
+    ${stat('Rows', data.rows, '#a855f7')}${stat('Columns', data.columns, '#38bdf8')}${stat('Duplicate rows', data.duplicate_rows, '#f59e0b')}</div>
+  <div class="card rounded-xl p-3 overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400">
+    <tr><th class="text-left p-2">Column</th><th>Complete%</th><th>Unique%</th><th>Nulls</th><th>Distinct</th><th>Detected</th></tr></thead><tbody>
+    ${(data.columns_detail||[]).map(c=>`<tr class="border-t border-[var(--line)]"><td class="p-2">${esc(c.column)}</td>
+      <td class="text-center">${bar(c.completeness_pct)}</td><td class="text-center">${bar(c.uniqueness_pct)}</td>
+      <td class="text-center">${c.null_count}</td><td class="text-center">${c.distinct}</td>
+      <td class="text-center text-sky-300">${c.detected_format||c.numeric?'num':''}</td></tr>`).join('')}</tbody></table></div>
+  <div class="mt-4 flex gap-2"><a href="/download/${data.session_id}" class="btn-emerald btn rounded-lg px-4 py-2 text-sm">&#11015; Download Excel</a>
+    <button onclick="saveToWorkspace()" class="btn-indigo btn rounded-lg px-4 py-2 text-sm">&#128190; Save to Workspace</button></div>`;
+  chart('qGauge',{type:'doughnut',data:{datasets:[{data:[data.score,100-data.score],
+    backgroundColor:[gradeColor,'#1e2740'],borderWidth:0,circumference:180,rotation:270}]},
+    options:{cutout:'72%',plugins:{legend:{display:false},tooltip:{enabled:false}}}});
+  const dk=Object.keys(dim);
+  chart('qDims',{type:'bar',data:{labels:dk,datasets:[{data:dk.map(k=>dim[k]),
+    backgroundColor:'#38bdf8',borderRadius:6}]},options:{indexAxis:'y',plugins:{legend:{display:false}},
+    scales:{x:{max:100,ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}},y:{ticks:{color:'#cbd5e1'}}}}});
+}
+function bar(pct){ const c=pct>=90?'#10b981':pct>=60?'#f59e0b':'#ef4444';
+  return `<div style="background:#1e2740;border-radius:4px;height:14px;width:64px;display:inline-block;position:relative;vertical-align:middle">
+    <div style="background:${c};height:100%;width:${Math.max(0,Math.min(100,pct))}%;border-radius:4px"></div></div>
+    <span class="ml-1 text-gray-400">${pct}</span>`;
+}
+
+// ---------- Mapping ----------
+async function runMapping(){
+  const out=document.getElementById('map-out'); out.innerHTML='<span class="text-gray-400">Mapping&hellip;</span>';
+  const {ok,data}=await postForm('mapping',[['file1','map-f1'],['file2','map-f2']]);
+  if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
+  SESSION=data.session_id;
+  const mcol={exact_name:'#10b981',fuzzy_name:'#38bdf8',content_jaccard:'#a855f7',llm_semantic:'#f59e0b'};
+  let html=`<div class="card rounded-xl overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400">
+    <tr><th class="text-left p-2">Source</th><th class="text-left">Target</th><th>Method</th><th>Confidence</th><th>Exceptions</th></tr></thead><tbody>`;
+  (data.field_specs||[]).forEach((s,i)=>{ const m=data.matched[i]||{};
+    html+=`<tr class="border-t border-[var(--line)]"><td class="p-2">${esc(s.source_column)}</td><td>${esc(s.target_column)}</td>
+      <td class="text-center"><span class="badge" style="background:${(mcol[m.method]||'#64748b')}22;color:${mcol[m.method]||'#94a3b8'}">${m.method||''}</span></td>
+      <td class="text-center">${bar(Math.round((m.confidence||0)*100))}</td>
+      <td class="text-center text-amber-300">${(s.exceptions||[]).map(e=>e.type+(e.count?` (${e.count})`:'')).join(', ')||'&mdash;'}</td></tr>`;});
+  html+='</tbody></table></div>';
+  if(data.unmatched_file1?.length||data.unmatched_file2?.length)
+    html+=`<div class="text-sm text-amber-400 mt-3">Unmatched &mdash; source: ${data.unmatched_file1.join(', ')||'none'} &middot; target: ${data.unmatched_file2.join(', ')||'none'}</div>`;
+  out.innerHTML=html;
+}
+
+// ---------- Governance ----------
+async function runGovernance(){
+  const out=document.getElementById('gov-out'); out.innerHTML='<span class="text-gray-400">Scanning&hellip;</span>';
+  const {ok,data}=await postForm('governance',[['file1','gov-f1']]);
+  if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
+  SESSION=data.session_id;
+  const rc={low:'#10b981',medium:'#f59e0b',high:'#f97316',critical:'#ef4444'}[data.overall_risk];
+  const sc={public:'#10b981',internal:'#38bdf8',confidential:'#f59e0b',restricted:'#ef4444'};
+  const counts={}; data.columns.forEach(c=>counts[c.sensitivity]=(counts[c.sensitivity]||0)+1);
+  let html=`<div class="grid grid-cols-3 gap-4 mb-4">
+    <div class="card rounded-xl p-4 flex flex-col items-center justify-center">
+      <div class="text-xs text-gray-400">Overall risk</div><div class="text-3xl font-extrabold" style="color:${rc}">${data.overall_risk.toUpperCase()}</div></div>
+    <div class="card rounded-xl p-4 col-span-2"><div class="text-xs text-gray-400 mb-2">Columns by sensitivity</div><canvas id="govChart" height="120"></canvas></div></div>`;
+  html+=`<div class="card rounded-xl overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400">
+    <tr><th class="text-left p-2">Column</th><th>PII</th><th>Types</th><th>Sensitivity</th></tr></thead><tbody>`;
+  data.columns.forEach(c=>{ html+=`<tr class="border-t border-[var(--line)]"><td class="p-2">${esc(c.name)}</td>
+    <td class="text-center">${c.pii_detected?'&#9888;&#65039;':'&mdash;'}</td><td class="text-center">${c.pii_types.join(', ')||'&mdash;'}</td>
+    <td class="text-center"><span class="badge" style="background:${sc[c.sensitivity]}22;color:${sc[c.sensitivity]}">${c.sensitivity}</span></td></tr>`;});
+  html+='</tbody></table></div>';
+  if(data.recommendations?.length) html+=`<ul class="mt-3 text-sm text-gray-300 list-disc list-inside">${data.recommendations.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`;
+  out.innerHTML=html;
+  const labels=Object.keys(counts);
+  chart('govChart',{type:'bar',data:{labels,datasets:[{data:labels.map(k=>counts[k]),
+    backgroundColor:labels.map(k=>sc[k]),borderRadius:6}]},options:{plugins:{legend:{display:false}},
+    scales:{x:{ticks:{color:'#94a3b8'}},y:{ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}}}}});
+}
+
+// ---------- Lineage ----------
+async function runLineage(){
+  const out=document.getElementById('lin-out'); out.innerHTML='<span class="text-gray-400">Reconciling&hellip;</span>';
+  let hints; try{ const tr=lin_tr.value.trim(); hints=JSON.stringify({transforms:tr?JSON.parse(tr):[]}); }
+  catch(e){ out.innerHTML='<span class="text-red-400">Transforms must be valid JSON</span>'; return; }
+  const {ok,data}=await postForm('lineage',[['file1','lin-f1'],['file2','lin-f2']],{hints,key_cols:lin_keys.value});
+  if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
+  SESSION=data.session_id; const c=data.counts||{};
+  out.innerHTML=`<div class="grid grid-cols-4 gap-3 mb-4">
+    ${stat('Matched',c.matched??'&mdash;','#10b981')}${stat('Only File 1',c.file1_only??0,'#f59e0b')}
+    ${stat('Only File 2',c.file2_only??0,'#f59e0b')}${stat('Modified',c.modified??0,'#38bdf8')}</div>
+    <div class="card rounded-xl p-4 mb-3"><canvas id="linChart" height="120"></canvas></div>
+    <div class="text-sm text-gray-400">Transforms applied: ${(data.transforms_applied||[]).length} &middot; keys: ${(data.keys||[]).join(', ')||data.method||'n/a'}</div>
+    <a href="/download/${data.session_id}" class="inline-block mt-3 btn-emerald btn rounded-lg px-4 py-2 text-sm">&#11015; Download Excel</a>`;
+  chart('linChart',{type:'bar',data:{labels:['Matched','File1 only','File2 only','Modified'],
+    datasets:[{data:[c.matched||0,c.file1_only||0,c.file2_only||0,c.modified||0],
+      backgroundColor:['#10b981','#f59e0b','#f59e0b','#38bdf8'],borderRadius:6}]},
+    options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#94a3b8'}},y:{ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}}}}});
+}
+
+// ---------- Parse ----------
+async function runParse(){
+  const out=document.getElementById('par-out'); out.innerHTML='<span class="text-gray-400">Parsing&hellip;</span>';
+  const {ok,data}=await postForm('parse',[['file1','par-f1']]);
+  if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
+  if(data.error){ out.innerHTML=`<div class="text-red-400">${esc(data.error)}</div>`; return; }
+  let html=`<div class="text-sm text-gray-400 mb-2">${(data.columns||[]).length} columns &middot; ${(data.rows||[]).length} rows</div>`;
+  html+=`<div class="card rounded-xl overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400"><tr>${
+    (data.columns||[]).map(c=>`<th class="p-2 text-left">${esc(c)}</th>`).join('')}</tr></thead><tbody>`;
+  (data.rows||[]).slice(0,100).forEach(row=>{ html+=`<tr class="border-t border-[var(--line)]">${row.map(v=>`<td class="p-1">${esc(v)}</td>`).join('')}</tr>`; });
+  out.innerHTML=html+'</tbody></table></div>';
+}
+
+// ---------- Chat ----------
+async function sendChat(){
+  const inp=document.getElementById('chat-in'); const msg=inp.value.trim(); if(!msg) return;
+  const log=document.getElementById('chat-log');
+  log.innerHTML+=`<div class="text-right"><span class="inline-block px-3 py-1.5 rounded-2xl text-white" style="background:linear-gradient(90deg,#0ea5e9,#6366f1)">${esc(msg)}</span></div>`;
+  inp.value='';
+  const d=await J('POST','/chat',{session_id:SESSION,message:msg});
+  log.innerHTML+=`<div><span class="inline-block px-3 py-1.5 rounded-2xl card">${esc(d.response||'')}</span></div>`;
+  log.scrollTop=log.scrollHeight;
+}
+
+// ---------- Workspace ----------
+function wsTab(name){
+  document.querySelectorAll('.ws-tab').forEach(b=>b.classList.toggle('tab-active', b.getAttribute('onclick').includes(`'${name}'`)));
+  document.querySelectorAll('.ws-panel').forEach(p=>p.classList.add('hidden'));
+  document.getElementById('ws-'+name).classList.remove('hidden');
+  if(name==='conn')loadConnections(); if(name==='rules')loadRulesets();
+  if(name==='jobs')loadJobs(); if(name==='saved')loadSavedRuns();
+}
+const row=(inner)=>`<div class="card rounded-lg p-2 mb-2 flex items-center justify-between text-sm">${inner}</div>`;
+async function loadConnections(){ const rows=await fetch('/api/ws/connections').then(r=>r.json());
+  cn_list.innerHTML=rows.length?rows.map(c=>row(`<span><b>${esc(c.name)}</b> <span class="text-gray-500">[${c.source_type}] #${c.id}</span></span>
+    <span class="flex gap-2"><button onclick="testConn(${c.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Test</button>
+    <button onclick="previewConn(${c.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Preview</button>
+    <button onclick="delConn(${c.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join(''):'<div class="text-gray-500 text-sm">No connections.</div>'; }
+async function saveConnection(){ let cfg; try{cfg=JSON.parse(cn_config.value||'{}');}catch(e){alert('Config must be valid JSON');return;}
+  await J('POST','/api/ws/connections',{name:cn_name.value,source_type:cn_type.value,config:cfg}); cn_name.value='';cn_config.value=''; loadConnections(); }
+async function testConn(id){ const r=await J('POST',`/api/ws/connections/${id}/test`); alert(r.ok?'✅ Connection OK':'❌ '+(r.error||'failed')); }
+async function previewConn(id){ const r=await fetch(`/api/ws/connections/${id}/preview`).then(x=>x.json()); if(r.detail){alert(r.detail);return;} alert('Columns: '+r.columns.join(', ')+'\n'+r.rows.length+' rows'); }
+async function delConn(id){ if(confirm('Delete connection?')){await fetch(`/api/ws/connections/${id}`,{method:'DELETE'});loadConnections();} }
+async function loadRulesets(){ const rows=await fetch('/api/ws/rulesets').then(r=>r.json());
+  rs_list.innerHTML=rows.length?rows.map(r=>row(`<span><b>${esc(r.name)}</b> <span class="text-gray-500">#${r.id} ${esc(r.description||'')}</span></span>
+    <button onclick="delRuleset(${r.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button>`)).join(''):'<div class="text-gray-500 text-sm">No rulesets.</div>'; }
+async function saveRuleset(){ let rules; try{rules=JSON.parse(rs_rules.value||'[]');}catch(e){alert('Rules must be valid JSON');return;}
+  await J('POST','/api/ws/rulesets',{name:rs_name.value,description:rs_desc.value,rules}); rs_name.value='';rs_rules.value=''; loadRulesets(); }
+async function delRuleset(id){ if(confirm('Delete ruleset?')){await fetch(`/api/ws/rulesets/${id}`,{method:'DELETE'});loadRulesets();} }
+async function loadJobs(){ const rows=await fetch('/api/ws/jobs').then(r=>r.json());
+  jb_list.innerHTML=rows.length?rows.map(j=>row(`<span><b>${esc(j.name)}</b> <span class="text-gray-500">[${j.action}] #${j.id} ${j.schedule_cron||'manual'} &middot; ${j.status||''}</span></span>
+    <span class="flex gap-2"><button onclick="runJob(${j.id})" class="btn rounded px-2 py-0.5 text-xs">Run</button>
+    <button onclick="jobRuns(${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">History</button>
+    <button onclick="delJob(${j.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join(''):'<div class="text-gray-500 text-sm">No jobs.</div>'; }
+async function saveJob(){ const action=jb_action.value; const body={name:jb_name.value,action,schedule_cron:jb_cron.value||null,notify_email:jb_email.value||null};
+  if(action==='compare'){body.conn_a_id=+jb_conna.value||null;body.conn_b_id=+jb_connb.value||null;}else{body.source_conn_id=+jb_conna.value||null;}
+  await J('POST','/api/ws/jobs',body); ['jb-name','jb-conna','jb-connb','jb-cron','jb-email'].forEach(i=>document.getElementById(i).value=''); loadJobs(); }
+async function runJob(id){ const r=await J('POST',`/api/ws/jobs/${id}/run`); alert('Run started: '+JSON.stringify(r)); loadJobs(); }
+async function jobRuns(id){ const r=await fetch(`/api/ws/jobs/${id}/runs`).then(x=>x.json()); alert(r.map(x=>`${x.started_at} &middot; ${x.status} ${x.error_msg||''}`).join('\n')||'No runs yet'); }
+async function delJob(id){ if(confirm('Delete job?')){await fetch(`/api/ws/jobs/${id}`,{method:'DELETE'});loadJobs();} }
+async function loadSavedRuns(){ const rows=await fetch('/api/ws/saved-runs').then(r=>r.json());
+  sv_list.innerHTML=rows.length?rows.map(s=>row(`<span><b>${esc(s.name)}</b> <span class="text-gray-500">[${s.action}] ${s.saved_at||''}</span></span>
+    <span class="flex gap-2"><a href="/download/${s.session_id}" class="btn-emerald btn rounded px-2 py-0.5 text-xs">Excel</a>
+    <button onclick="delSaved(${s.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join(''):'<div class="text-gray-500 text-sm">No saved runs.</div>'; }
+async function delSaved(id){ if(confirm('Delete saved run?')){await fetch(`/api/ws/saved-runs/${id}`,{method:'DELETE'});loadSavedRuns();} }
+let _auditES=null;
+function startAudit(){ if(_auditES)return; _auditES=new EventSource('/api/audit/stream');
+  _auditES.onmessage=e=>{ try{const d=JSON.parse(e.data); au_log.innerHTML=`<div><span class="text-gray-500">${(d.ts||'').slice(11,19)}</span> <span class="text-sky-300">${esc(d.action)}</span> ${esc(d.username||'')} &mdash; ${esc(d.detail||'')}</div>`+au_log.innerHTML;}catch(_){} }; }
+async function saveToWorkspace(){ if(!SESSION){alert('Run an analysis first.');return;} const name=prompt('Name this saved run:'); if(!name)return;
+  await J('POST','/api/ws/saved-runs',{session_id:SESSION,name}); alert('Saved to workspace.'); }
+
+// ---------- Settings ----------
+async function loadSettings(){ const d=await fetch('/api/license/status').then(r=>r.json());
+  document.getElementById('lic-state').innerHTML=`Tier: <b>${d.dev_mode?'DEV (all unlocked)':d.tier}</b> &middot; Status: <b class="${d.valid?'text-emerald-400':'text-red-400'}">${d.valid?'valid':'inactive'}</b>`+
+    (d.expires_at?` &middot; expires ${d.expires_at.slice(0,10)}`:'')+`<br><span class="text-gray-500">${esc(d.message||'')}</span>`;
+  document.getElementById('set-out').textContent=JSON.stringify(d,null,2); }
+async function activateLicense(){ const token=document.getElementById('lic-token').value.trim(); if(!token)return;
+  const r=await J('POST','/api/license/activate',{token}); alert(r.ok?'✅ License activated':'❌ Activation failed'); loadSettings(); }
+
+(async()=>{ try{ const d=await fetch('/api/license/status').then(r=>r.json());
+  document.getElementById('licbar').innerHTML=`<span class="grad-text font-semibold">${d.dev_mode?'DEV mode':d.tier}</span> &middot; <span class="${d.valid?'text-emerald-400':'text-red-400'}">${d.valid?'valid':'inactive'}</span>`;
+}catch(e){} })();
+</script>
+</body>
+</html>

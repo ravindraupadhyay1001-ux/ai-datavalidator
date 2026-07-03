@@ -1,0 +1,5 @@
+SecurityID	Dep	ticker	Lol
+12334	abc ltd	tol1	
+12335	abd ltd	tol2	dfd
+12336	abc ltd	tol2	
+12335	abd ltd	tol4	

@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# Env / secrets
+.env
+users.json
+license_private.pem
+license_public.pem
+
+# Local data
+workspace.db
+workspace.db-shm
+workspace.db-wal
+*.db
+
+# Build output
+dist/
+build/
+*.spec
+
+# IDE
+.idea/

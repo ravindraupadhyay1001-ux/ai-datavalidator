@@ -1,0 +1,216 @@
+"""
+Job scheduler — APScheduler BackgroundScheduler (UTC).
+
+Runs saved jobs on a cron schedule:
+  1. Load job from DB
+  2. Fetch data via connectors (compare: conn_a + conn_b; quality/profile: source_conn)
+  3. Run the analysis (compare_dataframes / analyze_quality from main.py)
+  4. Email a rich report (Outlook on Windows, sendmail/SMTP on Linux)
+  5. Store a summary in run history
+
+Falls back to a plain pandas merge if importing main.py fails.
+"""
+
+import importlib
+import os
+import platform
+
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+from workspace import db
+from workspace.connectors import BaseConnector
+
+_scheduler = None
+
+
+# --------------------------------------------------------------------------
+# Lifecycle
+# --------------------------------------------------------------------------
+def start_scheduler():
+    global _scheduler
+    if _scheduler and _scheduler.running:
+        return _scheduler
+    _scheduler = BackgroundScheduler(timezone="UTC")
+    _scheduler.start()
+    return _scheduler
+
+
+def stop_scheduler():
+    global _scheduler
+    if _scheduler and _scheduler.running:
+        _scheduler.shutdown(wait=False)
+    _scheduler = None
+
+
+def load_all_jobs():
+    """Re-register every cron job in the DB on startup."""
+    if _scheduler is None:
+        start_scheduler()
+    # all users' jobs — db.list_jobs filters by user, so read raw
+    conn = db._conn()
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id, username, schedule_cron FROM ws_jobs "
+                    "WHERE schedule_cron IS NOT NULL AND schedule_cron <> ''")
+        rows = db._rows(cur)
+    except Exception:
+        rows = []
+    for row in rows:
+        try:
+            schedule_job(row["id"], row["username"], row["schedule_cron"])
+        except Exception as e:
+            print(f"[scheduler] could not load job {row['id']}: {e}")
+
+
+def schedule_job(job_id, username, cron_expr):
+    if _scheduler is None:
+        start_scheduler()
+    unregister_job(job_id)
+    trigger = CronTrigger.from_crontab(cron_expr, timezone="UTC")
+    _scheduler.add_job(_execute_job, trigger=trigger, id=str(job_id),
+                       args=[job_id, username], replace_existing=True)
+
+
+def unregister_job(job_id):
+    if _scheduler is None:
+        return
+    try:
+        _scheduler.remove_job(str(job_id))
+    except Exception:
+        pass
+
+
+def trigger_job_now(job_id, username):
+    """Manual trigger — runs synchronously, returns run_id."""
+    return _execute_job(job_id, username)
+
+
+# --------------------------------------------------------------------------
+# Execution
+# --------------------------------------------------------------------------
+def _fetch(conn_id, username):
+    rec = db.get_connection(conn_id, username)
+    if not rec:
+        raise ValueError(f"Connection {conn_id} not found.")
+    connector = BaseConnector.from_type(rec["source_type"], rec["config"])
+    return connector.fetch()
+
+
+def _run_compare(df_a, df_b, job):
+    """Use main.compare_dataframes; fall back to a pandas merge."""
+    keys = (job.get("key_columns") or "").split(",")
+    keys = [k.strip() for k in keys if k.strip()] or None
+    excludes = (job.get("exclude_columns") or "").split(",")
+    excludes = [c.strip() for c in excludes if c.strip()] or None
+    try:
+        main = importlib.import_module("main")
+        return main.compare_dataframes(df_a, df_b, manual_keys=keys,
+                                       exclude_cols=excludes)
+    except Exception as e:
+        common = [c for c in df_a.columns if c in set(df_b.columns)]
+        merged = df_a.merge(df_b, on=keys or common, how="outer",
+                            indicator=True, suffixes=("_a", "_b"))
+        return {
+            "fallback": f"used pandas merge ({e})",
+            "counts": {
+                "file1_only": int((merged["_merge"] == "left_only").sum()),
+                "file2_only": int((merged["_merge"] == "right_only").sum()),
+                "matched": int((merged["_merge"] == "both").sum()),
+            },
+        }
+
+
+def _run_quality(df, job):
+    try:
+        main = importlib.import_module("main")
+        return main.analyze_quality(df, name=job.get("name", "job"))
+    except Exception as e:
+        return {"error": str(e), "rows": len(df), "columns": len(df.columns)}
+
+
+def _execute_job(job_id, username):
+    run_id = db.create_run(job_id, username)
+    try:
+        job = db.get_job(job_id, username)
+        if not job:
+            raise ValueError("Job not found.")
+        action = job["action"]
+        if action == "compare":
+            df_a = _fetch(job["conn_a_id"], username)
+            df_b = _fetch(job["conn_b_id"], username)
+            result = _run_compare(df_a, df_b, job)
+        elif action in ("quality", "profile"):
+            df = _fetch(job["source_conn_id"], username)
+            result = _run_quality(df, job)
+        else:
+            raise ValueError(f"Scheduled action '{action}' not supported.")
+
+        summary = result.get("counts") or result.get("dimensions") or {}
+        db.finish_run(run_id, "success", summary=summary)
+        db.update_job_status(job_id, "ok")
+        if job.get("notify_email"):
+            try:
+                _send_rich_email_report(job, result)
+            except Exception as e:
+                print(f"[scheduler] email failed for job {job_id}: {e}")
+        return run_id
+    except Exception as e:
+        db.finish_run(run_id, "failed", error_msg=str(e))
+        db.update_job_status(job_id, "error")
+        print(f"[scheduler] job {job_id} failed: {e}")
+        return run_id
+
+
+# --------------------------------------------------------------------------
+# Email
+# --------------------------------------------------------------------------
+def _html_report(job, result):
+    counts = result.get("counts") or {}
+    dims = result.get("dimensions") or {}
+    rows = "".join(f"<tr><td>{k}</td><td style='text-align:right'>{v}</td></tr>"
+                   for k, v in {**counts, **dims}.items())
+    return f"""
+    <h2>Data Validation report — {job.get('name')}</h2>
+    <p>Action: <b>{job.get('action')}</b></p>
+    <table border="1" cellpadding="6" cellspacing="0"
+           style="border-collapse:collapse;font-family:Arial">
+      <tr style="background:#1e293b;color:#fff"><th>Metric</th><th>Value</th></tr>
+      {rows}
+    </table>
+    """
+
+
+def _send_rich_email_report(job, result):
+    to_email = job["notify_email"]
+    from_email = job.get("from_email") or os.getenv("EMAIL_FROM", "")
+    subject = f"[Data Validation] {job.get('name')} — {job.get('action')}"
+    html = _html_report(job, result)
+
+    if platform.system() == "Windows" and not os.getenv("SMTP_HOST"):
+        try:
+            import win32com.client
+            outlook = win32com.client.Dispatch("Outlook.Application")
+            mail = outlook.CreateItem(0)
+            mail.To = to_email
+            mail.Subject = subject
+            mail.HTMLBody = html
+            if from_email:
+                mail.SentOnBehalfOfName = from_email
+            mail.Send()
+            return
+        except Exception as e:
+            print(f"[email] Outlook failed, falling back to SMTP: {e}")
+
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.mime.multipart import MIMEMultipart
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = from_email or "no-reply@datavalidation.local"
+    msg["To"] = to_email
+    msg.attach(MIMEText(html, "html"))
+    host = os.getenv("SMTP_HOST", "localhost")
+    port = int(os.getenv("SMTP_PORT", "25"))
+    with smtplib.SMTP(host, port, timeout=20) as s:
+        s.send_message(msg)
