@@ -251,114 +251,17 @@ def _sanitize_json(obj):
     return obj
 
 
-def _get_bedrock_client():
-    import boto3
-    session = boto3.Session(
-        profile_name=os.getenv("AWS_PROFILE") or None,
-        region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
-    )
-    return session.client("bedrock-runtime")
+# --- Multi-provider LLM layer (agent/llm.py) + tool-calling agent --------
+from agent import llm as agent_llm  # noqa: E402
+from agent import executor as agent_executor  # noqa: E402
+from agent import tools as agent_tools  # noqa: E402
+from agent.memory import ChatMemory  # noqa: E402
 
-
-# --- Multi-provider LLM layer ---------------------------------------------
-# Primary provider is LLM_PROVIDER (default bedrock); if it fails or isn't
-# configured, automatically falls back through any other provider that has
-# an API key set. This lets Groq/Gemini free tiers keep AI features working
-# even when AWS Bedrock credits are unavailable.
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "groq").lower()
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-
-AI_CONFIGURED = bool(MODEL_ID or GROQ_API_KEY or GOOGLE_API_KEY or OPENAI_API_KEY)
-
-
-def _ask_llm_bedrock(messages, system=None):
-    if not MODEL_ID:
-        raise RuntimeError("BEDROCK_MODEL_ID not configured.")
-    client = _get_bedrock_client()
-    kwargs = {
-        "modelId": MODEL_ID,
-        "messages": [{"role": m["role"], "content": [{"text": m["content"]}]}
-                     for m in messages],
-        "inferenceConfig": {"maxTokens": 2000, "temperature": 0.2},
-    }
-    if system:
-        kwargs["system"] = [{"text": system}]
-    resp = client.converse(**kwargs)
-    return resp["output"]["message"]["content"][0]["text"]
-
-
-def _ask_llm_groq(messages, system=None):
-    """Groq's API is OpenAI-compatible, so the `openai` SDK works pointed
-    at Groq's base URL — free tier, no separate SDK dependency needed."""
-    if not GROQ_API_KEY:
-        raise RuntimeError("GROQ_API_KEY not configured.")
-    from openai import OpenAI
-    client = OpenAI(api_key=GROQ_API_KEY, base_url="https://api.groq.com/openai/v1")
-    full = ([{"role": "system", "content": system}] if system else []) + messages
-    resp = client.chat.completions.create(
-        model=GROQ_MODEL, messages=full, max_tokens=2000, temperature=0.2)
-    return resp.choices[0].message.content
-
-
-def _ask_llm_gemini(messages, system=None):
-    if not GOOGLE_API_KEY:
-        raise RuntimeError("GOOGLE_API_KEY not configured.")
-    import google.generativeai as genai
-    genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel(GEMINI_MODEL, system_instruction=system or None)
-    convo = "\n\n".join(f"{m['role'].upper()}: {m['content']}" for m in messages)
-    resp = model.generate_content(
-        convo, generation_config={"max_output_tokens": 2000, "temperature": 0.2})
-    return resp.text
-
-
-def _ask_llm_openai(messages, system=None):
-    if not OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY not configured.")
-    from openai import OpenAI
-    client = OpenAI(api_key=OPENAI_API_KEY)
-    full = ([{"role": "system", "content": system}] if system else []) + messages
-    resp = client.chat.completions.create(
-        model=OPENAI_MODEL, messages=full, max_tokens=2000, temperature=0.2)
-    return resp.choices[0].message.content
-
-
-_LLM_PROVIDERS = {
-    "bedrock": _ask_llm_bedrock,
-    "groq": _ask_llm_groq,
-    "gemini": _ask_llm_gemini,
-    "openai": _ask_llm_openai,
-}
-_LLM_FALLBACK_ORDER = ["groq", "gemini", "bedrock", "openai"]
-
-
-def _ask_llm(messages, system=None):
-    """Call the configured primary LLM provider; auto-fallback through any
-    other provider that has credentials configured if the primary fails."""
-    order = [LLM_PROVIDER] + [p for p in _LLM_FALLBACK_ORDER if p != LLM_PROVIDER]
-    last_err = RuntimeError("No LLM provider configured.")
-    for provider in order:
-        fn = _LLM_PROVIDERS.get(provider)
-        if not fn:
-            continue
-        try:
-            return fn(messages, system)
-        except Exception as e:
-            last_err = e
-    raise last_err
-
-
-def _ask_llm_safe(messages, system=None):
-    """Like _ask_llm but returns an error string instead of raising."""
-    try:
-        return _ask_llm(messages, system)
-    except Exception as e:
-        return f"[AI unavailable: {e}]"
+AI_CONFIGURED = agent_llm.AI_CONFIGURED
+_ask_llm = agent_llm.ask
+_ask_llm_safe = agent_llm.ask_safe
+_agent_memory = ChatMemory()
+_ref_docs_store: dict = {}
 
 
 # =========================================================================
@@ -2290,6 +2193,7 @@ async def analyze(
     result["session_id"] = session_id
     result["action"] = action
     _results_store[session_id] = result
+    _ref_docs_store[session_id] = ref or {}
     try:
         _session_owners[session_id] = get_current_user(request)
     except Exception:
@@ -2439,6 +2343,30 @@ async def chat(request: Request):
     history.append({"role": "user", "content": message})
     answer = _ask_llm_safe(history[-8:], system=system)
     history.append({"role": "assistant", "content": answer})
+    return {"response": answer, "session_id": session_id}
+
+
+@app.post("/agent-chat")
+async def agent_chat(request: Request):
+    """Tool-calling AI Copilot: the LLM decides which of the 6 tools to call
+    (inspect compare/quality/mapping/governance/lineage results, or search
+    reference docs) rather than being handed a single canned summary."""
+    body = await request.json()
+    session_id = body.get("session_id", "")
+    message = body.get("message", "")
+    if not message:
+        raise HTTPException(400, "message is required.")
+
+    session_results = _results_store.get(session_id, {})
+    ref_docs = _ref_docs_store.get(session_id, {})
+    fingerprint = session_results.get("fingerprint", "")
+    extra_rules = fb.get_rules_as_text(fingerprint) if fingerprint else ""
+
+    dispatch = agent_tools.make_tool_dispatch(session_results, ref_docs)
+    history = _agent_memory.get(session_id)
+    answer = agent_executor.run_agent(message, history[-8:], dispatch, extra_rules=extra_rules)
+    _agent_memory.append(session_id, "user", message)
+    _agent_memory.append(session_id, "assistant", answer)
     return {"response": answer, "session_id": session_id}
 
 
