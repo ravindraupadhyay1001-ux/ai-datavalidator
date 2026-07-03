@@ -33,6 +33,12 @@ pyodbc                           # Microsoft SQL Server (requires ODBC Driver 17
 psycopg2-binary                  # PostgreSQL
 pymysql                          # MySQL / MariaDB
 snowflake-connector-python       # Snowflake
+azure-storage-blob               # Azure Blob Storage
+google-cloud-storage             # Google Cloud Storage
+kafka-python                     # Kafka
+simple-salesforce                # Salesforce
+databricks-sql-connector         # Databricks SQL warehouses
+# SharePoint uses the Microsoft Graph REST API via httpx -- no extra SDK needed
 # Optional (install manually if needed):
 # cx_Oracle                      # Oracle DB
 # oracledb                       # Oracle DB (newer driver)

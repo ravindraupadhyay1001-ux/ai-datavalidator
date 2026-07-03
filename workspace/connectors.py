@@ -109,6 +109,10 @@ class BaseConnector(ABC):
             "postgresql": PostgresConnector, "mysql": MySQLConnector,
             "mariadb": MySQLConnector, "oracle": OracleConnector,
             "snowflake": SnowflakeConnector, "api": APIConnector, "rest": APIConnector,
+            "azure_blob": AzureBlobConnector, "azureblob": AzureBlobConnector,
+            "gcs": GCSConnector, "kafka": KafkaConnector,
+            "salesforce": SalesforceConnector, "sharepoint": SharePointConnector,
+            "databricks": DatabricksConnector,
         }
         if st not in registry:
             raise ValueError(f"Unknown source type '{source_type}'.")
@@ -197,6 +201,182 @@ class S3Connector(BaseConnector):
         s3 = self._client()
         s3.head_bucket(Bucket=self.config["bucket"])
         return True
+
+
+class AzureBlobConnector(BaseConnector):
+    """config: connection_string (or account_url + sas_token/credential),
+    container, blob."""
+    def _client(self):
+        from azure.storage.blob import BlobServiceClient
+        c = self.config
+        if c.get("connection_string"):
+            return BlobServiceClient.from_connection_string(c["connection_string"])
+        return BlobServiceClient(account_url=c["account_url"], credential=c.get("sas_token") or c.get("credential"))
+
+    def fetch(self) -> pd.DataFrame:
+        c = self.config
+        blob = self._client().get_blob_client(container=c["container"], blob=c["blob"])
+        raw = blob.download_blob().readall()
+        return _parse_bytes(raw, c["blob"], c.get("delimiter"))
+
+    def test_connection(self) -> bool:
+        c = self.config
+        container = self._client().get_container_client(c["container"])
+        container.get_container_properties()
+        return True
+
+
+class GCSConnector(BaseConnector):
+    """config: bucket, blob, credentials_json (path or inline JSON, optional
+    -- falls back to Application Default Credentials if omitted)."""
+    def _client(self):
+        from google.cloud import storage
+        c = self.config
+        if c.get("credentials_json"):
+            from google.oauth2 import service_account
+            import json as _json
+            info = c["credentials_json"]
+            if isinstance(info, str):
+                info = _json.loads(info) if info.strip().startswith("{") else info
+            creds = (service_account.Credentials.from_service_account_info(info)
+                     if isinstance(info, dict)
+                     else service_account.Credentials.from_service_account_file(info))
+            return storage.Client(credentials=creds, project=c.get("project"))
+        return storage.Client(project=c.get("project"))
+
+    def fetch(self) -> pd.DataFrame:
+        c = self.config
+        bucket = self._client().bucket(c["bucket"])
+        raw = bucket.blob(c["blob"]).download_as_bytes()
+        return _parse_bytes(raw, c["blob"], c.get("delimiter"))
+
+    def test_connection(self) -> bool:
+        c = self.config
+        bucket = self._client().bucket(c["bucket"])
+        return bucket.exists()
+
+
+class KafkaConnector(BaseConnector):
+    """config: bootstrap_servers, topic, group_id (optional), max_records
+    (default 5000), consumer_timeout_ms (default 10000), plus any
+    kafka-python security config (security_protocol, sasl_*, ssl_*)."""
+    def _consumer(self):
+        from kafka import KafkaConsumer
+        c = self.config
+        extra = {k: v for k, v in c.items()
+                 if k not in ("bootstrap_servers", "topic", "group_id", "max_records")}
+        return KafkaConsumer(
+            c["topic"],
+            bootstrap_servers=c["bootstrap_servers"],
+            group_id=c.get("group_id"),
+            auto_offset_reset="earliest",
+            consumer_timeout_ms=int(c.get("consumer_timeout_ms", 10000)),
+            value_deserializer=lambda v: v,
+            **extra,
+        )
+
+    def fetch(self) -> pd.DataFrame:
+        c = self.config
+        max_records = int(c.get("max_records", 5000))
+        consumer = self._consumer()
+        records = []
+        try:
+            for msg in consumer:
+                records.append(msg.value)
+                if len(records) >= max_records:
+                    break
+        finally:
+            consumer.close()
+        if not records:
+            return pd.DataFrame()
+        joined = b"\n".join(records)
+        return _parse_bytes(joined, "x.json" if joined[:1] in (b"{", b"[") else "x.csv",
+                            c.get("delimiter"))
+
+    def test_connection(self) -> bool:
+        from kafka import KafkaAdminClient
+        c = self.config
+        admin = KafkaAdminClient(bootstrap_servers=c["bootstrap_servers"])
+        try:
+            topics = admin.list_topics()
+            return c["topic"] in topics
+        finally:
+            admin.close()
+
+
+class SalesforceConnector(BaseConnector):
+    """config: username, password, security_token, domain (optional,
+    'login' or 'test'), and either soql or object_name (+ fields list)."""
+    def _client(self):
+        from simple_salesforce import Salesforce
+        c = self.config
+        return Salesforce(username=c["username"], password=c["password"],
+                          security_token=c["security_token"],
+                          domain=c.get("domain", "login"))
+
+    def _soql(self) -> str:
+        c = self.config
+        if c.get("soql"):
+            return c["soql"]
+        obj = c.get("object_name")
+        if not obj:
+            raise ValueError("Provide either 'soql' or 'object_name'.")
+        fields = c.get("fields") or ["Id", "Name"]
+        return f"SELECT {', '.join(fields)} FROM {obj}"
+
+    def fetch(self) -> pd.DataFrame:
+        sf = self._client()
+        result = sf.query_all(self._soql())
+        records = [{k: v for k, v in r.items() if k != "attributes"} for r in result["records"]]
+        return pd.json_normalize(records).astype(str)
+
+    def test_connection(self) -> bool:
+        self._client().query("SELECT Id FROM Organization LIMIT 1")
+        return True
+
+
+class SharePointConnector(BaseConnector):
+    """config: site_url, file_path (drive-relative), tenant_id, client_id,
+    client_secret -- OAuth2 client-credentials flow via Microsoft Graph
+    REST API (no heavyweight SDK dependency, reuses httpx)."""
+    def _token(self, httpx):
+        c = self.config
+        url = f"https://login.microsoftonline.com/{c['tenant_id']}/oauth2/v2.0/token"
+        data = {
+            "client_id": c["client_id"], "client_secret": c["client_secret"],
+            "scope": "https://graph.microsoft.com/.default",
+            "grant_type": "client_credentials",
+        }
+        r = httpx.post(url, data=data, timeout=30)
+        r.raise_for_status()
+        return r.json()["access_token"]
+
+    def _graph_get(self, path):
+        import httpx
+        token = self._token(httpx)
+        c = self.config
+        site = c["site_url"].split("://", 1)[-1]
+        host, site_path = site.split("/", 1)
+        with httpx.Client(timeout=30, headers={"Authorization": f"Bearer {token}"}) as client:
+            site_resp = client.get(f"https://graph.microsoft.com/v1.0/sites/{host}:/{site_path}")
+            site_resp.raise_for_status()
+            site_id = site_resp.json()["id"]
+            return client.get(f"https://graph.microsoft.com/v1.0/sites/{site_id}/drive/root:/{path}")
+
+    def fetch(self) -> pd.DataFrame:
+        c = self.config
+        meta = self._graph_get(c["file_path"])
+        meta.raise_for_status()
+        download_url = meta.json()["@microsoft.graph.downloadUrl"]
+        import httpx
+        raw = httpx.get(download_url, timeout=60).content
+        return _parse_bytes(raw, c["file_path"], c.get("delimiter"))
+
+    def test_connection(self) -> bool:
+        r = self._graph_get(self.config["file_path"])
+        return r.status_code < 400
+
+
 
 
 # ==========================================================================
@@ -312,6 +492,18 @@ class SnowflakeConnector(_SQLConnector):
             account=c["account"], user=c.get("username"), password=c.get("password"),
             warehouse=c.get("warehouse"), database=c.get("database"),
             schema=c.get("schema"),
+        )
+
+
+class DatabricksConnector(_SQLConnector):
+    """config: server_hostname, http_path, access_token, plus 'query' or
+    'table' like the other SQL connectors."""
+    def _connect(self):
+        from databricks import sql as databricks_sql
+        c = self.config
+        return databricks_sql.connect(
+            server_hostname=c["server_hostname"], http_path=c["http_path"],
+            access_token=c["access_token"],
         )
 
 
