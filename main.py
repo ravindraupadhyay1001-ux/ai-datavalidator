@@ -1743,6 +1743,16 @@ def cross_reference_sources(dfs, names, identifier_key):
     }
 
 
+def _ngram_jaccard(a: str, b: str, n: int = 3) -> float:
+    def ngrams(s):
+        s = f"  {s}  "
+        return {s[i:i + n] for i in range(len(s) - n + 1)}
+    ga, gb = ngrams(a), ngrams(b)
+    if not ga or not gb:
+        return 0.0
+    return len(ga & gb) / len(ga | gb)
+
+
 def analyze_mapping(df1, df2, file1_name="file1", file2_name="file2", ref=None):
     cols1 = list(df1.columns)
     cols2 = list(df2.columns)
@@ -1769,6 +1779,20 @@ def analyze_mapping(df1, df2, file1_name="file1", file2_name="file2", ref=None):
                 best, score = c2, r
         if best and score >= 0.7:
             matched.append({"source": c1, "target": best, "method": "fuzzy_name",
+                            "confidence": round(score, 2)})
+            used2.add(best); remaining2.remove(best); remaining1.remove(c1)
+
+    # Step 2b: character n-gram (trigram) Jaccard on names -- catches
+    # reordered/compound names fuzzy_name's sequence-alignment ratio misses
+    # (e.g. "customer_account_id" vs "account_id_customer").
+    for c1 in list(remaining1):
+        best, score = None, 0.0
+        for c2 in remaining2:
+            j = _ngram_jaccard(norm(c1), norm(c2))
+            if j > score:
+                best, score = c2, j
+        if best and score >= 0.6:
+            matched.append({"source": c1, "target": best, "method": "ngram_jaccard",
                             "confidence": round(score, 2)})
             used2.add(best); remaining2.remove(best); remaining1.remove(c1)
 
