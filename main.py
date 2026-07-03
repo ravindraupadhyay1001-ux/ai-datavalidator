@@ -1636,22 +1636,43 @@ def _parse_mapping_spec(df):
     return [{str(c): str(row[c]) for c in df.columns} for _, row in df.iterrows()]
 
 
+def _extract_pdf_text(raw: bytes) -> str:
+    import pdfplumber
+    text_parts = []
+    with pdfplumber.open(io.BytesIO(raw)) as pdf:
+        for page in pdf.pages[:200]:
+            text_parts.append(page.extract_text() or "")
+    return "\n".join(text_parts)
+
+
 def _load_and_classify_ref_docs(uploads):
-    merged = {"data_dict": {}, "rules": [], "mapping": [], "general": []}
+    merged = {"data_dict": {}, "rules": [], "mapping": [], "general": [], "documents": {}}
     for name, raw in uploads:
         try:
             df = load_file(name, raw)
         except Exception:
-            continue
-        kind = _classify_ref_doc(df)
-        if kind == "data_dict":
-            merged["data_dict"].update(_parse_data_dictionary(df))
-        elif kind == "rules":
-            merged["rules"].extend(_parse_business_rules(df))
-        elif kind == "mapping":
-            merged["mapping"].extend(_parse_mapping_spec(df))
-        else:
-            merged["general"].append(name)
+            df = None
+        if df is not None and len(df.columns) > 1:
+            kind = _classify_ref_doc(df)
+            if kind == "data_dict":
+                merged["data_dict"].update(_parse_data_dictionary(df))
+                continue
+            elif kind == "rules":
+                merged["rules"].extend(_parse_business_rules(df))
+                continue
+            elif kind == "mapping":
+                merged["mapping"].extend(_parse_mapping_spec(df))
+                continue
+        # Not a clean tabular reference doc -- if it's a PDF, extract free
+        # text for keyword search (agent.rag); otherwise just record the name.
+        merged["general"].append(name)
+        if name.lower().endswith(".pdf"):
+            try:
+                text = _extract_pdf_text(raw)
+                if text.strip():
+                    merged["documents"][name] = text
+            except Exception:
+                pass
     return merged
 
 
