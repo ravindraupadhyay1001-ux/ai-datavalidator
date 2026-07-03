@@ -52,6 +52,8 @@ if os.getenv("OIDC_ENABLED", "false").lower() == "true":
 _chat_contexts: dict = {}
 _results_store: dict = {}
 _session_owners: dict = {}
+_governance_df_cache: dict = {}  # session_id -> raw df, for PII-masked download
+_MAX_DF_CACHE = 50
 
 # --- Session / login auth ------------------------------------------------
 JWT_SECRET = os.getenv("JWT_SECRET", "change-this-in-production")
@@ -1925,6 +1927,43 @@ def analyze_governance(df, name="dataset"):
     }
 
 
+def _mask_value(v: str, pii_type: str) -> str:
+    v = str(v)
+    if not v or v.lower() in _NULL_SENTINELS:
+        return v
+    if pii_type == "email" and "@" in v:
+        local, _, domain = v.partition("@")
+        return (local[0] if local else "") + "***@***." + domain.rsplit(".", 1)[-1]
+    if pii_type == "phone":
+        digits = _re.sub(r"\D", "", v)
+        return "***-***-" + digits[-4:] if len(digits) >= 4 else "****"
+    if pii_type == "ssn":
+        digits = _re.sub(r"\D", "", v)
+        return "***-**-" + digits[-4:] if len(digits) >= 4 else "****"
+    if pii_type in ("credit_card",):
+        digits = _re.sub(r"\D", "", v)
+        return "**** **** **** " + digits[-4:] if len(digits) >= 4 else "****"
+    if pii_type == "iban" and len(v) >= 4:
+        return v[:4] + " **** **** **** " + v[-2:]
+    if pii_type in ("name",):
+        parts = v.split()
+        return " ".join((p[0] + "***") if p else p for p in parts)
+    # generic fallback: keep first char, mask the rest
+    return (v[0] + "***") if len(v) > 1 else "***"
+
+
+def mask_pii_columns(df, columns_out):
+    """Returns a copy of df with every PII-flagged column masked, using the
+    column's first-detected pii_type to pick a masking style."""
+    masked = df.copy()
+    for c in columns_out:
+        if not c.get("pii_detected") or c["name"] not in masked.columns:
+            continue
+        pii_type = (c.get("pii_types") or ["generic"])[0]
+        masked[c["name"]] = masked[c["name"]].map(lambda v: _mask_value(v, pii_type))
+    return masked
+
+
 # =========================================================================
 # Lineage / reconciliation engine
 # =========================================================================
@@ -2286,6 +2325,7 @@ async def analyze(
             return load_file(upload.filename, await upload.read(), delim)
         raise HTTPException(400, f"{action} requires {label} (upload or connection).")
 
+    _cache_df = None
     if action == "compare":
         df1 = await _load_primary(file1, conn_a_id, "file1")
         df2 = await _load_primary(file2, conn_b_id, "file2")
@@ -2333,6 +2373,7 @@ async def analyze(
     elif action == "governance":
         df1 = await _load_primary(file1, conn_source_id or conn_a_id, "file1")
         result = analyze_governance(df1, name=getattr(file1, "filename", "connection"))
+        _cache_df = df1
     elif action == "lineage":
         df1 = await _load_primary(file1, conn_a_id, "file1")
         df2 = await _load_primary(file2, conn_b_id, "file2")
@@ -2377,6 +2418,10 @@ async def analyze(
     result["action"] = action
     _results_store[session_id] = result
     _ref_docs_store[session_id] = ref or {}
+    if _cache_df is not None:
+        if len(_governance_df_cache) >= _MAX_DF_CACHE:
+            _governance_df_cache.pop(next(iter(_governance_df_cache)))
+        _governance_df_cache[session_id] = _cache_df
     try:
         _session_owners[session_id] = get_current_user(request)
     except Exception:
@@ -2655,6 +2700,22 @@ def download(session_id: str):
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="result_{session_id[:8]}.xlsx"'},
+    )
+
+
+@app.get("/api/dq/mask/{session_id}")
+def download_masked_csv(session_id: str):
+    result = _results_store.get(session_id)
+    df = _governance_df_cache.get(session_id)
+    if not result or df is None:
+        raise HTTPException(404, "No governance results (with cached data) found for this session — run Governance first.")
+    masked = mask_pii_columns(df, result.get("columns", []))
+    buf = io.StringIO()
+    masked.to_csv(buf, index=False)
+    return StreamingResponse(
+        io.BytesIO(buf.getvalue().encode("utf-8")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="masked_{session_id[:8]}.csv"'},
     )
 
 

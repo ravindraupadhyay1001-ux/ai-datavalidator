@@ -216,6 +216,13 @@
           <button onclick="loadSettings()" class="btn-ghost rounded-lg px-3 py-1 text-sm">Refresh</button>
         </div>
       </div>
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl">
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="font-semibold text-sky-300">Users &amp; Roles</h3>
+          <button onclick="loadUsers()" class="btn-ghost rounded-lg px-3 py-1 text-sm">Refresh</button>
+        </div>
+        <div id="users-out" class="text-sm"></div>
+      </div>
       <pre id="set-out" class="card rounded-xl p-4 text-xs text-gray-300 max-w-3xl"></pre>
     </section>
   </main>
@@ -247,7 +254,7 @@ document.querySelectorAll('.tab-btn[data-tab]').forEach(b => b.onclick = () => {
   b.classList.add('tab-active');
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
   document.getElementById('tab-' + b.dataset.tab).classList.remove('hidden');
-  if (b.dataset.tab === 'settings') loadSettings();
+  if (b.dataset.tab === 'settings') { loadSettings(); loadUsers(); }
   if (b.dataset.tab === 'workspace') { wsTab('conn'); startAudit(); }
 });
 
@@ -366,25 +373,40 @@ async function runQuality(){
   chart('qDims',{type:'bar',data:{labels:dk,datasets:[{data:dk.map(k=>dim[k]),
     backgroundColor:'#38bdf8',borderRadius:6}]},options:{indexAxis:'y',plugins:{legend:{display:false}},
     scales:{x:{max:100,ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}},y:{ticks:{color:'#cbd5e1'}}}}});
-  loadDqHistory(data.name);
+  loadDqHistory(data.name, data.score);
 }
 
-async function loadDqHistory(fileName){
+async function loadDqHistory(fileName, currentScore){
   const box=document.getElementById('q-history'); box.innerHTML='';
   if(!fileName) return;
-  let hist;
+  let hist, baseline;
   try{ hist = await J('GET', `/api/ws/dq/history/${encodeURIComponent(fileName)}?days=30`); }
-  catch(e){ return; }
-  if(!Array.isArray(hist) || hist.length < 2) return; // need at least 2 points for a trend
-  box.innerHTML = `<div class="card rounded-xl p-4">
-    <div class="text-xs text-gray-400 mb-2">DQ score trend &mdash; last 30 days (${hist.length} runs)</div>
-    <canvas id="qHistChart" height="80"></canvas></div>`;
-  chart('qHistChart',{type:'line',data:{
-    labels:hist.map(h=>new Date(h.run_at).toLocaleDateString()),
-    datasets:[{data:hist.map(h=>h.score),borderColor:'#38bdf8',backgroundColor:'rgba(56,189,248,.15)',
-      fill:true,tension:.3,pointRadius:3}]},
-    options:{plugins:{legend:{display:false}},
-      scales:{x:{ticks:{color:'#94a3b8'}},y:{min:0,max:100,ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}}}}});
+  catch(e){ hist = null; }
+  try{ baseline = await J('GET', `/api/ws/dq/baseline/${encodeURIComponent(fileName)}`); }
+  catch(e){ baseline = null; }
+
+  let html = '';
+  if(baseline && typeof currentScore === 'number' && baseline.score !== currentScore){
+    const delta = Math.round((currentScore - baseline.score) * 10) / 10;
+    const good = delta >= 0;
+    html += `<div class="card rounded-xl p-4 mb-3 text-sm flex items-center justify-between">
+      <span class="text-gray-400">vs. baseline (${baseline.run_at.slice(0,10)}, score ${baseline.score})</span>
+      <span class="font-bold ${good?'text-emerald-400':'text-red-400'}">${good?'&#9650;':'&#9660;'} ${Math.abs(delta)} pts</span></div>`;
+  }
+  if(Array.isArray(hist) && hist.length >= 2){
+    html += `<div class="card rounded-xl p-4">
+      <div class="text-xs text-gray-400 mb-2">DQ score trend &mdash; last 30 days (${hist.length} runs)</div>
+      <canvas id="qHistChart" height="80"></canvas></div>`;
+  }
+  box.innerHTML = html;
+  if(Array.isArray(hist) && hist.length >= 2){
+    chart('qHistChart',{type:'line',data:{
+      labels:hist.map(h=>new Date(h.run_at).toLocaleDateString()),
+      datasets:[{data:hist.map(h=>h.score),borderColor:'#38bdf8',backgroundColor:'rgba(56,189,248,.15)',
+        fill:true,tension:.3,pointRadius:3}]},
+      options:{plugins:{legend:{display:false}},
+        scales:{x:{ticks:{color:'#94a3b8'}},y:{min:0,max:100,ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}}}}});
+  }
 }
 function bar(pct){ const c=pct>=90?'#10b981':pct>=60?'#f59e0b':'#ef4444';
   return `<div style="background:#1e2740;border-radius:4px;height:14px;width:64px;display:inline-block;position:relative;vertical-align:middle">
@@ -440,6 +462,8 @@ async function runGovernance(){
     <td class="text-center"><span class="badge" style="background:${sc[c.sensitivity]}22;color:${sc[c.sensitivity]}">${c.sensitivity}</span></td></tr>`;});
   html+='</tbody></table></div>';
   if(data.recommendations?.length) html+=`<ul class="mt-3 text-sm text-gray-300 list-disc list-inside">${data.recommendations.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`;
+  if(data.columns.some(c=>c.pii_detected))
+    html+=`<a href="/api/dq/mask/${data.session_id}" class="inline-block mt-4 btn-emerald btn rounded-lg px-4 py-2 text-sm">&#128274; Download Masked CSV</a>`;
   out.innerHTML=html;
   const labels=Object.keys(counts);
   chart('govChart',{type:'bar',data:{labels,datasets:[{data:labels.map(k=>counts[k]),
@@ -557,6 +581,23 @@ async function loadSettings(){ const d=await fetch('/api/license/status').then(r
   document.getElementById('set-out').textContent=JSON.stringify(d,null,2); }
 async function activateLicense(){ const token=document.getElementById('lic-token').value.trim(); if(!token)return;
   const r=await J('POST','/api/license/activate',{token}); alert(r.ok?'✅ License activated':'❌ Activation failed'); loadSettings(); }
+
+async function loadUsers(){
+  const box=document.getElementById('users-out');
+  let users;
+  try{ users=await fetch('/api/ws/users').then(r=>{ if(!r.ok) throw 0; return r.json(); }); }
+  catch(e){ box.innerHTML='<span class="text-gray-500">Admin access required to view users, or workspace not enabled.</span>'; return; }
+  if(!users.length){ box.innerHTML='<span class="text-gray-500">No users yet.</span>'; return; }
+  box.innerHTML=`<table class="w-full"><thead class="text-gray-400 text-xs"><tr><th class="text-left p-1">User</th><th class="text-left">Role</th><th></th></tr></thead><tbody>`+
+    users.map(u=>`<tr class="border-t border-[var(--line)]"><td class="p-1">${esc(u.display_name||u.username)}</td>
+      <td><select class="inp text-xs" onchange="setUserRole('${esc(u.username)}',this.value)">
+        ${['admin','analyst','readonly'].map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${r}</option>`).join('')}
+      </select></td><td></td></tr>`).join('')+`</tbody></table>`;
+}
+async function setUserRole(username, role){
+  try{ await J('PUT', `/api/ws/users/${encodeURIComponent(username)}/role`, {role}); loadUsers(); }
+  catch(e){ alert('Failed to update role.'); }
+}
 
 (async()=>{ try{ const d=await fetch('/api/license/status').then(r=>r.json());
   document.getElementById('licbar').innerHTML=`<span class="grad-text font-semibold">${d.dev_mode?'DEV mode':d.tier}</span> &middot; <span class="${d.valid?'text-emerald-400':'text-red-400'}">${d.valid?'valid':'inactive'}</span>`;
