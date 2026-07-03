@@ -38,6 +38,7 @@ google-cloud-storage             # Google Cloud Storage
 kafka-python                     # Kafka
 simple-salesforce                # Salesforce
 databricks-sql-connector         # Databricks SQL warehouses
+ldap3                            # LDAP / Active Directory auth (SSO)
 # SharePoint uses the Microsoft Graph REST API via httpx -- no extra SDK needed
 # Optional (install manually if needed):
 # cx_Oracle                      # Oracle DB

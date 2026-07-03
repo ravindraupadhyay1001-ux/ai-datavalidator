@@ -87,7 +87,11 @@ def _load_users() -> dict:
 
 
 _USERS = _load_users()
-AUTH_ENABLED = bool(_USERS)
+try:
+    from workspace import sso as _sso  # noqa: E402
+except Exception:
+    _sso = None
+AUTH_ENABLED = bool(_USERS) or bool(_sso and _sso.LDAP_ENABLED)
 
 
 def _verify_password(plain: str, hashed: str) -> bool:
@@ -2071,9 +2075,23 @@ async def login_submit(request: Request,
                        username: str = Form(...), password: str = Form(...)):
     if not AUTH_ENABLED:
         return RedirectResponse("/", status_code=302)
-    record = _USERS.get(username)
-    if not record or not _verify_password(password, record["hash"]):
-        return RedirectResponse("/login?error=Invalid+credentials", status_code=302)
+
+    session_user, session_role = None, None
+    if _sso and _sso.LDAP_ENABLED:
+        try:
+            ldap_result = _sso.authenticate(username, password)
+        except Exception:
+            ldap_result = None
+        if ldap_result:
+            session_user, session_role = ldap_result["username"], ldap_result["role"]
+
+    if not session_user:
+        record = _USERS.get(username)
+        if not record or not _verify_password(password, record["hash"]):
+            return RedirectResponse("/login?error=Invalid+credentials", status_code=302)
+        session_user, session_role = username, record["role"]
+
+    username, record = session_user, {"role": session_role}
     token = _make_session_token(username, record["role"])
     resp = RedirectResponse("/", status_code=302)
     resp.set_cookie(_SESSION_COOKIE, token, httponly=True, samesite="lax",
