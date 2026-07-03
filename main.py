@@ -44,6 +44,11 @@ TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templa
 app = FastAPI(title="Data Validation AGENT")
 templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
+if os.getenv("OIDC_ENABLED", "false").lower() == "true":
+    # authlib's OAuth flow stores state/nonce in the Starlette session.
+    from starlette.middleware.sessions import SessionMiddleware
+    app.add_middleware(SessionMiddleware, secret_key=os.getenv("JWT_SECRET", "change-this-in-production"))
+
 _chat_contexts: dict = {}
 _results_store: dict = {}
 _session_owners: dict = {}
@@ -200,7 +205,7 @@ def _shutdown():
 
 
 _AUTH_EXEMPT = ("/login", "/logout", "/health", "/api/license", "/static",
-                "/favicon.ico")
+                "/favicon.ico", "/auth/callback")
 
 
 @app.middleware("http")
@@ -2104,6 +2109,37 @@ async def login_submit(request: Request,
 def logout():
     resp = RedirectResponse("/login", status_code=302)
     resp.delete_cookie(_SESSION_COOKIE)
+    return resp
+
+
+@app.get("/login/oidc")
+async def login_oidc(request: Request):
+    client = _sso.get_oidc_client() if _sso else None
+    if not client:
+        return RedirectResponse("/login?error=OIDC+not+configured", status_code=302)
+    redirect_uri = os.getenv("OIDC_REDIRECT_URI") or str(request.url_for("auth_callback"))
+    return await client.oidc.authorize_redirect(request, redirect_uri)
+
+
+@app.get("/auth/callback")
+async def auth_callback(request: Request):
+    client = _sso.get_oidc_client() if _sso else None
+    if not client:
+        return RedirectResponse("/login?error=OIDC+not+configured", status_code=302)
+    try:
+        token = await client.oidc.authorize_access_token(request)
+    except Exception:
+        return RedirectResponse("/login?error=SSO+sign-in+failed", status_code=302)
+    claims = token.get("userinfo") or {}
+    username = (claims.get("preferred_username") or claims.get("email") or claims.get("sub") or "").split("@")[0].lower()
+    if not username:
+        return RedirectResponse("/login?error=SSO+sign-in+failed", status_code=302)
+    role = _sso.resolve_role_from_claims(claims)
+    session_token = _make_session_token(username, role)
+    resp = RedirectResponse("/", status_code=302)
+    resp.set_cookie(_SESSION_COOKIE, session_token, httponly=True, samesite="lax",
+                    max_age=_SESSION_HOURS * 3600)
+    log_action("login", f"user {username} signed in via SSO", username)
     return resp
 
 

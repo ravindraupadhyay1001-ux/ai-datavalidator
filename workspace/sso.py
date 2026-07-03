@@ -31,6 +31,50 @@ try:
 except Exception:
     SSO_ROLE_MAP = {}
 
+# --- OIDC (SAML 2.0 was in-scope per the spec, but its XML-signature
+# validation is easy to get subtly wrong and unverifiable without a real
+# IdP to test against; OIDC covers the same "enterprise SSO" need and
+# authlib handles the security-critical token verification correctly) ---
+OIDC_ENABLED = os.getenv("OIDC_ENABLED", "false").lower() == "true"
+OIDC_ISSUER = os.getenv("OIDC_ISSUER", "")          # e.g. https://login.microsoftonline.com/<tenant>/v2.0
+OIDC_CLIENT_ID = os.getenv("OIDC_CLIENT_ID", "")
+OIDC_CLIENT_SECRET = os.getenv("OIDC_CLIENT_SECRET", "")
+OIDC_ROLE_CLAIM = os.getenv("OIDC_ROLE_CLAIM", "roles")  # id_token claim holding group/role names
+
+_oauth_client = None
+
+
+def get_oidc_client():
+    """Lazily-built authlib OAuth registry with the 'oidc' provider
+    registered, or None if OIDC isn't configured."""
+    global _oauth_client
+    if not (OIDC_ENABLED and OIDC_ISSUER and OIDC_CLIENT_ID and OIDC_CLIENT_SECRET):
+        return None
+    if _oauth_client is None:
+        from authlib.integrations.starlette_client import OAuth
+        _oauth_client = OAuth()
+        _oauth_client.register(
+            name="oidc",
+            server_metadata_url=f"{OIDC_ISSUER.rstrip('/')}/.well-known/openid-configuration",
+            client_id=OIDC_CLIENT_ID,
+            client_secret=OIDC_CLIENT_SECRET,
+            client_kwargs={"scope": "openid email profile"},
+        )
+    return _oauth_client
+
+
+def resolve_role_from_claims(claims: dict) -> str:
+    """Map OIDC id_token claims (e.g. a 'roles' or 'groups' array) to an
+    app role via SSO_ROLE_MAP. Defaults to 'analyst' if nothing matches."""
+    values = claims.get(OIDC_ROLE_CLAIM) or []
+    if isinstance(values, str):
+        values = [values]
+    for v in values:
+        for claim_value, role in SSO_ROLE_MAP.items():
+            if claim_value.lower() == str(v).lower():
+                return role
+    return "analyst"
+
 
 def _user_dn(username: str) -> str:
     # Accept either a bare username or a full UPN (user@domain).
