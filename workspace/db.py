@@ -241,6 +241,14 @@ def count_users() -> int:
     return list(cur.fetchall())[0][0]
 
 
+def count_local_users() -> int:
+    """Count of users who have actually registered via local username/password
+    auth (as opposed to being auto-provisioned by Windows Auth / SSO)."""
+    cur = _conn().cursor()
+    cur.execute("SELECT COUNT(*) FROM ws_users WHERE password_hash IS NOT NULL")
+    return list(cur.fetchall())[0][0]
+
+
 def get_user_password_hash(username):
     cur = _conn().cursor()
     cur.execute(f"SELECT password_hash FROM ws_users WHERE username={_ph()}", (username,))
@@ -250,13 +258,14 @@ def get_user_password_hash(username):
 
 def create_local_user(username, password_hash, full_name="", email=""):
     """Register a new username/password user. Raises ValueError if the
-    username is already taken. The very first user ever created becomes admin."""
+    username is already taken. The very first LOCAL user (not counting
+    Windows-Auth/SSO-provisioned rows with no password) becomes admin."""
     conn = _conn()
     cur = conn.cursor()
     cur.execute(f"SELECT username FROM ws_users WHERE username={_ph()}", (username,))
     if cur.fetchall():
         raise ValueError(f"Username '{username}' is already taken.")
-    is_first = count_users() == 0
+    is_first = count_local_users() == 0
     role = "admin" if is_first else "analyst"
     cur.execute(
         f"INSERT INTO ws_users (username, display_name, email, role, created_at, password_hash) "

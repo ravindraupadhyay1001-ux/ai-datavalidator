@@ -10,11 +10,11 @@ is just clearing the cookie client-side.
 import os
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 import jwt
-from passlib.context import CryptContext
 
 from workspace.db import (
-    count_users,
+    count_local_users,
     create_local_user,
     get_user_password_hash,
     set_user_password_hash,
@@ -24,15 +24,24 @@ LOCAL_AUTH_ENABLED = os.getenv("LOCAL_AUTH_ENABLED", "false").lower() == "true"
 _JWT_SECRET = os.getenv("JWT_SECRET", "change-this-in-production")
 _SESSION_HOURS = 8
 
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 class AuthError(Exception):
     """Raised for any local-auth failure (bad credentials, duplicate username, etc.)."""
 
 
+def _hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("ascii")
+
+
+def _verify_password(password: str, password_hash: str) -> bool:
+    try:
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+    except Exception:
+        return False
+
+
 def has_any_users() -> bool:
-    return count_users() > 0
+    return count_local_users() > 0
 
 
 def _make_token(username: str) -> str:
@@ -59,7 +68,7 @@ def login(username: str, password: str) -> str:
     if not username or not password:
         raise AuthError("Username and password are required.")
     password_hash = get_user_password_hash(username)
-    if not password_hash or not _pwd_context.verify(password, password_hash):
+    if not password_hash or not _verify_password(password, password_hash):
         raise AuthError("Invalid username or password.")
     return _make_token(username)
 
@@ -71,7 +80,7 @@ def register(username: str, password: str, full_name: str = "", email: str = "")
         raise AuthError("Username and password are required.")
     if len(password) < 8:
         raise AuthError("Password must be at least 8 characters.")
-    password_hash = _pwd_context.hash(password)
+    password_hash = _hash_password(password)
     try:
         create_local_user(username, password_hash, full_name=full_name, email=email)
     except ValueError as exc:
@@ -88,6 +97,6 @@ def change_password(username: str, old_password: str, new_password: str) -> None
     if len(new_password) < 8:
         raise AuthError("New password must be at least 8 characters.")
     password_hash = get_user_password_hash(username)
-    if not password_hash or not _pwd_context.verify(old_password, password_hash):
+    if not password_hash or not _verify_password(old_password, password_hash):
         raise AuthError("Current password is incorrect.")
-    set_user_password_hash(username, _pwd_context.hash(new_password))
+    set_user_password_hash(username, _hash_password(new_password))

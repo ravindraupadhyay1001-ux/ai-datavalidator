@@ -14970,7 +14970,7 @@ def _render_login_page(
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Sign In -- AI Agent Data Validation</title>
+<title>{title} -- AI Agent Data Validation</title>
 <style>
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
 body{{font-family:"Inter","Segoe UI",sans-serif;background:#0f1117;color:#f1f5f9;

@@ -1,6 +1,6 @@
 fastapi
 uvicorn[standard]
-passlib[bcrypt]
+bcrypt
 PyJWT[crypto]>=2.8
 cryptography>=41
 pandas>=2.2
