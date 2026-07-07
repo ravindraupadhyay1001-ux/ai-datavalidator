@@ -76,11 +76,30 @@
       <h2 class="text-2xl font-bold mb-1 grad-text">File Comparison</h2>
       <p class="text-sm text-gray-500 mb-4">Upload two files; keys are inferred automatically.</p>
       <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-4 max-w-3xl">
-        <div><label class="text-sm text-gray-400">File 1</label><input id="cmp-f1" type="file" class="block w-full text-sm mt-1"></div>
-        <div><label class="text-sm text-gray-400">File 2</label><input id="cmp-f2" type="file" class="block w-full text-sm mt-1"></div>
+        <div><label class="text-sm text-gray-400">File 1</label><input id="cmp-f1" type="file" class="block w-full text-sm mt-1">
+          <select id="cmp-conn1" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
+        <div><label class="text-sm text-gray-400">File 2</label><input id="cmp-f2" type="file" class="block w-full text-sm mt-1">
+          <select id="cmp-conn2" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
         <div><label class="text-sm text-gray-400">Key columns (optional)</label><input id="cmp-keys" class="inp w-full mt-1 text-sm"></div>
         <div><label class="text-sm text-gray-400">Exclude columns (optional)</label><input id="cmp-excl" class="inp w-full mt-1 text-sm"></div>
       </div>
+      <details class="card rounded-xl p-4 mb-4 max-w-3xl text-sm">
+        <summary class="cursor-pointer text-gray-400">&#9881;&#65039; Advanced Options &mdash; Reference Docs &amp; DQ Overrides</summary>
+        <div class="mt-3 space-y-3">
+          <div><label class="text-xs text-gray-400">Reference Docs (data dictionary, business rules, regulatory ref &mdash; auto-classified)</label>
+            <input id="cmp-refdocs" type="file" multiple class="block w-full text-sm mt-1"></div>
+          <div><label class="text-xs text-gray-400">Domain / business context (free text for the AI)</label>
+            <textarea id="cmp-domain" rows="2" class="inp w-full mt-1 text-sm"></textarea></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="text-xs text-gray-400">Column mapping hints</label><input id="cmp-maphints" class="inp w-full mt-1 text-sm"></div>
+            <div><label class="text-xs text-gray-400">Key column hints</label><input id="cmp-keyhints" class="inp w-full mt-1 text-sm"></div>
+            <div><label class="text-xs text-gray-400">Transform hints</label><input id="cmp-transformhints" class="inp w-full mt-1 text-sm"></div>
+            <div><label class="text-xs text-gray-400">Exclude hints</label><input id="cmp-excludehints" class="inp w-full mt-1 text-sm"></div>
+          </div>
+          <div><label class="text-xs text-gray-400">Cross-file / referential rules</label>
+            <textarea id="cmp-crossfilerules" rows="2" class="inp w-full mt-1 text-sm"></textarea></div>
+        </div>
+      </details>
       <div class="flex gap-2 items-center">
         <button onclick="runCompare()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Compare</button>
         <span class="text-gray-500 text-xs">or, if there's no clean key column&hellip;</span>
@@ -95,7 +114,8 @@
       <h2 class="text-2xl font-bold mb-1 grad-text">Data Quality</h2>
       <p class="text-sm text-gray-500 mb-4">7-dimension scoring with rule checks.</p>
       <div class="card rounded-xl p-5 mb-4 max-w-3xl grid grid-cols-2 gap-4">
-        <div><label class="text-sm text-gray-400">File</label><input id="q-f1" type="file" class="block w-full text-sm mt-1"></div>
+        <div><label class="text-sm text-gray-400">File</label><input id="q-f1" type="file" class="block w-full text-sm mt-1">
+          <select id="q-conn1" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
         <div><label class="text-sm text-gray-400">BFSI Rule Pack</label>
           <select id="q-rulepack" class="inp w-full mt-1 text-sm">
             <option value="">None</option>
@@ -107,6 +127,23 @@
             <option value="risk">Risk</option>
           </select></div>
       </div>
+      <details class="card rounded-xl p-4 mb-4 max-w-3xl text-sm">
+        <summary class="cursor-pointer text-gray-400">&#9881;&#65039; Advanced Options &mdash; Reference Docs &amp; DQ Overrides</summary>
+        <div class="mt-3 space-y-3">
+          <div><label class="text-xs text-gray-400">Reference Docs (data dictionary, business rules, regulatory ref &mdash; auto-classified)</label>
+            <input id="q-refdocs" type="file" multiple class="block w-full text-sm mt-1"></div>
+          <div><label class="text-xs text-gray-400">Custom rules / domain context (free text for the AI)</label>
+            <textarea id="q-domain" rows="2" class="inp w-full mt-1 text-sm"></textarea></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="text-xs text-gray-400">Nullable column hints</label><input id="q-nullablehints" class="inp w-full mt-1 text-sm"></div>
+            <div><label class="text-xs text-gray-400">Range / min-max hints</label><input id="q-rangehints" class="inp w-full mt-1 text-sm"></div>
+            <div><label class="text-xs text-gray-400">Timeliness hints</label><input id="q-timelinesshints" class="inp w-full mt-1 text-sm"></div>
+            <div><label class="text-xs text-gray-400">Precision hints</label><input id="q-precisionhints" class="inp w-full mt-1 text-sm"></div>
+          </div>
+          <div><label class="text-xs text-gray-400">Cross-column / referential integrity rules</label>
+            <textarea id="q-crosscolrules" rows="2" class="inp w-full mt-1 text-sm"></textarea></div>
+        </div>
+      </details>
       <div class="flex items-center gap-3 mb-3 flex-wrap">
         <button onclick="runQuality()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Analyze</button>
         <label class="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer" title="After the standard rule checks, ask the LLM to suggest additional rules from the column names and re-run with them included">
@@ -123,7 +160,8 @@
     <section id="tab-profile" class="tab-panel hidden">
       <h2 class="text-2xl font-bold mb-1 grad-text">Data Profile</h2>
       <p class="text-sm text-gray-500 mb-4">Column stats, correlations, near-key candidates.</p>
-      <div class="card rounded-xl p-5 mb-4 max-w-3xl"><label class="text-sm text-gray-400">File</label><input id="prof-f1" type="file" class="block w-full text-sm mt-1"></div>
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl"><label class="text-sm text-gray-400">File</label><input id="prof-f1" type="file" class="block w-full text-sm mt-1">
+        <select id="prof-conn1" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
       <div class="flex items-center gap-3 mb-3">
         <button onclick="runProfile()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Run Data Profile</button>
         <span class="text-gray-600 text-xs">or</span>
@@ -136,7 +174,8 @@
     <section id="tab-governance" class="tab-panel hidden">
       <h2 class="text-2xl font-bold mb-1 grad-text">Governance &amp; PII</h2>
       <p class="text-sm text-gray-500 mb-4">PII detection, sensitivity classification, risk.</p>
-      <div class="card rounded-xl p-5 mb-4 max-w-3xl"><label class="text-sm text-gray-400">File</label><input id="gov-f1" type="file" class="block w-full text-sm mt-1"></div>
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl"><label class="text-sm text-gray-400">File</label><input id="gov-f1" type="file" class="block w-full text-sm mt-1">
+        <select id="gov-conn1" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
       <div class="flex items-center gap-3 mb-3">
         <button onclick="runGovernance()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Scan</button>
         <span class="text-gray-600 text-xs">or</span>
@@ -150,10 +189,14 @@
       <h2 class="text-2xl font-bold mb-1 grad-text">Cross Reference</h2>
       <p class="text-sm text-gray-500 mb-4">Match an identifier (ISIN/CUSIP/LEI/trade_id) across 2&ndash;4 sources; coverage matrix + conflicts.</p>
       <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-4 max-w-3xl">
-        <div><label class="text-sm text-gray-400">Source 1</label><input id="xref-f1" type="file" class="block w-full text-sm mt-1"></div>
-        <div><label class="text-sm text-gray-400">Source 2</label><input id="xref-f2" type="file" class="block w-full text-sm mt-1"></div>
-        <div><label class="text-sm text-gray-400">Source 3 (optional)</label><input id="xref-f3" type="file" class="block w-full text-sm mt-1"></div>
-        <div><label class="text-sm text-gray-400">Source 4 (optional)</label><input id="xref-f4" type="file" class="block w-full text-sm mt-1"></div>
+        <div><label class="text-sm text-gray-400">Source 1</label><input id="xref-f1" type="file" class="block w-full text-sm mt-1">
+          <select id="xref-conn1" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
+        <div><label class="text-sm text-gray-400">Source 2</label><input id="xref-f2" type="file" class="block w-full text-sm mt-1">
+          <select id="xref-conn2" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
+        <div><label class="text-sm text-gray-400">Source 3 (optional)</label><input id="xref-f3" type="file" class="block w-full text-sm mt-1">
+          <select id="xref-conn3" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
+        <div><label class="text-sm text-gray-400">Source 4 (optional)</label><input id="xref-f4" type="file" class="block w-full text-sm mt-1">
+          <select id="xref-conn4" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
         <div class="col-span-2"><label class="text-sm text-gray-400">Identifier key</label><input id="xref-key" placeholder="e.g. isin, cusip, lei, trade_id" class="inp w-full mt-1 text-sm"></div>
       </div>
       <button onclick="runCrossReference()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Run Cross Reference</button>
@@ -164,7 +207,8 @@
     <section id="tab-parse" class="tab-panel hidden">
       <h2 class="text-2xl font-bold mb-1 grad-text">Unstructured Parser</h2>
       <p class="text-sm text-gray-500 mb-4">Extract a clean table from any file.</p>
-      <div class="card rounded-xl p-5 mb-4 max-w-3xl"><label class="text-sm text-gray-400">File</label><input id="par-f1" type="file" class="block w-full text-sm mt-1"></div>
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl"><label class="text-sm text-gray-400">File</label><input id="par-f1" type="file" class="block w-full text-sm mt-1">
+        <select id="par-conn1" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
       <button onclick="runParse()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Parse</button>
       <div id="par-out" class="mt-6"></div>
     </section>
@@ -308,20 +352,67 @@ async function emailReport(sessionId){
   alert(r.error ? ('❌ '+r.error) : '✅ Email sent.');
 }
 
-async function postForm(action, fileInputs, extra){
+async function postForm(action, fileInputs, extra, refDocInputId){
   const fd = new FormData(); fd.append('action', action);
-  for (const [field,id] of fileInputs){ const f=document.getElementById(id).files[0]; if(f) fd.append(field,f); }
-  for (const [k,v] of Object.entries(extra||{})) fd.append(k,v);
+  for (const spec of fileInputs){
+    const [field, id, connField, connId] = spec;
+    const f = document.getElementById(id)?.files[0];
+    if (f) fd.append(field, f);
+    if (connField && connId){
+      const cv = document.getElementById(connId)?.value;
+      if (cv) fd.append(connField, cv);
+    }
+  }
+  for (const [k,v] of Object.entries(extra||{})) { if(v) fd.append(k,v); }
+  if (refDocInputId){
+    const el = document.getElementById(refDocInputId);
+    if (el && el.files) for (const f of el.files) fd.append('ref_docs', f);
+  }
   const r = await fetch('/analyze',{method:'POST',body:fd});
   return { ok:r.ok, data: await r.json() };
 }
 const J = (m,u,b)=>fetch(u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}).then(r=>r.json());
 
+// ---------- Saved connections: populate every .conn-select dropdown ----------
+async function loadConnDropdowns(){
+  let rows; try{ rows = await fetch('/api/ws/connections').then(r=>r.json()); }catch(e){ return; }
+  if(!Array.isArray(rows)) return;
+  document.querySelectorAll('select.conn-select').forEach(sel=>{
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">&mdash; or pick a saved connection &mdash;</option>' +
+      rows.map(c=>`<option value="${c.id}">${esc(c.name)} [${esc(c.source_type)}]</option>`).join('');
+    sel.value = cur;
+  });
+}
+loadConnDropdowns();
+
+// ---------- Advanced options (Reference Docs + DQ/mapping hints) ----------
+function advancedHints(prefix){
+  const v = id => document.getElementById(id)?.value?.trim() || '';
+  const h = {
+    recon_prompt: v(`${prefix}-domain`),
+    mapping_hints: v(`${prefix}-maphints`),
+    key_hints: v(`${prefix}-keyhints`),
+    transform_hints: v(`${prefix}-transformhints`),
+    exclude_hints: v(`${prefix}-excludehints`),
+    cross_file_rules: v(`${prefix}-crossfilerules`),
+    nullable_hints: v(`${prefix}-nullablehints`),
+    range_hints: v(`${prefix}-rangehints`),
+    timeliness_hints: v(`${prefix}-timelinesshints`),
+    precision_hints: v(`${prefix}-precisionhints`),
+    cross_column_rules: v(`${prefix}-crosscolrules`),
+  };
+  Object.keys(h).forEach(k=>{ if(!h[k]) delete h[k]; });
+  return h;
+}
+
 // ---------- Compare ----------
 async function runCompare(){
   const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Comparing&hellip;</span>';
-  const {ok,data}=await postForm('compare',[['files_a','cmp-f1'],['files_b','cmp-f2']],
-    {key_columns:document.getElementById('cmp-keys').value, exclude_columns:document.getElementById('cmp-excl').value});
+  const {ok,data}=await postForm('compare',
+    [['files_a','cmp-f1','conn_a_ids','cmp-conn1'],['files_b','cmp-f2','conn_b_ids','cmp-conn2']],
+    {key_columns:document.getElementById('cmp-keys').value, exclude_columns:document.getElementById('cmp-excl').value,
+     ...advancedHints('cmp')}, 'cmp-refdocs');
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   SESSION=data.session_id; const c=data.counts||{};
   out.innerHTML=`<div class="grid grid-cols-4 gap-3 mb-4">
@@ -389,10 +480,10 @@ async function runQuality(){
   const out=document.getElementById('q-out'); out.innerHTML='<span class="text-gray-400">Analyzing&hellip;</span>';
   const rulePack = document.getElementById('q-rulepack').value;
   const aiEnhanced = document.getElementById('q-ai-enhanced').checked;
-  const extra = {di_scope: 'quality'};
+  const extra = {di_scope: 'quality', ...advancedHints('q')};
   if(rulePack) extra.bfsi_pack = rulePack;
   if(aiEnhanced) extra.di_ai_enhanced = '1';
-  const {ok,data}=await postForm('quality',[['files','q-f1']], extra);
+  const {ok,data}=await postForm('quality',[['files','q-f1','conn_ids','q-conn1']], extra, 'q-refdocs');
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   SESSION=data.session_id; const dim=data.dimensions||{};
   const gradeColor={A:'#10b981',B:'#84cc16',C:'#f59e0b',D:'#f97316',F:'#ef4444'}[data.grade]||'#38bdf8';
@@ -475,7 +566,7 @@ function bar(pct){ const c=pct>=90?'#10b981':pct>=60?'#f59e0b':'#ef4444';
 // ---------- Mapping ----------
 async function runProfile(){
   const out=document.getElementById('prof-out'); out.innerHTML='<span class="text-gray-400">Profiling&hellip;</span>';
-  const {ok,data}=await postForm('quality',[['files','prof-f1']]);
+  const {ok,data}=await postForm('quality',[['files','prof-f1','conn_ids','prof-conn1']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   SESSION=data.session_id;
   let html=`<div class="grid grid-cols-3 gap-3 mb-4 text-sm">
@@ -503,7 +594,7 @@ async function runProfile(){
 // ---------- Governance ----------
 async function runGovernance(){
   const out=document.getElementById('gov-out'); out.innerHTML='<span class="text-gray-400">Scanning&hellip;</span>';
-  const {ok,data}=await postForm('governance',[['files','gov-f1']]);
+  const {ok,data}=await postForm('governance',[['files','gov-f1','conn_ids','gov-conn1']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   SESSION=data.session_id;
   const rc={low:'#10b981',medium:'#f59e0b',high:'#f97316',critical:'#ef4444'}[data.overall_risk];
@@ -537,12 +628,15 @@ async function runCrossReference(){
   if(!key){ out.innerHTML='<div class="text-red-400">Enter the identifier key column name first.</div>'; return; }
   const fd=new FormData(); fd.append('xref_key_col',key);
   const fileIds=['xref-f1','xref-f2','xref-f3','xref-f4'];
+  const connIds=['xref-conn1','xref-conn2','xref-conn3','xref-conn4'];
   let sourceCount=0;
   fileIds.forEach((id,i)=>{
     const f=document.getElementById(id).files[0];
+    const cv=document.getElementById(connIds[i])?.value;
     if(f){ fd.append(`xref_files_${i+1}`,f); sourceCount=i+1; }
+    if(cv){ fd.append(`xref_conn_ids_${i+1}`,cv); sourceCount=i+1; }
   });
-  if(sourceCount<2){ out.innerHTML='<div class="text-red-400">Provide at least 2 source files.</div>'; return; }
+  if(sourceCount<2){ out.innerHTML='<div class="text-red-400">Provide at least 2 source files or connections.</div>'; return; }
   fd.append('xref_source_count', sourceCount);
   const r=await fetch('/xref',{method:'POST',body:fd}); const data=await r.json();
   if(!r.ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
@@ -566,7 +660,7 @@ async function runCrossReference(){
 // ---------- Parse ----------
 async function runParse(){
   const out=document.getElementById('par-out'); out.innerHTML='<span class="text-gray-400">Parsing&hellip;</span>';
-  const {ok,data}=await postForm('parse',[['files','par-f1']]);
+  const {ok,data}=await postForm('parse',[['files','par-f1','conn_ids','par-conn1']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   if(data.error){ out.innerHTML=`<div class="text-red-400">${esc(data.error)}</div>`; return; }
   let html=`<div class="text-sm text-gray-400 mb-2">${(data.columns||[]).length} columns &middot; ${(data.rows||[]).length} rows</div>`;
@@ -613,10 +707,10 @@ async function loadConnections(){ const rows=await fetch('/api/ws/connections').
     <button onclick="delConn(${c.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join(''):'<div class="text-gray-500 text-sm">No connections.</div>'; }
 async function saveConnection(){ const cn_config=document.getElementById('cn-config'), cn_name=document.getElementById('cn-name'), cn_type=document.getElementById('cn-type');
   let cfg; try{cfg=JSON.parse(cn_config.value||'{}');}catch(e){alert('Config must be valid JSON');return;}
-  await J('POST','/api/ws/connections',{name:cn_name.value,source_type:cn_type.value,config:cfg}); cn_name.value='';cn_config.value=''; loadConnections(); }
+  await J('POST','/api/ws/connections',{name:cn_name.value,source_type:cn_type.value,config:cfg}); cn_name.value='';cn_config.value=''; loadConnections(); loadConnDropdowns(); }
 async function testConn(id){ const r=await J('POST',`/api/ws/connections/${id}/test`); alert(r.ok?'✅ Connection OK':'❌ '+(r.error||'failed')); }
 async function previewConn(id){ const r=await fetch(`/api/ws/connections/${id}/preview`).then(x=>x.json()); if(r.detail){alert(r.detail);return;} alert('Columns: '+r.columns.join(', ')+'\n'+r.rows.length+' rows'); }
-async function delConn(id){ if(confirm('Delete connection?')){await fetch(`/api/ws/connections/${id}`,{method:'DELETE'});loadConnections();} }
+async function delConn(id){ if(confirm('Delete connection?')){await fetch(`/api/ws/connections/${id}`,{method:'DELETE'});loadConnections();loadConnDropdowns();} }
 async function loadRulesets(){ const rows=await fetch('/api/ws/rulesets').then(r=>r.json());
   document.getElementById('rs-list').innerHTML=rows.length?rows.map(r=>row(`<span><b>${esc(r.name)}</b> <span class="text-gray-500">#${r.id} ${esc(r.description||'')}</span></span>
     <button onclick="delRuleset(${r.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button>`)).join(''):'<div class="text-gray-500 text-sm">No rulesets.</div>'; }
