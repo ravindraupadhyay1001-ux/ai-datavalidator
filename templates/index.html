@@ -98,6 +98,9 @@
           </div>
           <div><label class="text-xs text-gray-400">Cross-file / referential rules</label>
             <textarea id="cmp-crossfilerules" rows="2" class="inp w-full mt-1 text-sm"></textarea></div>
+          <div><label class="text-xs text-gray-400">DQ Overrides &mdash; per column</label>
+            <div id="cmp-dqgrid" class="mt-1 space-y-1"></div>
+            <button type="button" onclick="addDqOverrideRow('cmp')" class="btn-ghost btn rounded px-2 py-1 text-xs mt-1">+ Add column override</button></div>
         </div>
       </details>
       <div class="flex gap-2 items-center">
@@ -134,12 +137,9 @@
             <input id="q-refdocs" type="file" multiple class="block w-full text-sm mt-1"></div>
           <div><label class="text-xs text-gray-400">Custom rules / domain context (free text for the AI)</label>
             <textarea id="q-domain" rows="2" class="inp w-full mt-1 text-sm"></textarea></div>
-          <div class="grid grid-cols-2 gap-3">
-            <div><label class="text-xs text-gray-400">Nullable column hints</label><input id="q-nullablehints" class="inp w-full mt-1 text-sm"></div>
-            <div><label class="text-xs text-gray-400">Range / min-max hints</label><input id="q-rangehints" class="inp w-full mt-1 text-sm"></div>
-            <div><label class="text-xs text-gray-400">Timeliness hints</label><input id="q-timelinesshints" class="inp w-full mt-1 text-sm"></div>
-            <div><label class="text-xs text-gray-400">Precision hints</label><input id="q-precisionhints" class="inp w-full mt-1 text-sm"></div>
-          </div>
+          <div><label class="text-xs text-gray-400">DQ Overrides &mdash; per column</label>
+            <div id="q-dqgrid" class="mt-1 space-y-1"></div>
+            <button type="button" onclick="addDqOverrideRow('q')" class="btn-ghost btn rounded px-2 py-1 text-xs mt-1">+ Add column override</button></div>
           <div><label class="text-xs text-gray-400">Cross-column / referential integrity rules</label>
             <textarea id="q-crosscolrules" rows="2" class="inp w-full mt-1 text-sm"></textarea></div>
         </div>
@@ -396,14 +396,50 @@ function advancedHints(prefix){
     transform_hints: v(`${prefix}-transformhints`),
     exclude_hints: v(`${prefix}-excludehints`),
     cross_file_rules: v(`${prefix}-crossfilerules`),
-    nullable_hints: v(`${prefix}-nullablehints`),
-    range_hints: v(`${prefix}-rangehints`),
-    timeliness_hints: v(`${prefix}-timelinesshints`),
-    precision_hints: v(`${prefix}-precisionhints`),
     cross_column_rules: v(`${prefix}-crosscolrules`),
+    ...dqOverrideHints(prefix),
   };
   Object.keys(h).forEach(k=>{ if(!h[k]) delete h[k]; });
   return h;
+}
+
+// ---------- DQ Overrides grid: per-column nullable / range / freshness / precision ----------
+function addDqOverrideRow(prefix){
+  const grid = document.getElementById(`${prefix}-dqgrid`);
+  if(!grid) return;
+  const row = document.createElement('div');
+  row.className = 'dq-override-row flex gap-1 items-center flex-wrap';
+  row.innerHTML = `
+    <input placeholder="column name" class="inp text-xs dq-col" style="width:140px">
+    <label class="flex items-center gap-1 text-gray-400"><input type="checkbox" class="dq-nullable accent-sky-500"> nullable ok</label>
+    <input placeholder="min" class="inp text-xs dq-min" style="width:70px">
+    <input placeholder="max" class="inp text-xs dq-max" style="width:70px">
+    <input placeholder="max age (days)" class="inp text-xs dq-age" style="width:110px">
+    <input placeholder="max decimals" class="inp text-xs dq-decimals" style="width:100px">
+    <button type="button" onclick="this.closest('.dq-override-row').remove()" class="text-red-400 px-1">&times;</button>`;
+  grid.appendChild(row);
+}
+
+function dqOverrideHints(prefix){
+  const rows = document.querySelectorAll(`#${prefix}-dqgrid .dq-override-row`);
+  const nullable=[], range=[], age=[], decimals=[];
+  rows.forEach(r=>{
+    const col = r.querySelector('.dq-col').value.trim();
+    if(!col) return;
+    if(r.querySelector('.dq-nullable').checked) nullable.push(col);
+    const min=r.querySelector('.dq-min').value.trim(), max=r.querySelector('.dq-max').value.trim();
+    if(min && max) range.push(`${col} ${min}-${max}`);
+    const ageV=r.querySelector('.dq-age').value.trim();
+    if(ageV) age.push(`${col} ${ageV}`);
+    const dec=r.querySelector('.dq-decimals').value.trim();
+    if(dec) decimals.push(`${col} ${dec}`);
+  });
+  const out={};
+  if(nullable.length) out.nullable_hints = nullable.join(',');
+  if(range.length) out.range_hints = range.join(',');
+  if(age.length) out.timeliness_hints = age.join(',');
+  if(decimals.length) out.precision_hints = decimals.join(',');
+  return out;
 }
 
 // ---------- Compare ----------

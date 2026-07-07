@@ -15920,8 +15920,8 @@ async def analyze(request: Request):
         "trade": {
           "key_hints": "trade_id",
           "nullable_hints": "remarks,comments,free_text",
-          "timeliness_hints": "trade_date,settle_date,booking_date",
-          "range_hints": "notional:0:1e12,price:0:1e9",
+          "timeliness_hints": "trade_date 1,settle_date 1,booking_date 1",
+          "range_hints": "notional 0-1000000000000,price 0-1000000000",
 
 
 
@@ -15934,14 +15934,14 @@ async def analyze(request: Request):
         "position": {
           "key_hints": "account_id,isin",
           "nullable_hints": "comments,benchmark,sector",
-          "timeliness_hints": "valuation_date,as_of_date",
+          "timeliness_hints": "valuation_date 1,as_of_date 1",
           "bfsi_validators": ["isin_format:isin", "positive:market_value",
                     "lei_format:lei", "currency_code_format:currency"],
         },
         "payments": {
           "key_hints": "transaction_id,uetr",
           "nullable_hints": "remittance_info,optional_ref,unstructured",
-          "timeliness_hints": "value_date,settlement_date,created_date",
+          "timeliness_hints": "value_date 1,settlement_date 1,created_date 1",
           "bfsi_validators": ["bic_format:bic", "bic_format:debtor_bic", "bic_format:creditor_bic",
                     "iban_format:iban", "iban_format:debtor_iban", "iban_format:creditor_iban",
                     "currency_code_format:currency", "positive:amount",
@@ -15955,7 +15955,6 @@ async def analyze(request: Request):
         "refdata": {
           "key_hints": "isin,cusip,sedol",
           "nullable_hints": "alias,local_code,notes,description",
-          "timeliness_hints": "effective_date,expiry_date,maturity_date",
           "bfsi_validators": ["isin_format:isin", "cusip_format:cusip", "sedol_format:sedol",
                     "lei_format:lei", "currency_code_format:currency",
                     "mic_format:exchange_mic", "mic_format:venue_mic"],
@@ -15963,7 +15962,7 @@ async def analyze(request: Request):
         "mifid2": {
           "key_hints": "uti,trade_id",
           "nullable_hints": "waiver_indicator,post_trade_flag,commodity_derivative_indicator",
-          "timeliness_hints": "trade_date_time,reporting_date,execution_timestamp",
+          "timeliness_hints": "trade_date_time 1,reporting_date 1,execution_timestamp 1",
           "bfsi_validators": ["lei_format:lei", "lei_format:counterparty_lei",
                     "isin_format:isin", "mic_format:venue_mic",
                     "positive:notional", "positive:price",
@@ -15977,7 +15976,7 @@ async def analyze(request: Request):
         "risk": {
           "key_hints": "book_id,risk_factor",
           "nullable_hints": "comments,override_reason,notes",
-          "timeliness_hints": "as_of_date,run_date,value_date",
+          "timeliness_hints": "as_of_date 1,run_date 1,value_date 1",
           "bfsi_validators": ["currency_code_format:currency",
                     "positive:exposure", "positive:var"],
         },
