@@ -16925,6 +16925,14 @@ async def analyze(request: Request):
                 "pii_detected": bool(c.get("pii_detected")),
                 "pii_types": c.get("pii_detected", []),
                 "sensitivity": str(c.get("sensitivity", "")).lower(),
+                "regulatory": c.get("regulatory", []),
+                "steward": c.get("escalate_to", ""),
+                "mandatory_breaches": c.get("mandatory_breaches", []),
+                "conditional_warnings": c.get("conditional_warnings", []),
+                "business_term": c.get("business_term", ""),
+                "description": c.get("description", ""),
+                "from_dict": bool(c.get("from_dict")),
+                "access_rec": c.get("access_rec", ""),
             }
             for c in g.get("columns", [])
         ]
@@ -16935,10 +16943,21 @@ async def analyze(request: Request):
             recommendations.append(f"{pii_col_count} column(s) contain PII -- consider masking before sharing.")
         if g.get("regulatory_frameworks"):
             recommendations.append(f"Applicable regulatory frameworks: {', '.join(g['regulatory_frameworks'])}.")
+        if g.get("undocumented_columns"):
+            recommendations.append(f"{len(g['undocumented_columns'])} column(s) have no data-dictionary entry.")
 
         return JSONResponse(_sanitize_json({
             "session_id": session_id,
             "overall_risk": overall_risk,
+            "overall_classification": g.get("overall_classification", ""),
+            "regulatory_frameworks": g.get("regulatory_frameworks", []),
+            "pii_column_count": pii_col_count,
+            "bfsi_identifier_col_count": g.get("bfsi_identifier_col_count", 0),
+            "mandatory_breaches": breaches,
+            "conditional_warnings": g.get("conditional_warnings", []),
+            "stewardship_routing": g.get("stewardship_routing", {}),
+            "undocumented_columns": g.get("undocumented_columns", []),
+            "has_data_dict": bool(g.get("has_data_dict")),
             "columns": columns,
             "recommendations": recommendations,
         }))
