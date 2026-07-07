@@ -66,8 +66,14 @@ def _jaccard(set_a: set, set_b: set) -> float:
     return len(set_a & set_b) / len(union) if union else 0.0
 
 
+def _norm_name(name: str) -> str:
+    import re as _re
+    return _re.sub(r"[^a-z0-9]", "", name.lower().strip())
+
+
 def fuzzy_lookup_fingerprint(cols1: list, cols2: list,
-                             threshold: float = 0.7) -> Optional[str]:
+                             threshold: float = 0.7,
+                             file_names: Optional[list] = None) -> Optional[str]:
     with _LOCK:
         store = _load()
         if not store:
@@ -82,11 +88,23 @@ def fuzzy_lookup_fingerprint(cols1: list, cols2: list,
             if score > best_score:
                 best_score = score
                 best_fp = fp
-        return best_fp if best_score >= threshold else None
+        if best_fp and best_score >= threshold:
+            return best_fp
+        # Fall back to matching by file name when the column-based match is
+        # inconclusive (e.g. very few shared/renamed columns) -- the same
+        # source files being re-uploaded is a strong signal on its own.
+        if file_names:
+            current_names = {_norm_name(n) for n in file_names if n}
+            if current_names:
+                for fp, entry in store.items():
+                    saved_names = {_norm_name(n) for n in entry.get("file_names", [])}
+                    if saved_names and current_names & saved_names:
+                        return fp
+        return None
 
 
 def save_rule(fingerprint, rule_text, category="general",
-              dataset_label=None, cols1=None, cols2=None):
+              dataset_label=None, cols1=None, cols2=None, file_names=None):
     queued = not _LOCK.acquire(blocking=False)
     if queued:
         _LOCK.acquire(blocking=True)
@@ -109,6 +127,8 @@ def save_rule(fingerprint, rule_text, category="general",
                 | {_norm_col(c) for c in (cols2 or [])}
             )
             entry["cols"] = all_cols
+        if file_names:
+            entry["file_names"] = list({*entry.get("file_names", []), *file_names})
         for existing in entry["rules"]:
             if existing["rule"].strip().lower() == rule_text.strip().lower():
                 _save(store)
@@ -120,27 +140,42 @@ def save_rule(fingerprint, rule_text, category="general",
         _LOCK.release()
 
 
-def resolve_fingerprint(fingerprint, cols1=None, cols2=None):
+def resolve_fingerprint(fingerprint, cols1=None, cols2=None, file_names=None):
     with _LOCK:
         store = _load()
         if fingerprint in store:
             return fingerprint
-        if cols1 is not None or cols2 is not None:
-            best_fp = fuzzy_lookup_fingerprint(cols1 or [], cols2 or [])
+        if cols1 is not None or cols2 is not None or file_names:
+            best_fp = fuzzy_lookup_fingerprint(cols1 or [], cols2 or [], file_names=file_names)
             if best_fp and best_fp in store:
                 return best_fp
         return fingerprint
 
 
-def get_rules(fingerprint, cols1=None, cols2=None):
+def _rule_matches_module(category: str, module: str) -> bool:
+    # Rules explicitly namespaced to a module (dc_{module}_*, Dataset Controls)
+    # only apply within that module. Recon-specific categories only apply to
+    # compare/lineage-family modules. Everything else (general, manually
+    # saved rules) is shared across all modules for this dataset.
+    if category.startswith("dc_"):
+        return category.startswith(f"dc_{module}_")
+    if category in ("recon_hints", "recon_rule"):
+        return module in ("compare", "lineage", "quality_ai", "profile_ai", "governance_ai")
+    return True
+
+
+def get_rules(fingerprint, cols1=None, cols2=None, file_names=None, module=None):
     with _LOCK:
         store = _load()
-        resolved = resolve_fingerprint(fingerprint, cols1, cols2)
-        return store.get(resolved, {}).get("rules", [])
+        resolved = resolve_fingerprint(fingerprint, cols1, cols2, file_names)
+        rules = store.get(resolved, {}).get("rules", [])
+        if module:
+            rules = [r for r in rules if _rule_matches_module(r.get("category", ""), module)]
+        return rules
 
 
-def get_rules_as_text(fingerprint):
-    rules = get_rules(fingerprint)
+def get_rules_as_text(fingerprint, cols1=None, cols2=None, file_names=None, module=None):
+    rules = get_rules(fingerprint, cols1=cols1, cols2=cols2, file_names=file_names, module=module)
     if not rules:
         return ""
     lines = [f"  [{r['category'].upper()}] {r['rule']}" for r in rules]

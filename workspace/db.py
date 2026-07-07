@@ -178,6 +178,14 @@ _DDL = [
     )""",
     "CREATE INDEX IF NOT EXISTS idx_dq_file ON ws_dq_history(file_name)",
     "CREATE INDEX IF NOT EXISTS idx_dq_user ON ws_dq_history(username)",
+    # migrations for pre-existing databases created before these columns existed
+    "ALTER TABLE ws_dq_history ADD COLUMN schema_fingerprint TEXT",
+    "ALTER TABLE ws_dq_history ADD COLUMN total_rows INTEGER",
+    "ALTER TABLE ws_dq_history ADD COLUMN rule_fails INTEGER",
+    "ALTER TABLE ws_dq_history ADD COLUMN crit_fails INTEGER",
+    "ALTER TABLE ws_dq_history ADD COLUMN session_id TEXT",
+    "ALTER TABLE ws_dq_history ADD COLUMN bfsi_pack TEXT",
+    "ALTER TABLE ws_dq_history ADD COLUMN di_scope TEXT",
 ]
 
 
@@ -594,6 +602,29 @@ def insert_dq_history(file_name, username, score, grade,
         f"(file_name, username, score, grade, completeness, uniqueness, validity, run_at) "
         f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
         (file_name, username, score, grade, completeness, uniqueness, validity, _now()),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def save_dq_history(username, file_name, schema_fingerprint, dq_score, total_rows,
+                    rule_fails, crit_fails, session_id=None, bfsi_pack=None, di_scope=None):
+    """Persist a full DQ run's score breakdown for trend tracking. dq_score is
+    the dict returned by _dq_score() (score, grade, completeness, uniqueness,
+    validity, ...)."""
+    conn = _conn()
+    cur = conn.cursor()
+    cur.execute(
+        f"INSERT INTO ws_dq_history "
+        f"(file_name, username, score, grade, completeness, uniqueness, validity, "
+        f"schema_fingerprint, total_rows, rule_fails, crit_fails, session_id, "
+        f"bfsi_pack, di_scope, run_at) "
+        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},"
+        f"{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
+        (file_name, username, dq_score.get("score"), dq_score.get("grade"),
+         dq_score.get("completeness"), dq_score.get("uniqueness"), dq_score.get("validity"),
+         schema_fingerprint, total_rows, rule_fails, crit_fails, session_id,
+         bfsi_pack, di_scope, _now()),
     )
     conn.commit()
     return cur.lastrowid

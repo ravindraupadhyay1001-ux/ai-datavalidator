@@ -98,13 +98,21 @@
         <div><label class="text-sm text-gray-400">File</label><input id="q-f1" type="file" class="block w-full text-sm mt-1"></div>
         <div><label class="text-sm text-gray-400">BFSI Rule Pack</label>
           <select id="q-rulepack" class="inp w-full mt-1 text-sm">
-            <option value="none">None</option>
-            <option value="trade_order">Trade/Order</option>
+            <option value="">None</option>
+            <option value="trade">Trade/Order</option>
+            <option value="position">Position</option>
             <option value="payments">Payments</option>
-            <option value="mifid_ii">MiFID II</option>
+            <option value="refdata">Reference Data</option>
+            <option value="mifid2">MiFID II</option>
+            <option value="risk">Risk</option>
           </select></div>
       </div>
-      <button onclick="runQuality()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Analyze</button>
+      <div class="flex items-center gap-3 mb-3">
+        <button onclick="runQuality()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Analyze</button>
+        <label class="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer" title="After the standard rule checks, ask the LLM to suggest additional rules from the column names and re-run with them included">
+          <input id="q-ai-enhanced" type="checkbox" class="accent-sky-500"> &#9889; AI-Enhanced (suggest &amp; apply extra rules)
+        </label>
+      </div>
       <div id="q-out" class="mt-6"></div>
       <div id="q-history" class="mt-4"></div>
     </section>
@@ -188,7 +196,15 @@
       <div id="ws-jobs" class="ws-panel hidden">
         <div class="card rounded-xl p-4 mb-4 max-w-3xl grid grid-cols-2 gap-3 text-sm">
           <input id="jb-name" placeholder="Job name" class="inp">
-          <select id="jb-action" class="inp"><option value="compare">compare</option><option value="quality">quality</option></select>
+          <select id="jb-action" class="inp">
+            <option value="compare">compare</option>
+            <option value="quality">quality</option>
+            <option value="profile">profile</option>
+            <option value="governance">governance</option>
+            <option value="lineage">lineage</option>
+            <option value="parse">parse</option>
+            <option value="xref">xref</option>
+          </select>
           <input id="jb-conna" placeholder="conn_a / source id" class="inp">
           <input id="jb-connb" placeholder="conn_b id (compare)" class="inp">
           <input id="jb-cron" placeholder="cron e.g. 0 6 * * *" class="inp">
@@ -277,8 +293,8 @@ const J = (m,u,b)=>fetch(u,{method:m,headers:{'Content-Type':'application/json'}
 // ---------- Compare ----------
 async function runCompare(){
   const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Comparing&hellip;</span>';
-  const {ok,data}=await postForm('compare',[['file1','cmp-f1'],['file2','cmp-f2']],
-    {key_cols:cmp_keys.value, exclude_cols:cmp_excl.value});
+  const {ok,data}=await postForm('compare',[['files_a','cmp-f1'],['files_b','cmp-f2']],
+    {key_columns:cmp_keys.value, exclude_columns:cmp_excl.value});
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   SESSION=data.session_id; const c=data.counts||{};
   out.innerHTML=`<div class="grid grid-cols-4 gap-3 mb-4">
@@ -309,26 +325,21 @@ async function runCompare(){
     options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#94a3b8'}},y:{ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}}}}});
 }
 
-// ---------- Complex Recon ----------
+// ---------- Complex Recon (AI Copilot chat-driven) ----------
 async function runComplexRecon(){
-  const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Extracting side/quantity and matching&hellip;</span>';
+  const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Loading files for the AI Copilot&hellip;</span>';
   const textCol = document.getElementById('cmp-textcol').value.trim();
   if(!textCol){ out.innerHTML='<div class="text-red-400">Enter the free-text description column name first.</div>'; return; }
-  const {ok,data}=await postForm('complex_recon',[['file1','cmp-f1'],['file2','cmp-f2']], {key_cols:textCol});
+  const {ok,data}=await postForm('lineage',[['files_a','cmp-f1'],['files_b','cmp-f2']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
-  SESSION=data.session_id; const c=data.counts||{}; const cov=data.extraction_coverage||{};
-  out.innerHTML=`<div class="text-xs text-gray-400 mb-3">${esc(data.method||'')} &middot; column: <span class="text-sky-300">${esc(data.source_column||textCol)}</span>
-    &middot; extraction coverage: F1 ${cov.file1_pct??0}% / F2 ${cov.file2_pct??0}%</div>
-    <div class="grid grid-cols-4 gap-3 mb-4">
-    ${stat('Matched', c.matched??'&mdash;', '#10b981')}
-    ${stat('Only in File 1', c.file1_only??0, '#f59e0b')}
-    ${stat('Only in File 2', c.file2_only??0, '#f59e0b')}
-    ${stat('Modified', c.modified??0, '#38bdf8')}</div>`;
-  if(data.modified?.length){
-    out.innerHTML += `<h3 class="font-semibold mt-2 mb-2">Modified rows (sample)</h3><div class="space-y-2">`+
-      data.modified.slice(0,20).map(m=>`<div class="card rounded-lg p-2 text-xs"><b class="text-sky-300">${esc(m.key)}</b>: `+
-        Object.entries(m.changes).map(([k,v])=>`${esc(k)}: <span class="text-amber-300">${esc(v.file1)}</span>&rarr;<span class="text-emerald-300">${esc(v.file2)}</span>`).join(' &middot; ')+`</div>`).join('')+`</div>`;
-  }
+  SESSION=data.session_id;
+  out.innerHTML=`<div class="card rounded-xl p-4 text-sm text-gray-300">
+    Files loaded (${(data.file_names||[]).join(' vs ')}). Complex matching on free-text columns is driven by the
+    <b class="text-sky-300">AI Copilot</b> panel &rarr;. A starter message has been filled in for you &mdash;
+    review it and hit Send to define the match rule for <b class="text-sky-300">${esc(textCol)}</b>.</div>`;
+  const chatInput = document.getElementById('chat-in');
+  chatInput.value = `Match rows between the two files by extracting the buy/sell side and quantity from the free-text column "${textCol}", then compare the remaining fields for each matched row.`;
+  chatInput.focus();
   out.innerHTML += `<div class="mt-4 flex gap-2">
     <a href="/download/${data.session_id}" class="btn-emerald btn rounded-lg px-4 py-2 text-sm">&#11015; Download Excel</a>
     <button onclick="saveToWorkspace()" class="btn-indigo btn rounded-lg px-4 py-2 text-sm">&#128190; Save to Workspace</button></div>`;
@@ -338,7 +349,11 @@ async function runComplexRecon(){
 async function runQuality(){
   const out=document.getElementById('q-out'); out.innerHTML='<span class="text-gray-400">Analyzing&hellip;</span>';
   const rulePack = document.getElementById('q-rulepack').value;
-  const {ok,data}=await postForm('quality',[['file1','q-f1']], {hints: JSON.stringify({rule_pack: rulePack})});
+  const aiEnhanced = document.getElementById('q-ai-enhanced').checked;
+  const extra = {di_scope: 'quality'};
+  if(rulePack) extra.bfsi_pack = rulePack;
+  if(aiEnhanced) extra.di_ai_enhanced = '1';
+  const {ok,data}=await postForm('quality',[['files','q-f1']], extra);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   SESSION=data.session_id; const dim=data.dimensions||{};
   const gradeColor={A:'#10b981',B:'#84cc16',C:'#f59e0b',D:'#f97316',F:'#ef4444'}[data.grade]||'#38bdf8';
@@ -364,6 +379,11 @@ async function runQuality(){
       <div class="text-xs text-gray-400 mb-2">Correlated columns <span class="text-gray-600">(|r| &gt; 0.7)</span></div>
       <div class="space-y-1">${data.correlations.map(c=>`<div>${esc(c.col_a)} &harr; ${esc(c.col_b)}: <span class="${Math.abs(c.r)>0.9?'text-emerald-300':'text-amber-300'}">${c.r}</span></div>`).join('')}</div></div>` : ''}
   </div>` : ''}
+  ${data.ai_rule_results?.length ? `<div class="card rounded-xl p-4 mt-4">
+      <div class="text-xs text-sky-300 mb-2">&#9889; AI-Enhanced &mdash; ${data.ai_rule_results.length} additional rule(s) suggested and checked
+        ${data.ai_dq_score?.score!=null ? `(re-scored: ${data.ai_dq_score.score}/100 ${data.ai_dq_score.grade||''})` : ''}</div>
+      <div class="space-y-1 text-xs">${data.ai_rule_results.map(r=>`<div>${esc(r.rule_name||r.rule_type||'')} &middot; ${esc(r.column_name||'')}: <span class="${r.status==='PASS'?'text-emerald-300':'text-red-300'}">${esc(r.status||'')}</span></div>`).join('')}</div>
+    </div>` : ''}
   <div class="mt-4 flex gap-2"><a href="/download/${data.session_id}" class="btn-emerald btn rounded-lg px-4 py-2 text-sm">&#11015; Download Excel</a>
     <button onclick="saveToWorkspace()" class="btn-indigo btn rounded-lg px-4 py-2 text-sm">&#128190; Save to Workspace</button></div>`;
   chart('qGauge',{type:'doughnut',data:{datasets:[{data:[data.score,100-data.score],
@@ -380,9 +400,9 @@ async function loadDqHistory(fileName, currentScore){
   const box=document.getElementById('q-history'); box.innerHTML='';
   if(!fileName) return;
   let hist, baseline;
-  try{ hist = await J('GET', `/api/ws/dq/history/${encodeURIComponent(fileName)}?days=30`); }
+  try{ hist = await J('GET', `/api/dq/history/${encodeURIComponent(fileName)}?days=30`); }
   catch(e){ hist = null; }
-  try{ baseline = await J('GET', `/api/ws/dq/baseline/${encodeURIComponent(fileName)}`); }
+  try{ baseline = await J('GET', `/api/dq/baseline/${encodeURIComponent(fileName)}`); }
   catch(e){ baseline = null; }
 
   let html = '';
@@ -417,7 +437,7 @@ function bar(pct){ const c=pct>=90?'#10b981':pct>=60?'#f59e0b':'#ef4444';
 // ---------- Mapping ----------
 async function runProfile(){
   const out=document.getElementById('prof-out'); out.innerHTML='<span class="text-gray-400">Profiling&hellip;</span>';
-  const {ok,data}=await postForm('quality',[['file1','prof-f1']]);
+  const {ok,data}=await postForm('quality',[['files','prof-f1']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   SESSION=data.session_id;
   let html=`<div class="grid grid-cols-3 gap-3 mb-4 text-sm">
@@ -445,7 +465,7 @@ async function runProfile(){
 // ---------- Governance ----------
 async function runGovernance(){
   const out=document.getElementById('gov-out'); out.innerHTML='<span class="text-gray-400">Scanning&hellip;</span>';
-  const {ok,data}=await postForm('governance',[['file1','gov-f1']]);
+  const {ok,data}=await postForm('governance',[['files','gov-f1']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   SESSION=data.session_id;
   const rc={low:'#10b981',medium:'#f59e0b',high:'#f97316',critical:'#ef4444'}[data.overall_risk];
@@ -476,10 +496,16 @@ async function runCrossReference(){
   const out=document.getElementById('xref-out'); out.innerHTML='<span class="text-gray-400">Cross-referencing&hellip;</span>';
   const key=document.getElementById('xref-key').value.trim();
   if(!key){ out.innerHTML='<div class="text-red-400">Enter the identifier key column name first.</div>'; return; }
-  const fd=new FormData(); fd.append('action','cross_reference'); fd.append('key_cols',key);
-  [['file1','xref-f1'],['file2','xref-f2'],['file3','xref-f3'],['file4','xref-f4']].forEach(([field,id])=>{
-    const f=document.getElementById(id).files[0]; if(f) fd.append(field,f); });
-  const r=await fetch('/analyze',{method:'POST',body:fd}); const data=await r.json();
+  const fd=new FormData(); fd.append('xref_key_col',key);
+  const fileIds=['xref-f1','xref-f2','xref-f3','xref-f4'];
+  let sourceCount=0;
+  fileIds.forEach((id,i)=>{
+    const f=document.getElementById(id).files[0];
+    if(f){ fd.append(`xref_files_${i+1}`,f); sourceCount=i+1; }
+  });
+  if(sourceCount<2){ out.innerHTML='<div class="text-red-400">Provide at least 2 source files.</div>'; return; }
+  fd.append('xref_source_count', sourceCount);
+  const r=await fetch('/xref',{method:'POST',body:fd}); const data=await r.json();
   if(!r.ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   SESSION=data.session_id; const c=data.counts||{};
   let html=`<div class="grid grid-cols-3 gap-3 mb-4">
@@ -501,7 +527,7 @@ async function runCrossReference(){
 // ---------- Parse ----------
 async function runParse(){
   const out=document.getElementById('par-out'); out.innerHTML='<span class="text-gray-400">Parsing&hellip;</span>';
-  const {ok,data}=await postForm('parse',[['file1','par-f1']]);
+  const {ok,data}=await postForm('parse',[['files','par-f1']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   if(data.error){ out.innerHTML=`<div class="text-red-400">${esc(data.error)}</div>`; return; }
   let html=`<div class="text-sm text-gray-400 mb-2">${(data.columns||[]).length} columns &middot; ${(data.rows||[]).length} rows</div>`;
@@ -569,8 +595,8 @@ async function loadSavedRuns(){ const rows=await fetch('/api/ws/saved-runs').the
     <button onclick="delSaved(${s.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join(''):'<div class="text-gray-500 text-sm">No saved runs.</div>'; }
 async function delSaved(id){ if(confirm('Delete saved run?')){await fetch(`/api/ws/saved-runs/${id}`,{method:'DELETE'});loadSavedRuns();} }
 let _auditES=null;
-function startAudit(){ if(_auditES)return; _auditES=new EventSource('/api/audit/stream');
-  _auditES.onmessage=e=>{ try{const d=JSON.parse(e.data); au_log.innerHTML=`<div><span class="text-gray-500">${(d.ts||'').slice(11,19)}</span> <span class="text-sky-300">${esc(d.action)}</span> ${esc(d.username||'')} &mdash; ${esc(d.detail||'')}</div>`+au_log.innerHTML;}catch(_){} }; }
+function startAudit(){ if(_auditES)return; _auditES=new EventSource('/api/logs/stream');
+  _auditES.onmessage=e=>{ try{const d=JSON.parse(e.data); au_log.innerHTML=`<div><span class="text-gray-500">${(d.created_at||'').slice(11,19)}</span> <span class="text-sky-300">${esc(d.action)}</span> ${esc(d.username||'')} &mdash; ${esc(d.detail||'')}</div>`+au_log.innerHTML;}catch(_){} }; }
 async function saveToWorkspace(){ if(!SESSION){alert('Run an analysis first.');return;} const name=prompt('Name this saved run:'); if(!name)return;
   await J('POST','/api/ws/saved-runs',{session_id:SESSION,name}); alert('Saved to workspace.'); }
 

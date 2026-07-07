@@ -6314,8 +6314,21 @@ def analyze_quality(df: pd.DataFrame, name: str,
             "hint_nullable":    _is_hint_nullable,
         }
 
-        if pd.api.types.is_numeric_dtype(s):
-            clean = s.dropna()
+        _numeric_s = s
+        _is_numeric_col = pd.api.types.is_numeric_dtype(s)
+        if not _is_numeric_col and not pd.api.types.is_datetime64_any_dtype(s):
+            # _load_file() loads every column as string (often pandas' modern
+            # StringDtype, which is NOT == object) -- coerce here so
+            # numeric-looking columns (the common case for CSV/TXT/Excel
+            # uploads) still get real min/max/outlier stats.
+            _coerced = pd.to_numeric(s, errors="coerce")
+            _non_null = s.notna().sum()
+            if _non_null and _coerced.notna().sum() / _non_null >= 0.9:
+                _is_numeric_col = True
+                _numeric_s = _coerced
+
+        if _is_numeric_col:
+            clean = _numeric_s.dropna()
             if len(clean):
                 q1, q3 = float(clean.quantile(0.25)), float(clean.quantile(0.75))
                 iqr = q3 - q1
@@ -7229,11 +7242,23 @@ def _compute_col_stats(df: pd.DataFrame) -> dict[str, dict]:
         is_obj = s.dtype == object
 
         mn = mx = mu = sd = None
+        numeric_series = s
+        if not is_num and not is_dt:
+            # _load_file() loads every column as string (often pandas' modern
+            # StringDtype, which is NOT == object) -- coerce here so
+            # numeric-looking columns (the common case for CSV/TXT/Excel
+            # uploads) still get real stats.
+            coerced = pd.to_numeric(s, errors="coerce")
+            non_null = s.notna().sum()
+            if non_null and coerced.notna().sum() / non_null >= 0.9:
+                is_num = True
+                numeric_series = coerced
+
         if is_num:
 
             # ==== SOURCE PAGE 0340 ====
 
-            clean = s.dropna()
+            clean = numeric_series.dropna()
             if len(clean):
                 mn = float(clean.min())
                 mx = float(clean.max())
@@ -7402,6 +7427,8 @@ def analyze_quality_full(
     }
     if cs["is_numeric"] and cs["min"] is not None:
       clean = df[col].dropna()
+      if not pd.api.types.is_numeric_dtype(clean):
+        clean = pd.to_numeric(clean, errors="coerce").dropna()
       q1, q3 = float(clean.quantile(0.25)), float(clean.quantile(0.75))
       iqr  = q3 - q1
       out_n = int(((clean < q1 - 1.5 * iqr) | (clean > q3 + 1.5 * iqr)).sum())
@@ -14434,10 +14461,24 @@ async def get_dq_history_endpoint(file_name: str, request: Request):
     except Exception:
         username = "default"
     try:
-        rows = _ws_db.get_dq_history(username, file_name, limit=30)
+        rows = _ws_db.get_dq_history(file_name, username, days=30)
         return JSONResponse(rows)
     except Exception as e:
         return JSONResponse([], status_code=200)
+
+
+@app.get("/api/dq/baseline/{file_name}")
+async def get_dq_baseline_endpoint(file_name: str, request: Request):
+    """Get the earliest recorded DQ score for a file (for the vs-baseline banner)."""
+    try:
+        username = _ws_resolve_username(request) or "default"
+    except Exception:
+        username = "default"
+    try:
+        baseline = _ws_db.get_dq_baseline(file_name, username)
+        return JSONResponse(baseline)
+    except Exception:
+        return JSONResponse(None)
 
 
 
@@ -15146,7 +15187,7 @@ async def preview_file(request: Request):
     })
 
 
-@app.post("/xref", response_class=HTMLResponse)
+@app.post("/xref")
 async def xref_analyze(request: Request):
 
     # Cross Reference endpoint -- receives N source files/connections,
@@ -15223,10 +15264,10 @@ async def xref_analyze(request: Request):
                 except Exception as exc:
                     _log(f"Could not fetch connection {cid} for source {i}: {exc}", "WARN")
 
-            if df is not None and len(df) > 0:
-                sources.append((name_raw, df))
-            else:
-                _log(f"Source {i} '{name_raw}' has no data -- skipped", "WARN")
+        if df is not None and len(df) > 0:
+            sources.append((name_raw, df))
+        else:
+            _log(f"Source {i} '{name_raw}' has no data -- skipped", "WARN")
         # NOTE: dropped a duplicated/mis-indented re-photograph of this
         # "if df is not None..." + option-parsing block (source page 0701
         # overlapped 0700/0702) that would have re-run per source or
@@ -15371,25 +15412,31 @@ async def xref_analyze(request: Request):
     )
     _saved_rules_text = _fp_rules_text(_dataset_fingerprint)
 
-    return templates.TemplateResponse("index.html", {
-        "request":           request,
-        "action":            "xref",
-        "xref":              xr,
-        "session_id":        session_id,
+    _summary = xr.get("summary", {})
+    _cov = xr.get("coverage_matrix", {})
+    _cov_sources = _cov.get("source_names", [])
+    _cov_rows = [
+        {"identifier": row["key"], **{s: (s in row["present_in"]) for s in _cov_sources}}
+        for row in _cov.get("rows", [])
+    ]
+    _conflicts = [
+        {"identifier": c["key"], "field": c["field"], "values": c.get("values", {})}
+        for c in xr.get("conflicts", [])
+    ]
+    return JSONResponse(_sanitize_json({
+        "session_id": session_id,
+        "counts": {
+            "total_identifiers": _summary.get("total_keys", 0),
+            "in_all_sources": _summary.get("matched_in_all", 0),
+            "conflicts": _summary.get("conflict_count", 0),
+        },
+        "identifier_key": xr.get("key_col_used", ""),
+        "sources": _cov_sources,
+        "coverage_matrix": _cov_rows,
+        "conflicts": _conflicts,
         "dataset_fingerprint": _dataset_fingerprint,
-        "saved_rules":       _fp_get_rules(_dataset_fingerprint),
-        "elapsed":           total_elapsed,
-        "proc_logs":         proc_logs,
-        # Standard empty fields so template doesn't error
-        "pairs": [], "quality_reports": [], "governance_reports": [],
-
-
-
-# ==== SOURCE PAGE 0708 ====
-
-        "mappings": [], "parse_reports": [], "lineage_reports": [],
-        "profile_reports": [], "ref_log": [],
-    })
+        "elapsed": total_elapsed,
+    }))
 
 
 def _ws_check_soft() -> bool:
@@ -15401,7 +15448,7 @@ def _ws_check_soft() -> bool:
         return False
 
 
-@app.post("/analyze", response_class=HTMLResponse)
+@app.post("/analyze")
 async def analyze(request: Request):
     # --- Processing log ---
     _t0 = time.time()
@@ -15936,402 +15983,402 @@ async def analyze(request: Request):
       }
 
 
-    # Build cross-file ref dict -- every other file can be used as a reference
-    _cross_file_map = {fname: df for fname, df in dataframes}
-    # For merged analysis, pair up files: first file gets second as df2 (and vice versa)
-    _df_map = {fname: df for fname, df in dataframes}
-    _fnames = [fname for fname, _ in dataframes]
-    for fname, df in dataframes:
-      _log(f"Running Data Intelligence (DQ + Profile + Governance) on '{fname}'")
-      _hints = dict(user_hints) if user_hints else {}
-
-
-
-    # ==== SOURCE PAGE 0734 ====
-
-      _hints["cross_file_ref_data"] = {k: v for k, v in _cross_file_map.items() if k != fname}
-      # Load saved baseline if exists
-      _safe_fname = re.sub(r'[^\w\-.]', '_', fname)
-      _baseline_path = Path("workspace") / "dq_baselines" / f"{_safe_fname}.json"
-      if _baseline_path.exists():
-        try:
-          import json as _json_bl
-          _hints["dq_baseline"] = _json_bl.loads(_baseline_path.read_text(encoding="utf-8"))
-        except Exception:
-          pass
-      # Auto-load saved DQ rules for this schema if user didn't supply col_config
-      if not _hints.get("col_config"):
-        try:
-          _fp_val = _dq_schema_fingerprint(df)
-          _rules_path = Path("workspace") / "dq_rules" / f"{_fp_val}.json"
-          if _rules_path.exists():
-            _saved_cfg = json.loads(_rules_path.read_text(encoding="utf-8"))
-            if _saved_cfg.get("col_config"):
-
-
-
-    # ==== SOURCE PAGE 0735 ====
-
-              _hints["col_config"] = _saved_cfg["col_config"]
-              _log(f"Auto-loaded DQ rules for schema {_fp_val}")
-        except Exception as _e_fp:
-          pass
-
-
-    # -- Merge BFSI Rule Pack hints (only fills blanks, never overrides user input) --
-    if _bfsi_pack and _bfsi_pack in _BFSI_PACK_HINTS:
-      pack_cfg = _BFSI_PACK_HINTS[_bfsi_pack]
-      if not _hints.get("timeliness_hints") and pack_cfg.get("timeliness_hints"):
-        _hints["timeliness_hints"] = pack_cfg["timeliness_hints"]
-      if not _hints.get("nullable_hints") and pack_cfg.get("nullable_hints"):
-        _hints["nullable_hints"] = pack_cfg["nullable_hints"]
-      if pack_cfg.get("bfsi_validators"):
-        _hints["bfsi_validators"] = pack_cfg["bfsi_validators"]
-
-
-    # -- Auto-inject domain accuracy rules from column names ----------------
-    # Detects columns like "currency", "ccy", "country_code", "side" etc.
-    # and injects domain_accuracy validators automatically.
-    _domain_col_map = {
-
-
-
-    # ==== SOURCE PAGE 0736 ====
-
-      "currency_code": ["currency","ccy","base_currency","quote_currency",
-                "settlement_currency","reporting_currency","traded_ccy"],
-      "country_code": ["country","country_code","domicile","nationality",
-               "issuer_country","country_of_risk"],
-      "asset_class":  ["asset_class","asset_type","instrument_class"],
-      "side":     ["side","direction","buy_sell","buysell"],
-      "trade_type":  ["trade_type","transaction_type","product_type"],
-      "settlement_type": ["settlement_type","setl_type","delivery_type"],
-    }
-    _auto_domain_validators = list(_hints.get("bfsi_validators", []))
-    _existing_v_cols = {v.split(":")[1].lower() for v in _auto_domain_validators if ":" in v}
-
-    for domain, col_hints in _domain_col_map.items():
-      for col in df.columns:
-        if col.lower() in col_hints and col.lower() not in _existing_v_cols:
-          _auto_domain_validators.append(f"domain_accuracy_{domain}:{col}")
-          _existing_v_cols.add(col.lower())
-    if _auto_domain_validators:
-      _hints["bfsi_validators"] = _auto_domain_validators
-
-
-
-    # ==== SOURCE PAGE 0737 ====
-
-    # -- Auto-inject BFSI temporal consistency rules ----------------
-    # Detect trade_date/settle_date pairs and inject T+2 validation.
-    # Also inject quantity>0 when side=BUY, notional>0 always.
-    _auto_cross = list(_hints.get("cross_column_rules", "").split(";"))
-    _auto_cross = [x for x in _auto_cross if x.strip()]
-    _df_cols_lower = {c.lower(): c for c in df.columns}
-
-
-    # trade_date < settle_date
-    _td = next((v for k, v in _df_cols_lower.items() if "trade_date" in k or k == "trd_dt"), None)
-    _sd = next((v for k, v in _df_cols_lower.items() if "settle_date" in k or "settlement_date" in k or k == "setl_dt"), None)
-    if _td and _sd and not any("settle" in r and "trade" in r for r in _auto_cross):
-      _hints["bfsi_validators"] = list(_hints.get("bfsi_validators", [])) + [
-        f"not_future_date:{_td}"
-      ]
-
-
-    # notional > 0
-
-
-
-    # ==== SOURCE PAGE 0738 ====
-
-    _notional = next((v for k, v in _df_cols_lower.items() if k in
-      ("notional","notional_amount","face_value","face_amount")), None)
-    if _notional:
-      _existing_v = {v for v in _hints.get("bfsi_validators", [])}
-      if f"positive:{_notional}" not in _existing_v:
-        _hints.setdefault("bfsi_validators", [])
-        _hints["bfsi_validators"] = list(_hints["bfsi_validators"]) + [f"positive:{_notional}"]
-
-
-    # -- Auto-inject address completeness for known address columns ----
-    _addr_cols = [v for k, v in _df_cols_lower.items()
-          if any(h in k for h in ("address","street","addr","postal"))]
-    if _addr_cols:
-      _addr_v = list(_hints.get("bfsi_validators", []))
-      for _ac in _addr_cols[:3]:
-        if f"address_complete:{_ac}" not in _addr_v:
-          _addr_v.append(f"address_complete:{_ac}")
-      _hints["bfsi_validators"] = _addr_v
-
-
-    # Pair with the other file for cross-file mapping recon (if two files uploaded)
-
-
-
-    # ==== SOURCE PAGE 0739 ====
-
-      _other_fname = next((n for n in _fnames if n != fname), None)
-      _df2 = _df_map.get(_other_fname) if _other_fname else None
-
-
-    # -- Merged single call: DQ + Profile + Governance + Mapping recon --
-      q = await asyncio.to_thread(
-        analyze_quality_full,
-        df, fname,
-        data_dict, rules,
-        _hints,
-        _df2, _other_fname,
-      )
-      q["file_format"] = df.attrs.get("_format", "")
-
-
-    # -- ML Anomaly detection -- z-score outliers across numeric columns --
-      try:
-        q["anomaly_results"] = await asyncio.to_thread(
-          detect_numeric_anomalies, df, 3.0
-        )
-      except Exception:
-
-
-
-    # ==== SOURCE PAGE 0740 ====
-
-        q["anomaly_results"] = []
-
-      # -- Categorical distribution clustering (Ataccama-style) --------
-      try:
-        _cat_baseline = q.get("baseline_snapshot")
-        q["categorical_drift"] = await asyncio.to_thread(
-          detect_categorical_drift, df, _cat_baseline
-        )
-      except Exception:
-        q["categorical_drift"] = []
-
-      # -- Unsupervised numeric clustering --------------------
-      try:
-        q["numeric_clusters"] = await asyncio.to_thread(
-          detect_numeric_clusters, df
-        )
-      except Exception:
-        q["numeric_clusters"] = []
-
-
-
-    # ==== SOURCE PAGE 0741 ====
-
-      # -- AI-Enhanced: LLM suggests additional rules, re-run with them ------
-      if _di_ai_enhanced and "quality" in _di_scope:
-        try:
-          _log(f"AI-Enhanced: calling LLM for additional DQ rules on '{fname}'")
-
-          # Build compact column profile for LLM
-          _col_summaries = []
-          for _col in df.columns:
-            _s = df[_col]
-            _cs = {
-              "name":   _col,
-              "dtype":  str(_s.dtype),
-              "null_pct": round(float(_s.isna().mean() * 100), 1),
-              "unique_n": int(_s.nunique(dropna=True)),
-              "total":  len(_s),
-              "sample":  _s.dropna().astype(str).head(6).tolist(),
-            }
-            if pd.api.types.is_numeric_dtype(_s):
-              _clean = _s.dropna()
-
-
-
-    # ==== SOURCE PAGE 0742 ====
-
-              if len(_clean):
-                _cs["min"] = round(float(_clean.min()), 4)
-                _cs["max"] = round(float(_clean.max()), 4)
-                _cs["mean"] = round(float(_clean.mean()), 4)
-              _col_summaries.append(_cs)
-
-              # Include existing failures as context
-              _existing_fails = [
-                {"rule": r.get("rule_name",""), "column": r.get("column_name",""), "failed": r.get("failed",0)}
-                for r in q["rule_results"] if r.get("status") == "FAIL"
-              ][:10]
-
-              _sys = (
-                "You are a senior BFSI data quality engineer. "
-                "You are given column profiles and existing rule failures for a dataset. "
-                "Suggest ADDITIONAL data quality rules that go beyond what was already checked. "
-                "Focus on business meaning, cross-column relationships, BFSI-specific patterns. "
-
-
-
-    # ==== SOURCE PAGE 0743 ====
-
-                "Use only these rule_type values: range, allowed_values, pattern, positive, "
-                "non_negative, integer_only, not_future_date, isin_format, cusip_format, "
-                "sedol_format, lei_format, bic_format, iban_format, currency_code_format, "
-                "mic_format, email_format, date_format, freshness_days, decimal_places, "
-                "domain_accuracy, address_complete, uppercase, lowercase. "
-                "Return ONLY a valid JSON array. Each element: "
-                "{name, rule_type, value, reason, severity} where severity is critical/major/minor. "
-                "Return [] if no confident additional suggestions."
-              )
-              _usr = (
-                f"Dataset: {fname} ({len(df)} rows, {len(df.columns)} cols)\n"
-                f"Existing failures: {json.dumps(_existing_fails)}\n"
-                f"Column profiles: {json.dumps(_col_summaries, indent=1)}\n"
-                "Suggest additional rules. JSON array only."
-              )
-
-
-
-    # ==== SOURCE PAGE 0744 ====
-
-              _ai_raw = await asyncio.to_thread(
-                _ask_llm,
-                [{"role": "user", "content": [{"text": _usr}]}],
-                _sys,
-              )
-              _ai_match = re.search(r'\[.*\]', _ai_raw, re.DOTALL)
-              _ai_suggestions = json.loads(_ai_match.group()) if _ai_match else []
-
-              # Validate and inject into a fresh hints copy
-              _ai_validators = []
-              for _sg in _ai_suggestions:
-                if not isinstance(_sg, dict) or not _sg.get("name") or not _sg.get("rule_type"):
-                  continue
-                _ai_validators.append({
-                  "name":   str(_sg["name"]),
-                  "rule_type": str(_sg["rule_type"]),
-                  "value":  str(_sg.get("value", "") or ""),
-                  "severity": str(_sg.get("severity", "major")),
-
-
-
-    # ==== SOURCE PAGE 0745 ====
-
-                  "reason":  str(_sg.get("reason", "")),
-                })
-
-
-              if _ai_validators:
-                _log(f"AI-Enhanced: LLM suggested {len(_ai_validators)} additional rules -- re-running DQ")
-                _ai_hints = dict(_hints)
-                _ai_col_config = list(_ai_hints.get("col_config", []))
-                for _av in _ai_validators:
-                  _col_match = next((c for c in df.columns if c.lower() == _av["name"].lower()), None)
-                  if _col_match:
-                    _ai_col_config.append({
-                      "name":   _col_match,
-                      "rule_type": _av["rule_type"],
-                      "value":  _av.get("value", ""),
-                      "severity": _av.get("severity", "major"),
-                      "_ai_generated": True,
-                      "_ai_reason": _av.get("reason", ""),
-                    })
-
-
-
-    # ==== SOURCE PAGE 0746 ====
-
-                _ai_hints["col_config"] = _ai_col_config
-
-                # Re-run with AI rules
-                q_ai = await asyncio.to_thread(
-                  analyze_quality_full, df, fname, data_dict, rules, _ai_hints, _df2,
-                  _other_fname
-                )
-                # Extract only the AI-generated rule results
-                q["ai_rule_results"] = [
-                  {**r, "_ai_reason": next(
-                    (_av.get("reason","") for _av in _ai_validators
-                     if _av["name"].lower() == (r.get("column_name","") or "").lower()
-                     and _av["rule_type"] == r.get("rule_type","")), ""
-                  )}
-                  for r in q_ai.get("rule_results", [])
-                  if r.get("_hint_injected") and not r.get("_auto")
-                  and any(
-                    _av["name"].lower() == (r.get("column_name","") or "").lower()
-                    and _av["rule_type"] == r.get("rule_type","")
-
-
-
-    # ==== SOURCE PAGE 0747 ====
-
-                    for _av in _ai_validators
-                  )
-                ]
-                # Update score with AI findings included
-                q["ai_dq_score"] = q_ai.get("dq_score", {})
-                _log(f"AI-Enhanced re-run complete: {len(q.get('ai_rule_results',[]))} AI rule results")
-              else:
-                q["ai_rule_results"] = []
-                q["ai_dq_score"] = {}
-                _log("AI-Enhanced: LLM returned no additional rules")
-
-        except Exception as _e_ai:
-          import traceback as _tb
-          q["ai_rule_results"] = []
-          q["ai_dq_score"] = {}
-          _log(f"AI-Enhanced rule generation failed: {_e_ai} | {_tb.format_exc()[-300:]}", "WARN")
-
-      # NOTE (reconstruction): the source pages here duplicated this block twice
-      # (a page-repeat artifact seen elsewhere in this file) -- kept the more
-      # complete, correctly-indented occurrence and dropped the earlier duplicate.
-      if "quality" in _di_scope:
-        quality_reports.append(q)
-
-      # Extract embedded governance and profile -- only add if scope requested
-      _gov = q.get("governance")
-      if _gov and "governance" in _di_scope:
-        _gov["file_format"] = q["file_format"]
-        governance_reports.append(_gov)
-
-      _prof = q.get("profile")
-      if _prof and "profile" in _di_scope:
-        # Normalise to the shape analyze_profile() returns so template works
-        _prof_report = {
-          "file_name":      fname,
-          "file_format":    q["file_format"],
-          "total_rows":     q["total_rows"],
-          "total_cols":     q.get("total_cols", len(df.columns)),
-          "memory_mb":      _prof.get("memory_mb", 0),
-          "duplicate_rows": q["duplicate_rows"],
-          "key_candidates": _prof.get("key_candidates", []),
-          # ==== SOURCE PAGE 0749 ====
-          "near_key_cols": _prof.get("near_key_cols", []),
-          "type_breakdown": _prof.get("type_breakdown", {}),
-          "correlations":  _prof.get("correlations", []),
-          "numeric_cols":  sum(
-            1 for c in _prof.get("columns", []) if c.get("is_numeric") or c.get("mean") is not None
-          ),
-          "columns":    _prof.get("columns", []),
+      # Build cross-file ref dict -- every other file can be used as a reference
+      _cross_file_map = {fname: df for fname, df in dataframes}
+      # For merged analysis, pair up files: first file gets second as df2 (and vice versa)
+      _df_map = {fname: df for fname, df in dataframes}
+      _fnames = [fname for fname, _ in dataframes]
+      for fname, df in dataframes:
+        _log(f"Running Data Intelligence (DQ + Profile + Governance) on '{fname}'")
+        _hints = dict(user_hints) if user_hints else {}
+
+
+
+      # ==== SOURCE PAGE 0734 ====
+
+        _hints["cross_file_ref_data"] = {k: v for k, v in _cross_file_map.items() if k != fname}
+        # Load saved baseline if exists
+        _safe_fname = re.sub(r'[^\w\-.]', '_', fname)
+        _baseline_path = Path("workspace") / "dq_baselines" / f"{_safe_fname}.json"
+        if _baseline_path.exists():
+          try:
+            import json as _json_bl
+            _hints["dq_baseline"] = _json_bl.loads(_baseline_path.read_text(encoding="utf-8"))
+          except Exception:
+            pass
+        # Auto-load saved DQ rules for this schema if user didn't supply col_config
+        if not _hints.get("col_config"):
+          try:
+            _fp_val = _dq_schema_fingerprint(df)
+            _rules_path = Path("workspace") / "dq_rules" / f"{_fp_val}.json"
+            if _rules_path.exists():
+              _saved_cfg = json.loads(_rules_path.read_text(encoding="utf-8"))
+              if _saved_cfg.get("col_config"):
+
+
+
+      # ==== SOURCE PAGE 0735 ====
+
+                _hints["col_config"] = _saved_cfg["col_config"]
+                _log(f"Auto-loaded DQ rules for schema {_fp_val}")
+          except Exception as _e_fp:
+            pass
+
+
+        # -- Merge BFSI Rule Pack hints (only fills blanks, never overrides user input) --
+        if _bfsi_pack and _bfsi_pack in _BFSI_PACK_HINTS:
+          pack_cfg = _BFSI_PACK_HINTS[_bfsi_pack]
+          if not _hints.get("timeliness_hints") and pack_cfg.get("timeliness_hints"):
+            _hints["timeliness_hints"] = pack_cfg["timeliness_hints"]
+          if not _hints.get("nullable_hints") and pack_cfg.get("nullable_hints"):
+            _hints["nullable_hints"] = pack_cfg["nullable_hints"]
+          if pack_cfg.get("bfsi_validators"):
+            _hints["bfsi_validators"] = pack_cfg["bfsi_validators"]
+
+
+        # -- Auto-inject domain accuracy rules from column names ----------------
+        # Detects columns like "currency", "ccy", "country_code", "side" etc.
+        # and injects domain_accuracy validators automatically.
+        _domain_col_map = {
+
+
+
+        # ==== SOURCE PAGE 0736 ====
+
+          "currency_code": ["currency","ccy","base_currency","quote_currency",
+                    "settlement_currency","reporting_currency","traded_ccy"],
+          "country_code": ["country","country_code","domicile","nationality",
+                   "issuer_country","country_of_risk"],
+          "asset_class":  ["asset_class","asset_type","instrument_class"],
+          "side":     ["side","direction","buy_sell","buysell"],
+          "trade_type":  ["trade_type","transaction_type","product_type"],
+          "settlement_type": ["settlement_type","setl_type","delivery_type"],
         }
-        profile_reports.append(_prof_report)
+        _auto_domain_validators = list(_hints.get("bfsi_validators", []))
+        _existing_v_cols = {v.split(":")[1].lower() for v in _auto_domain_validators if ":" in v}
 
-      _log(f"Data Intelligence '{fname}' → "
-         f"Score {q['dq_score']['score']} ({q['dq_score']['grade']}) | "
-         f"Gov penalty: {q['dq_score'].get('governance_penalty', 0)} | "
-         f"Sensitivity: {_gov.get('overall_classification') if _gov else 'N/A'} | "
-         f"Reg frameworks: {_gov.get('regulatory_frameworks', []) if _gov else []}")
-
-      # Persist DQ score to history for trend tracking
-      try:
-
+        for domain, col_hints in _domain_col_map.items():
+          for col in df.columns:
+            if col.lower() in col_hints and col.lower() not in _existing_v_cols:
+              _auto_domain_validators.append(f"domain_accuracy_{domain}:{col}")
+              _existing_v_cols.add(col.lower())
+        if _auto_domain_validators:
+          _hints["bfsi_validators"] = _auto_domain_validators
 
 
-    # ==== SOURCE PAGE 0750 ====
 
-        _rule_fails_h = sum(1 for r in q["rule_results"] if r.get("status") == "FAIL")
-        _crit_fails_h = q["dq_score"].get("severity_breakdown", {}).get("critical_fails", 0)
-        _ws_db.save_dq_history(
-          _ws_username or "default", fname, q.get("schema_fingerprint", ""),
-          q["dq_score"], q["total_rows"], _rule_fails_h, _crit_fails_h,
-          session_id=session_id,
-          bfsi_pack=_bfsi_pack,
-          di_scope=",".join(sorted(_di_scope)),
+        # ==== SOURCE PAGE 0737 ====
+
+        # -- Auto-inject BFSI temporal consistency rules ----------------
+        # Detect trade_date/settle_date pairs and inject T+2 validation.
+        # Also inject quantity>0 when side=BUY, notional>0 always.
+        _auto_cross = list(_hints.get("cross_column_rules", "").split(";"))
+        _auto_cross = [x for x in _auto_cross if x.strip()]
+        _df_cols_lower = {c.lower(): c for c in df.columns}
+
+
+        # trade_date < settle_date
+        _td = next((v for k, v in _df_cols_lower.items() if "trade_date" in k or k == "trd_dt"), None)
+        _sd = next((v for k, v in _df_cols_lower.items() if "settle_date" in k or "settlement_date" in k or k == "setl_dt"), None)
+        if _td and _sd and not any("settle" in r and "trade" in r for r in _auto_cross):
+          _hints["bfsi_validators"] = list(_hints.get("bfsi_validators", [])) + [
+            f"not_future_date:{_td}"
+          ]
+
+
+        # notional > 0
+
+
+
+        # ==== SOURCE PAGE 0738 ====
+
+        _notional = next((v for k, v in _df_cols_lower.items() if k in
+          ("notional","notional_amount","face_value","face_amount")), None)
+        if _notional:
+          _existing_v = {v for v in _hints.get("bfsi_validators", [])}
+          if f"positive:{_notional}" not in _existing_v:
+            _hints.setdefault("bfsi_validators", [])
+            _hints["bfsi_validators"] = list(_hints["bfsi_validators"]) + [f"positive:{_notional}"]
+
+
+        # -- Auto-inject address completeness for known address columns ----
+        _addr_cols = [v for k, v in _df_cols_lower.items()
+              if any(h in k for h in ("address","street","addr","postal"))]
+        if _addr_cols:
+          _addr_v = list(_hints.get("bfsi_validators", []))
+          for _ac in _addr_cols[:3]:
+            if f"address_complete:{_ac}" not in _addr_v:
+              _addr_v.append(f"address_complete:{_ac}")
+          _hints["bfsi_validators"] = _addr_v
+
+
+        # Pair with the other file for cross-file mapping recon (if two files uploaded)
+
+
+
+        # ==== SOURCE PAGE 0739 ====
+
+        _other_fname = next((n for n in _fnames if n != fname), None)
+        _df2 = _df_map.get(_other_fname) if _other_fname else None
+
+
+      # -- Merged single call: DQ + Profile + Governance + Mapping recon --
+        q = await asyncio.to_thread(
+          analyze_quality_full,
+          df, fname,
+          data_dict, rules,
+          _hints,
+          _df2, _other_fname,
         )
-      except Exception as _e_hist:
-        _log(f"DQ history save failed: {_e_hist}")
+        q["file_format"] = df.attrs.get("_format", "")
+
+
+      # -- ML Anomaly detection -- z-score outliers across numeric columns --
+        try:
+          q["anomaly_results"] = await asyncio.to_thread(
+            detect_numeric_anomalies, df, 3.0
+          )
+        except Exception:
+
+
+
+      # ==== SOURCE PAGE 0740 ====
+
+          q["anomaly_results"] = []
+
+        # -- Categorical distribution clustering (Ataccama-style) --------
+        try:
+          _cat_baseline = q.get("baseline_snapshot")
+          q["categorical_drift"] = await asyncio.to_thread(
+            detect_categorical_drift, df, _cat_baseline
+          )
+        except Exception:
+          q["categorical_drift"] = []
+
+        # -- Unsupervised numeric clustering --------------------
+        try:
+          q["numeric_clusters"] = await asyncio.to_thread(
+            detect_numeric_clusters, df
+          )
+        except Exception:
+          q["numeric_clusters"] = []
+
+
+
+      # ==== SOURCE PAGE 0741 ====
+
+        # -- AI-Enhanced: LLM suggests additional rules, re-run with them ------
+        if _di_ai_enhanced and "quality" in _di_scope:
+          try:
+            _log(f"AI-Enhanced: calling LLM for additional DQ rules on '{fname}'")
+
+            # Build compact column profile for LLM
+            _col_summaries = []
+            for _col in df.columns:
+              _s = df[_col]
+              _cs = {
+                "name":   _col,
+                "dtype":  str(_s.dtype),
+                "null_pct": round(float(_s.isna().mean() * 100), 1),
+                "unique_n": int(_s.nunique(dropna=True)),
+                "total":  len(_s),
+                "sample":  _s.dropna().astype(str).head(6).tolist(),
+              }
+              if pd.api.types.is_numeric_dtype(_s):
+                _clean = _s.dropna()
+
+
+
+      # ==== SOURCE PAGE 0742 ====
+
+                if len(_clean):
+                  _cs["min"] = round(float(_clean.min()), 4)
+                  _cs["max"] = round(float(_clean.max()), 4)
+                  _cs["mean"] = round(float(_clean.mean()), 4)
+                _col_summaries.append(_cs)
+
+                # Include existing failures as context
+                _existing_fails = [
+                  {"rule": r.get("rule_name",""), "column": r.get("column_name",""), "failed": r.get("failed",0)}
+                  for r in q["rule_results"] if r.get("status") == "FAIL"
+                ][:10]
+
+                _sys = (
+                  "You are a senior BFSI data quality engineer. "
+                  "You are given column profiles and existing rule failures for a dataset. "
+                  "Suggest ADDITIONAL data quality rules that go beyond what was already checked. "
+                  "Focus on business meaning, cross-column relationships, BFSI-specific patterns. "
+
+
+
+      # ==== SOURCE PAGE 0743 ====
+
+                  "Use only these rule_type values: range, allowed_values, pattern, positive, "
+                  "non_negative, integer_only, not_future_date, isin_format, cusip_format, "
+                  "sedol_format, lei_format, bic_format, iban_format, currency_code_format, "
+                  "mic_format, email_format, date_format, freshness_days, decimal_places, "
+                  "domain_accuracy, address_complete, uppercase, lowercase. "
+                  "Return ONLY a valid JSON array. Each element: "
+                  "{name, rule_type, value, reason, severity} where severity is critical/major/minor. "
+                  "Return [] if no confident additional suggestions."
+                )
+                _usr = (
+                  f"Dataset: {fname} ({len(df)} rows, {len(df.columns)} cols)\n"
+                  f"Existing failures: {json.dumps(_existing_fails)}\n"
+                  f"Column profiles: {json.dumps(_col_summaries, indent=1)}\n"
+                  "Suggest additional rules. JSON array only."
+                )
+
+
+
+      # ==== SOURCE PAGE 0744 ====
+
+                _ai_raw = await asyncio.to_thread(
+                  _ask_llm,
+                  [{"role": "user", "content": [{"text": _usr}]}],
+                  _sys,
+                )
+                _ai_match = re.search(r'\[.*\]', _ai_raw, re.DOTALL)
+                _ai_suggestions = json.loads(_ai_match.group()) if _ai_match else []
+
+                # Validate and inject into a fresh hints copy
+                _ai_validators = []
+                for _sg in _ai_suggestions:
+                  if not isinstance(_sg, dict) or not _sg.get("name") or not _sg.get("rule_type"):
+                    continue
+                  _ai_validators.append({
+                    "name":   str(_sg["name"]),
+                    "rule_type": str(_sg["rule_type"]),
+                    "value":  str(_sg.get("value", "") or ""),
+                    "severity": str(_sg.get("severity", "major")),
+
+
+
+      # ==== SOURCE PAGE 0745 ====
+
+                    "reason":  str(_sg.get("reason", "")),
+                  })
+
+
+                if _ai_validators:
+                  _log(f"AI-Enhanced: LLM suggested {len(_ai_validators)} additional rules -- re-running DQ")
+                  _ai_hints = dict(_hints)
+                  _ai_col_config = list(_ai_hints.get("col_config", []))
+                  for _av in _ai_validators:
+                    _col_match = next((c for c in df.columns if c.lower() == _av["name"].lower()), None)
+                    if _col_match:
+                      _ai_col_config.append({
+                        "name":   _col_match,
+                        "rule_type": _av["rule_type"],
+                        "value":  _av.get("value", ""),
+                        "severity": _av.get("severity", "major"),
+                        "_ai_generated": True,
+                        "_ai_reason": _av.get("reason", ""),
+                      })
+
+
+
+      # ==== SOURCE PAGE 0746 ====
+
+                  _ai_hints["col_config"] = _ai_col_config
+
+                  # Re-run with AI rules
+                  q_ai = await asyncio.to_thread(
+                    analyze_quality_full, df, fname, data_dict, rules, _ai_hints, _df2,
+                    _other_fname
+                  )
+                  # Extract only the AI-generated rule results
+                  q["ai_rule_results"] = [
+                    {**r, "_ai_reason": next(
+                      (_av.get("reason","") for _av in _ai_validators
+                       if _av["name"].lower() == (r.get("column_name","") or "").lower()
+                       and _av["rule_type"] == r.get("rule_type","")), ""
+                    )}
+                    for r in q_ai.get("rule_results", [])
+                    if r.get("_hint_injected") and not r.get("_auto")
+                    and any(
+                      _av["name"].lower() == (r.get("column_name","") or "").lower()
+                      and _av["rule_type"] == r.get("rule_type","")
+
+
+
+      # ==== SOURCE PAGE 0747 ====
+
+                      for _av in _ai_validators
+                    )
+                  ]
+                  # Update score with AI findings included
+                  q["ai_dq_score"] = q_ai.get("dq_score", {})
+                  _log(f"AI-Enhanced re-run complete: {len(q.get('ai_rule_results',[]))} AI rule results")
+                else:
+                  q["ai_rule_results"] = []
+                  q["ai_dq_score"] = {}
+                  _log("AI-Enhanced: LLM returned no additional rules")
+
+          except Exception as _e_ai:
+            import traceback as _tb
+            q["ai_rule_results"] = []
+            q["ai_dq_score"] = {}
+            _log(f"AI-Enhanced rule generation failed: {_e_ai} | {_tb.format_exc()[-300:]}", "WARN")
+
+        # NOTE (reconstruction): the source pages here duplicated this block twice
+        # (a page-repeat artifact seen elsewhere in this file) -- kept the more
+        # complete, correctly-indented occurrence and dropped the earlier duplicate.
+        if "quality" in _di_scope:
+          quality_reports.append(q)
+
+        # Extract embedded governance and profile -- only add if scope requested
+        _gov = q.get("governance")
+        if _gov and "governance" in _di_scope:
+          _gov["file_format"] = q["file_format"]
+          governance_reports.append(_gov)
+
+        _prof = q.get("profile")
+        if _prof and "profile" in _di_scope:
+          # Normalise to the shape analyze_profile() returns so template works
+          _prof_report = {
+            "file_name":      fname,
+            "file_format":    q["file_format"],
+            "total_rows":     q["total_rows"],
+            "total_cols":     q.get("total_cols", len(df.columns)),
+            "memory_mb":      _prof.get("memory_mb", 0),
+            "duplicate_rows": q["duplicate_rows"],
+            "key_candidates": _prof.get("key_candidates", []),
+            # ==== SOURCE PAGE 0749 ====
+            "near_key_cols": _prof.get("near_key_cols", []),
+            "type_breakdown": _prof.get("type_breakdown", {}),
+            "correlations":  _prof.get("correlations", []),
+            "numeric_cols":  sum(
+              1 for c in _prof.get("columns", []) if c.get("is_numeric") or c.get("mean") is not None
+            ),
+            "columns":    _prof.get("columns", []),
+          }
+          profile_reports.append(_prof_report)
+
+        _log(f"Data Intelligence '{fname}' → "
+           f"Score {q['dq_score']['score']} ({q['dq_score']['grade']}) | "
+           f"Gov penalty: {q['dq_score'].get('governance_penalty', 0)} | "
+           f"Sensitivity: {_gov.get('overall_classification') if _gov else 'N/A'} | "
+           f"Reg frameworks: {_gov.get('regulatory_frameworks', []) if _gov else []}")
+
+        # Persist DQ score to history for trend tracking
+        try:
+
+
+
+      # ==== SOURCE PAGE 0750 ====
+
+          _rule_fails_h = sum(1 for r in q["rule_results"] if r.get("status") == "FAIL")
+          _crit_fails_h = q["dq_score"].get("severity_breakdown", {}).get("critical_fails", 0)
+          _ws_db.save_dq_history(
+            _ws_username or "default", fname, q.get("schema_fingerprint", ""),
+            q["dq_score"], q["total_rows"], _rule_fails_h, _crit_fails_h,
+            session_id=session_id,
+            bfsi_pack=_bfsi_pack,
+            di_scope=",".join(sorted(_di_scope)),
+          )
+        except Exception as _e_hist:
+          _log(f"DQ history save failed: {_e_hist}")
 
 
     elif action == "profile":
@@ -16769,50 +16816,153 @@ async def analyze(request: Request):
 
     # Deduplicated union of all columns across loaded files (for rerun panel)
     all_file_columns = sorted(set(c for _, df in dataframes for c in df.columns))
+    _resolved_fingerprint = _fp_resolve(_dataset_fingerprint, cols1=_cols1,
+                                        cols2=_cols2, file_names=_file_names)
 
-    return templates.TemplateResponse(
-      request=request,
-      name="index.html",
-      context={
-        "action":      action,
-        "di_scope":     list(_di_scope),
-        "di_ai_enhanced":  _di_ai_enhanced,
-        "file_names":    [n for n, _ in dataframes],
-        "pairs":       pairs,
+    # -- Build the JSON payload the frontend's fetch()-based UI expects for
+    # each action. (The full session data above is still kept in
+    # _results_store/_chat_contexts for downloads, chat, and reruns.)
+    if action == "compare":
+        diff = pairs[0]["diff"]
+        modified = [
+            {"key": ", ".join(f"{k}={v}" for k, v in mr["key_values"].items()),
+             "changes": mr["changes"]}
+            for mr in diff.get("modified_rows", [])
+        ]
+        return JSONResponse(_sanitize_json({
+            "session_id": session_id,
+            "counts": {
+                "matched": diff.get("file1_rows", 0) - diff.get("removed_count", 0),
+                "file1_only": diff.get("file1_only_count", 0),
+                "file2_only": diff.get("file2_only_count", 0),
+                "modified": diff.get("modified_count", 0),
+            },
+            "keys": diff.get("key_columns", []),
+            "method": diff.get("key_method", ""),
+            "fingerprint": _resolved_fingerprint,
+            "type_mismatches": [{"column": k, **v} for k, v in diff.get("type_mismatches", {}).items()],
+            "null_column_exceptions": diff.get("null_column_exceptions", []),
+            "duplicates": {
+                "file1": {"duplicate_rows": diff.get("file1_duplicate_count", 0)},
+                "file2": {"duplicate_rows": diff.get("file2_duplicate_count", 0)},
+            },
+            "modified": modified,
+        }))
 
+    if action in ("quality", "profile"):
+        q = quality_reports[0] if quality_reports else (profile_reports[0] if profile_reports else {})
+        dq = q.get("dq_score", {})
+        profile = q.get("profile", {}) or {}
+        _profile_by_name = {c.get("name"): c for c in profile.get("columns", [])}
 
+        dims = {
+            "Completeness": dq.get("completeness"),
+            "Uniqueness": dq.get("uniqueness"),
+            "Validity": dq.get("validity"),
+            "Consistency": dq.get("consistency"),
+            "Conformity": dq.get("conformity"),
+        }
+        if dq.get("precision_active"):
+            dims["Precision"] = dq.get("precision")
+        if dq.get("timeliness_active"):
+            dims["Timeliness"] = dq.get("timeliness")
+        if dq.get("accuracy_active"):
+            dims["Accuracy"] = dq.get("accuracy")
 
-    # ==== SOURCE PAGE 0769 ====
+        columns_detail = []
+        for c in q.get("columns", []):
+            is_numeric = "min" in c and "max" in c
+            prof_c = _profile_by_name.get(c.get("name"), {})
+            columns_detail.append({
+                "column": c.get("name"),
+                "completeness_pct": round(100 - (c.get("null_pct") or 0), 1),
+                "uniqueness_pct": c.get("uniqueness_pct"),
+                "null_count": c.get("null_count"),
+                "distinct": c.get("unique_count"),
+                "detected_format": prof_c.get("semantic", c.get("cardinality", "")),
+                "numeric": {"min": c["min"], "max": c["max"]} if is_numeric else False,
+                "string": False,
+            })
 
-        "quality_reports":  quality_reports,
-        "governance_reports": governance_reports,
-        "mappings":      mappings,
-        "parse_reports":   parse_reports,
-        "lineage_reports":  lineage_reports,
-        "profile_reports":  profile_reports,
-        "has_data_dict":   bool(data_dict),
-        "has_rules":     bool(rules),
-        "has_mapping_spec":  bool(mapping_spec),
-        "ref_log":      ref_log,
-        "proc_logs":     proc_logs,
-        "elapsed":      total_elapsed,
-        "session_id":     session_id,
-        "all_file_columns":  all_file_columns,
-        "excluded_cols":   excluded_cols,
-        "key_columns_val":  key_columns,
-        "dataset_fingerprint": _fp_resolve(_dataset_fingerprint, cols1=_cols1,
-                         cols2=_cols2, file_names=_file_names),
-        "saved_rules":     _fp_get_rules(_dataset_fingerprint, cols1=_cols1,
-                         cols2=_cols2, file_names=_file_names, module=action),
+        correlations = [
+            {"col_a": c.get("col1"), "col_b": c.get("col2"), "r": c.get("corr")}
+            for c in profile.get("correlations", [])
+        ]
 
+        return JSONResponse(_sanitize_json({
+            "session_id": session_id,
+            "name": q.get("file_name", ""),
+            "dimensions": dims,
+            "grade": dq.get("grade"),
+            "score": dq.get("score"),
+            "rows": q.get("total_rows"),
+            "columns": q.get("total_cols"),
+            "duplicate_rows": q.get("duplicate_rows"),
+            "columns_detail": columns_detail,
+            "near_key_columns": profile.get("near_key_cols", []),
+            "correlations": correlations,
+            "ai_rule_results": q.get("ai_rule_results", []),
+            "ai_dq_score": q.get("ai_dq_score", {}),
+        }))
 
+    if action == "governance":
+        g = governance_reports[0] if governance_reports else {}
+        pii_col_count = g.get("pii_column_count", 0)
+        breaches = g.get("mandatory_breaches", [])
+        classification = str(g.get("overall_classification", "")).lower()
+        if breaches:
+            overall_risk = "critical"
+        elif pii_col_count and classification in ("confidential", "restricted"):
+            overall_risk = "high"
+        elif pii_col_count:
+            overall_risk = "medium"
+        else:
+            overall_risk = "low"
 
-    # ==== SOURCE PAGE 0770 ====
+        columns = [
+            {
+                "name": c.get("column"),
+                "pii_detected": bool(c.get("pii_detected")),
+                "pii_types": c.get("pii_detected", []),
+                "sensitivity": str(c.get("sensitivity", "")).lower(),
+            }
+            for c in g.get("columns", [])
+        ]
+        recommendations = []
+        if breaches:
+            recommendations.append(f"{len(breaches)} mandatory field(s) have governance breaches -- review immediately.")
+        if pii_col_count:
+            recommendations.append(f"{pii_col_count} column(s) contain PII -- consider masking before sharing.")
+        if g.get("regulatory_frameworks"):
+            recommendations.append(f"Applicable regulatory frameworks: {', '.join(g['regulatory_frameworks'])}.")
 
-        # Last-used recon hints for this schema -- pre-populate criteria panel
-        "saved_recon_hints": _load_saved_recon_hints(_fp_resolve(_dataset_fingerprint, cols1=_cols1, cols2=_cols2, file_names=_file_names)),  # OCR-UNCERTAIN: line-wrap reconstructed from photo
-      },
-    )
+        return JSONResponse(_sanitize_json({
+            "session_id": session_id,
+            "overall_risk": overall_risk,
+            "columns": columns,
+            "recommendations": recommendations,
+        }))
+
+    if action == "parse":
+        result = parse_reports[0] if parse_reports else {"columns": [], "rows": [], "error": "No file parsed."}
+        result = dict(result)
+        result["session_id"] = session_id
+        return JSONResponse(_sanitize_json(result))
+
+    # lineage / quality_ai / profile_ai / governance_ai -- these modes are
+    # driven by the AI Copilot chat panel rather than a one-shot results
+    # table; return the session/schema info the chat needs to continue.
+    return JSONResponse(_sanitize_json({
+        "session_id": session_id,
+        "action": action,
+        "file_names": [n for n, _ in dataframes],
+        "all_file_columns": all_file_columns,
+        "dataset_fingerprint": _resolved_fingerprint,
+        "saved_rules": _fp_get_rules(_dataset_fingerprint, cols1=_cols1,
+                                     cols2=_cols2, file_names=_file_names, module=action),
+        "lineage_reports": lineage_reports,
+        "message": "This mode is driven by the AI Copilot chat panel -- use the chat sidebar to continue.",
+    }))
 
 
 def _load_saved_recon_hints(fingerprint: str) -> dict:
@@ -20124,6 +20274,28 @@ async def ws_test_connection(conn_id: str, request: Request):
         return JSONResponse({"ok": False, "message": str(exc)})
 
 
+@app.get("/api/ws/connections/{conn_id}/preview")
+async def ws_preview_connection(conn_id: str, request: Request):
+    """Fetch a small sample of data from a saved connection so the user can
+    sanity-check the config before using it in a job."""
+    _ws_check()
+    username = _ws_get_user(request)
+    rec = _ws_db.get_connection(conn_id, username)
+    if not rec:
+        raise HTTPException(404, "Connection not found.")
+    try:
+        connector = _ws_connectors.BaseConnector.from_type(rec["source_type"], rec["config"])
+        df = connector.fetch()
+        preview = df.head(20)
+        return JSONResponse({
+            "columns": list(preview.columns),
+            "rows": preview.fillna("").astype(str).to_dict(orient="records"),
+            "total_rows": len(df),
+        })
+    except Exception as exc:
+        raise HTTPException(400, f"Preview failed: {exc}")
+
+
 # -- rule sets
 # --------------------------------------------------------------------
 
@@ -20395,6 +20567,14 @@ async def ws_run_job(job_id: str, request: Request):
         raise HTTPException(500, str(exc)) from exc
 
 
+@app.get("/api/ws/jobs/{job_id}/runs")
+async def ws_job_runs(job_id: str, request: Request, limit: int = 50):
+    """Run history for a single job."""
+    _ws_check()
+    username = _ws_get_user(request)
+    return JSONResponse(_ws_db.list_runs(username, job_id=job_id, limit=limit))
+
+
 # -- Dashboard
 # --------------------------------------------------------------------
 
@@ -20656,8 +20836,38 @@ async def ws_me(request: Request):
 
     username = _ws_get_user(request)
 
-    return JSONResponse({"username": username, "display_name":
-                         getattr(request.state, "display_name", username)})
+    return JSONResponse({
+        "username": username,
+        "display_name": getattr(request.state, "display_name", username),
+        "role": getattr(request.state, "role", None) or _ws_db.get_user_role(username),
+    })
+
+
+@app.get("/api/ws/users")
+async def ws_list_users(request: Request):
+    """List all workspace users and their roles. Admin only."""
+    _ws_check()
+    username = _ws_get_user(request)
+    role = getattr(request.state, "role", None) or _ws_db.get_user_role(username)
+    if role != "admin":
+        raise HTTPException(403, "Admin access required.")
+    return JSONResponse(_ws_db.list_users())
+
+
+@app.put("/api/ws/users/{username}/role")
+async def ws_set_user_role(username: str, request: Request):
+    """Change a user's role. Admin only."""
+    _ws_check()
+    caller = _ws_get_user(request)
+    caller_role = getattr(request.state, "role", None) or _ws_db.get_user_role(caller)
+    if caller_role != "admin":
+        raise HTTPException(403, "Admin access required.")
+    body = await request.json()
+    role = str(body.get("role", "")).strip()
+    if role not in ("admin", "analyst", "readonly"):
+        raise HTTPException(400, "role must be one of: admin, analyst, readonly.")
+    _ws_db.set_user_role(username, role)
+    return JSONResponse({"ok": True})
 
 
 # ------------------------------------------------------------------
