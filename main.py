@@ -5181,7 +5181,8 @@ def analyze_cross_reference(
 
 # ==== SOURCE PAGE 0247 ====
 
-        exclusive = keys_per_source[name] - set.union(*[keys_per_source[n] for n in source_names if n != name])
+        _other_key_sets = [keys_per_source[n] for n in source_names if n != name]
+        exclusive = keys_per_source[name] - (set.union(*_other_key_sets) if _other_key_sets else set())
         only_in[name] = sorted(list(exclusive))[:500]
 
     # Value conflicts across sources for common keys
