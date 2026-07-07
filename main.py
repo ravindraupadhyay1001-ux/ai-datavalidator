@@ -15951,7 +15951,8 @@ async def analyze(request: Request):
 
       _hints["cross_file_ref_data"] = {k: v for k, v in _cross_file_map.items() if k != fname}
       # Load saved baseline if exists
-      _baseline_path = Path("workspace") / "dq_baselines" / f"{re.sub(r'[^\w\-.]', '_', fname)}.json"
+      _safe_fname = re.sub(r'[^\w\-.]', '_', fname)
+      _baseline_path = Path("workspace") / "dq_baselines" / f"{_safe_fname}.json"
       if _baseline_path.exists():
         try:
           import json as _json_bl
