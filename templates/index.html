@@ -565,6 +565,11 @@ async function runParse(){
 async function sendChat(){
   const inp=document.getElementById('chat-in'); const msg=inp.value.trim(); if(!msg) return;
   const log=document.getElementById('chat-log');
+  if(!SESSION){
+    log.innerHTML+=`<div class="text-amber-300 text-xs">Run an analysis (Compare, Quality, Profile, Governance, or AI Copilot Mode) first &mdash; the Copilot needs a session to know what data you're asking about.</div>`;
+    log.scrollTop=log.scrollHeight;
+    return;
+  }
   log.innerHTML+=`<div class="text-right"><span class="inline-block px-3 py-1.5 rounded-2xl text-white" style="background:linear-gradient(90deg,#0ea5e9,#6366f1)">${esc(msg)}</span></div>`;
   inp.value='';
   const agentMode = document.getElementById('agent-mode').checked;
