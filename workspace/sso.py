@@ -40,8 +40,13 @@ OIDC_ISSUER = os.getenv("OIDC_ISSUER", "")          # e.g. https://login.microso
 OIDC_CLIENT_ID = os.getenv("OIDC_CLIENT_ID", "")
 OIDC_CLIENT_SECRET = os.getenv("OIDC_CLIENT_SECRET", "")
 OIDC_ROLE_CLAIM = os.getenv("OIDC_ROLE_CLAIM", "roles")  # id_token claim holding group/role names
+OIDC_REDIRECT_URI = os.getenv("OIDC_REDIRECT_URI", "")  # this app's /sso/oidc/callback full URL
+
+_JWT_SECRET = os.getenv("JWT_SECRET", "change-this-in-production")
 
 _oauth_client = None
+_oidc_discovery_cache: dict | None = None
+_oidc_jwks_cache = None
 
 
 def get_oidc_client():
@@ -139,3 +144,161 @@ def _lookup_role(server, username: str):
             conn.unbind()
         except Exception:
             pass
+
+
+# --------------------------------------------------------------------------
+# Unified SSO entry points -- what main.py's /sso/* routes actually import.
+# OIDC is the recommended, fully-supported path (uses authlib's JOSE/JWT
+# primitives for correct id_token signature verification). SAML delegates to
+# workspace/saml_sso.py, which is opt-in and requires python3-saml to be
+# installed separately -- see that module's docstring.
+# --------------------------------------------------------------------------
+
+def _saml_configured() -> bool:
+    try:
+        from workspace.saml_sso import _configured
+        return _configured()
+    except Exception:
+        return False
+
+
+def sso_enabled() -> bool:
+    oidc_ready = bool(OIDC_ENABLED and OIDC_ISSUER and OIDC_CLIENT_ID
+                       and OIDC_CLIENT_SECRET and OIDC_REDIRECT_URI)
+    return oidc_ready or _saml_configured()
+
+
+def sso_mode() -> str:
+    if OIDC_ENABLED and OIDC_ISSUER and OIDC_CLIENT_ID and OIDC_CLIENT_SECRET and OIDC_REDIRECT_URI:
+        return "oidc"
+    if _saml_configured():
+        return "saml"
+    return ""
+
+
+def create_sso_session_token(username: str, role: str, groups: list) -> str:
+    """Sign a short-lived dv_session cookie token for an SSO-authenticated user."""
+    import jwt
+    from datetime import datetime, timedelta, timezone
+    payload = {
+        "sub": username,
+        "role": role,
+        "groups": groups,
+        "exp": datetime.now(timezone.utc) + timedelta(hours=8),
+        "iat": datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, _JWT_SECRET, algorithm="HS256")
+
+
+def verify_sso_token(token: str) -> "dict | None":
+    """Decode a dv_session cookie token. Returns the claims dict, or None if
+    invalid/expired."""
+    import jwt
+    try:
+        return jwt.decode(token, _JWT_SECRET, algorithms=["HS256"])
+    except Exception:
+        return None
+
+
+# -- SAML (delegates to workspace.saml_sso; requires python3-saml + SAML_* env vars) --
+
+async def saml_login_redirect_url(request) -> str:
+    from workspace.saml_sso import login_redirect_url
+    return await login_redirect_url(request)
+
+
+async def saml_process_response(request) -> dict:
+    from workspace.saml_sso import process_acs
+    result = await process_acs(request)
+    return {
+        "username": result["username"],
+        "role": result["role"],
+        "groups": result.get("groups", []),
+        "display_name": result.get("display_name", result["username"]),
+        "email": result.get("email", ""),
+    }
+
+
+# -- OIDC (Authorization Code flow, manual discovery + authlib JOSE verification) --
+
+def _oidc_discover() -> dict:
+    global _oidc_discovery_cache
+    if _oidc_discovery_cache is None:
+        import httpx
+        resp = httpx.get(f"{OIDC_ISSUER.rstrip('/')}/.well-known/openid-configuration", timeout=10)
+        resp.raise_for_status()
+        _oidc_discovery_cache = resp.json()
+    return _oidc_discovery_cache
+
+
+def _oidc_jwks():
+    global _oidc_jwks_cache
+    if _oidc_jwks_cache is None:
+        import httpx
+        from authlib.jose import JsonWebKey
+        resp = httpx.get(_oidc_discover()["jwks_uri"], timeout=10)
+        resp.raise_for_status()
+        _oidc_jwks_cache = JsonWebKey.import_key_set(resp.json())
+    return _oidc_jwks_cache
+
+
+def _oidc_require_configured():
+    if not (OIDC_ENABLED and OIDC_ISSUER and OIDC_CLIENT_ID and OIDC_CLIENT_SECRET and OIDC_REDIRECT_URI):
+        raise RuntimeError("OIDC is not fully configured (see OIDC_* env vars).")
+
+
+def oidc_login_redirect_url(state: str) -> str:
+    _oidc_require_configured()
+    from urllib.parse import urlencode
+    endpoint = _oidc_discover()["authorization_endpoint"]
+    params = {
+        "response_type": "code",
+        "client_id": OIDC_CLIENT_ID,
+        "redirect_uri": OIDC_REDIRECT_URI,
+        "scope": "openid email profile",
+        "state": state,
+    }
+    return f"{endpoint}?{urlencode(params)}"
+
+
+def oidc_exchange_code(code: str) -> dict:
+    _oidc_require_configured()
+    import httpx
+    from authlib.jose import jwt as jose_jwt
+
+    resp = httpx.post(
+        _oidc_discover()["token_endpoint"],
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "client_id": OIDC_CLIENT_ID,
+            "client_secret": OIDC_CLIENT_SECRET,
+            "redirect_uri": OIDC_REDIRECT_URI,
+        },
+        timeout=10,
+    )
+    resp.raise_for_status()
+    id_token = resp.json().get("id_token")
+    if not id_token:
+        raise ValueError("OIDC token response did not include an id_token.")
+
+    claims = jose_jwt.decode(id_token, _oidc_jwks())
+    claims.validate()  # checks exp/nbf and, when present, aud/iss
+
+    username = (claims.get("preferred_username") or claims.get("email")
+                or claims.get("sub") or "").split("@")[0].lower()
+    if not username:
+        raise ValueError("OIDC id_token did not contain a usable username claim.")
+
+    role = resolve_role_from_claims(claims)
+    role_values = claims.get(OIDC_ROLE_CLAIM) or []
+    if isinstance(role_values, str):
+        role_values = [role_values]
+
+    return {
+        "username": username,
+        "role": role,
+        "groups": list(role_values),
+        "display_name": claims.get("name", username),
+        "email": claims.get("email", ""),
+    }

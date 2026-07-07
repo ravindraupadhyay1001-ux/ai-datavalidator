@@ -95,6 +95,8 @@ _DDL = [
     )""",
     # migration for pre-existing databases created before the role column existed
     "ALTER TABLE ws_users ADD COLUMN role TEXT DEFAULT 'analyst'",
+    # migration for pre-existing databases created before local username/password auth existed
+    "ALTER TABLE ws_users ADD COLUMN password_hash TEXT",
     """CREATE TABLE IF NOT EXISTS ws_connections (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL,
@@ -231,6 +233,46 @@ def list_users():
     cur = _conn().cursor()
     cur.execute("SELECT username, display_name, email, role, created_at FROM ws_users ORDER BY created_at ASC")
     return _rows(cur)
+
+
+def count_users() -> int:
+    cur = _conn().cursor()
+    cur.execute("SELECT COUNT(*) FROM ws_users")
+    return list(cur.fetchall())[0][0]
+
+
+def get_user_password_hash(username):
+    cur = _conn().cursor()
+    cur.execute(f"SELECT password_hash FROM ws_users WHERE username={_ph()}", (username,))
+    rows = _rows(cur)
+    return rows[0].get("password_hash") if rows else None
+
+
+def create_local_user(username, password_hash, full_name="", email=""):
+    """Register a new username/password user. Raises ValueError if the
+    username is already taken. The very first user ever created becomes admin."""
+    conn = _conn()
+    cur = conn.cursor()
+    cur.execute(f"SELECT username FROM ws_users WHERE username={_ph()}", (username,))
+    if cur.fetchall():
+        raise ValueError(f"Username '{username}' is already taken.")
+    is_first = count_users() == 0
+    role = "admin" if is_first else "analyst"
+    cur.execute(
+        f"INSERT INTO ws_users (username, display_name, email, role, created_at, password_hash) "
+        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
+        (username, full_name or username, email or "", role, _now(), password_hash),
+    )
+    conn.commit()
+
+
+def set_user_password_hash(username, password_hash):
+    conn = _conn()
+    conn.cursor().execute(
+        f"UPDATE ws_users SET password_hash={_ph()} WHERE username={_ph()}",
+        (password_hash, username),
+    )
+    conn.commit()
 
 
 # --------------------------------------------------------------------------
@@ -510,6 +552,25 @@ def insert_audit(username, action, detail, session_id=None):
         (username, action, detail, session_id, _now()),
     )
     conn.commit()
+
+
+def list_audit(username=None, action=None, limit=200):
+    """Most recent audit log entries, optionally filtered by username/action."""
+    clauses, params = [], []
+    if username:
+        clauses.append(f"username={_ph()}")
+        params.append(username)
+    if action:
+        clauses.append(f"action={_ph()}")
+        params.append(action)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    cur = _conn().cursor()
+    cur.execute(
+        f"SELECT username, action, detail, session_id, created_at FROM ws_audit_log "
+        f"{where} ORDER BY created_at DESC LIMIT {int(limit)}",
+        params,
+    )
+    return _rows(cur)
 
 
 # --------------------------------------------------------------------------

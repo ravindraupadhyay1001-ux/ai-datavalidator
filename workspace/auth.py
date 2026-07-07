@@ -49,11 +49,34 @@ def _resolve_username(request: Request) -> Optional[str]:
     """
     Priority:
     1. WORKSPACE_DEV_USER env var
-    2. X-Remote-User / Remote-User / X-Windows-User headers (IIS Windows Auth)
-    3. OS login name (local dev fallback)
+    2. dv_local_session cookie (local username/password auth)
+    3. dv_session cookie (SSO -- SAML/OIDC)
+    4. X-Remote-User / Remote-User / X-Windows-User headers (IIS Windows Auth)
+    5. OS login name (local dev fallback)
     """
     if _DEV_USER:
         return _DEV_USER
+
+    local_token = request.cookies.get("dv_local_session", "")
+    if local_token:
+        try:
+            from workspace.local_auth import verify_session as _verify_local
+            username = _verify_local(local_token)
+            if username:
+                return username
+        except Exception:
+            pass
+
+    sso_token = request.cookies.get("dv_session", "")
+    if sso_token:
+        try:
+            from workspace.sso import verify_sso_token as _verify_sso
+            claims = _verify_sso(sso_token)
+            if claims and claims.get("sub"):
+                return claims["sub"]
+        except Exception:
+            pass
+
     for header in ("x-remote-user", "remote_user", "x-windows-user"):
         val = request.headers.get(header, "").strip()
         if val:
@@ -65,6 +88,10 @@ def _resolve_username(request: Request) -> Optional[str]:
     if _OS_USER:
         return _OS_USER
     return None
+
+
+def resolve_role_for_user(username: str) -> str:
+    return get_user_role(username)
 
 
 def get_current_user(request: Request) -> str:

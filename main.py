@@ -20881,7 +20881,7 @@ async def sso_login(request: Request):
 
         if mode == "saml":
 
-            url = _saml_login_url(str(request.url))
+            url = await _saml_login_url(request)
 
             return RedirectResponse(url=url, status_code=302)
 
@@ -20929,11 +20929,7 @@ async def sso_saml_acs(request: Request):
 
             raise HTTPException(status_code=404, detail="SAML SSO not configured.")
 
-        form_data = await request.form()
-
-        post_data = dict(form_data)
-
-        user_info = _saml_process(str(request.url), post_data)
+        user_info = await _saml_process(request)
 
         token = _sso_create_token(
 
