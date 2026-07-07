@@ -197,7 +197,15 @@
           <select id="xref-conn3" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
         <div><label class="text-sm text-gray-400">Source 4 (optional)</label><input id="xref-f4" type="file" class="block w-full text-sm mt-1">
           <select id="xref-conn4" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
-        <div class="col-span-2"><label class="text-sm text-gray-400">Identifier key</label><input id="xref-key" placeholder="e.g. isin, cusip, lei, trade_id" class="inp w-full mt-1 text-sm"></div>
+        <div class="col-span-2"><label class="text-sm text-gray-400">Identifier key (blank = AI auto-detect)</label>
+          <input id="xref-key" placeholder="e.g. isin, cusip, lei, trade_id" class="inp w-full mt-1 text-sm">
+          <div class="flex gap-1.5 mt-1.5">
+            <span class="text-xs text-gray-500 mr-1">Quick fill:</span>
+            <button type="button" onclick="document.getElementById('xref-key').value='isin'" class="btn-ghost rounded px-2 py-0.5 text-xs">ISIN</button>
+            <button type="button" onclick="document.getElementById('xref-key').value='cusip'" class="btn-ghost rounded px-2 py-0.5 text-xs">CUSIP</button>
+            <button type="button" onclick="document.getElementById('xref-key').value='lei'" class="btn-ghost rounded px-2 py-0.5 text-xs">LEI</button>
+            <button type="button" onclick="document.getElementById('xref-key').value='trade_id'" class="btn-ghost rounded px-2 py-0.5 text-xs">trade_id</button>
+          </div></div>
       </div>
       <button onclick="runCrossReference()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Run Cross Reference</button>
       <div id="xref-out" class="mt-6"></div>
@@ -681,8 +689,7 @@ async function runGovernance(){
 async function runCrossReference(){
   const out=document.getElementById('xref-out'); out.innerHTML='<span class="text-gray-400">Cross-referencing&hellip;</span>';
   const key=document.getElementById('xref-key').value.trim();
-  if(!key){ out.innerHTML='<div class="text-red-400">Enter the identifier key column name first.</div>'; return; }
-  const fd=new FormData(); fd.append('xref_key_col',key);
+  const fd=new FormData(); if(key) fd.append('xref_key_col',key);
   const fileIds=['xref-f1','xref-f2','xref-f3','xref-f4'];
   const connIds=['xref-conn1','xref-conn2','xref-conn3','xref-conn4'];
   let sourceCount=0;
