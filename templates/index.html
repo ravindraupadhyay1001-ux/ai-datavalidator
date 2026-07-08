@@ -684,7 +684,7 @@ async function runQuality(){
       <div class="text-xs text-sky-300 mb-2">&#9889; AI-Enhanced &mdash; ${data.ai_rule_results.length} additional rule(s) suggested and checked
         ${data.ai_dq_score?.score!=null ? `(re-scored: ${data.ai_dq_score.score}/100 ${data.ai_dq_score.grade||''})` : ''}</div>
       <div class="space-y-1 text-xs">${data.ai_rule_results.map(r=>`<div>${esc(r.rule_name||r.rule_type||'')} &middot; ${esc(r.column_name||'')}: <span class="${r.status==='PASS'?'text-emerald-300':'text-red-300'}">${esc(r.status||'')}</span></div>`).join('')}</div>
-    </div>` : ''}
+    </div>` : ''}`;
   out.innerHTML += actionBar(data.session_id);
   chart('qGauge',{type:'doughnut',data:{datasets:[{data:[data.score,100-data.score],
     backgroundColor:[gradeColor,'#1e2740'],borderWidth:0,circumference:180,rotation:270}]},
