@@ -154,6 +154,15 @@
       </div>
       <div id="q-out" class="mt-6"></div>
       <div id="q-history" class="mt-4"></div>
+      <div class="card rounded-xl p-4 mt-4 max-w-3xl text-sm">
+        <div class="text-xs text-gray-400 mb-2">&#128172; Dataset Controls &mdash; teach the AI how to handle this dataset (remembered next time)</div>
+        <div class="flex gap-2">
+          <input id="q-dc-input" placeholder='e.g. &quot;exclude column X&quot; or &quot;CUSIP is not PII&quot;' class="inp flex-1 text-sm" onkeydown="if(event.key==='Enter')applyDatasetControl('q','quality')">
+          <button onclick="applyDatasetControl('q','quality')" class="btn px-3 py-1.5 rounded-lg text-sm">Apply</button>
+        </div>
+        <div id="q-dc-feedback" class="text-xs mt-2"></div>
+        <div id="q-dc-rules" class="text-xs mt-2 space-y-1"></div>
+      </div>
     </section>
 
     <!-- DATA PROFILE -->
@@ -168,6 +177,15 @@
         <button onclick="runProfileAI()" class="btn-indigo btn px-4 py-2 rounded-lg text-sm font-semibold" title="Load this file and ask the AI Copilot about it instead of a fixed profile report">&#129302; AI Copilot Mode</button>
       </div>
       <div id="prof-out" class="mt-6"></div>
+      <div class="card rounded-xl p-4 mt-4 max-w-3xl text-sm">
+        <div class="text-xs text-gray-400 mb-2">&#128172; Dataset Controls &mdash; teach the AI how to handle this dataset (remembered next time)</div>
+        <div class="flex gap-2">
+          <input id="prof-dc-input" placeholder='e.g. &quot;exclude column X&quot; or &quot;set remarks as nullable&quot;' class="inp flex-1 text-sm" onkeydown="if(event.key==='Enter')applyDatasetControl('prof','profile')">
+          <button onclick="applyDatasetControl('prof','profile')" class="btn px-3 py-1.5 rounded-lg text-sm">Apply</button>
+        </div>
+        <div id="prof-dc-feedback" class="text-xs mt-2"></div>
+        <div id="prof-dc-rules" class="text-xs mt-2 space-y-1"></div>
+      </div>
     </section>
 
     <!-- GOVERNANCE -->
@@ -182,6 +200,15 @@
         <button onclick="runGovernanceAI()" class="btn-indigo btn px-4 py-2 rounded-lg text-sm font-semibold" title="Load this file and ask the AI Copilot about PII/sensitivity instead of a fixed scan">&#129302; AI Copilot Mode</button>
       </div>
       <div id="gov-out" class="mt-6"></div>
+      <div class="card rounded-xl p-4 mt-4 max-w-3xl text-sm">
+        <div class="text-xs text-gray-400 mb-2">&#128172; Dataset Controls &mdash; teach the AI how to handle this dataset (remembered next time)</div>
+        <div class="flex gap-2">
+          <input id="gov-dc-input" placeholder='e.g. &quot;mark CUSIP as not PII&quot; or &quot;BusinessDate is not a date of birth&quot;' class="inp flex-1 text-sm" onkeydown="if(event.key==='Enter')applyDatasetControl('gov','governance')">
+          <button onclick="applyDatasetControl('gov','governance')" class="btn px-3 py-1.5 rounded-lg text-sm">Apply</button>
+        </div>
+        <div id="gov-dc-feedback" class="text-xs mt-2"></div>
+        <div id="gov-dc-rules" class="text-xs mt-2 space-y-1"></div>
+      </div>
     </section>
 
     <!-- CROSS REFERENCE -->
@@ -633,6 +660,7 @@ async function runQuality(){
     backgroundColor:'#38bdf8',borderRadius:6}]},options:{indexAxis:'y',plugins:{legend:{display:false}},
     scales:{x:{max:100,ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}},y:{ticks:{color:'#cbd5e1'}}}}});
   loadDqHistory(data.name, data.score);
+  loadDatasetControlRules('q','quality');
 }
 
 async function loadDqHistory(fileName, currentScore){
@@ -699,6 +727,7 @@ async function runProfile(){
     </div>`;
   }
   out.innerHTML=html+actionBar(data.session_id);
+  loadDatasetControlRules('prof','profile');
 }
 
 // ---------- Governance ----------
@@ -749,6 +778,7 @@ async function runGovernance(){
   chart('govChart',{type:'bar',data:{labels,datasets:[{data:labels.map(k=>counts[k]),
     backgroundColor:labels.map(k=>sc[k]),borderRadius:6}]},options:{plugins:{legend:{display:false}},
     scales:{x:{ticks:{color:'#94a3b8'}},y:{ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}}}}});
+  loadDatasetControlRules('gov','governance');
 }
 
 // ---------- Cross Reference ----------
@@ -805,6 +835,39 @@ async function runParse(){
 
 // ---------- Chat ----------
 function quickChat(msg){ document.getElementById('chat-in').value = msg; sendChat(); }
+
+// ---------- Dataset Controls (plain-English, per-dataset AI memory) ----------
+async function applyDatasetControl(prefix, context){
+  if(!SESSION){ alert('Run an analysis first.'); return; }
+  const inp = document.getElementById(`${prefix}-dc-input`);
+  const instruction = inp.value.trim();
+  if(!instruction) return;
+  const fb = document.getElementById(`${prefix}-dc-feedback`);
+  fb.innerHTML = '<span class="text-gray-400">Applying&hellip;</span>';
+  const r = await J('POST', `/dataset-controls/${SESSION}/apply`, {instruction, context});
+  if(r.error){ fb.innerHTML = `<span class="text-red-400">${esc(r.error)}</span>`; return; }
+  fb.innerHTML = `<span class="text-emerald-400">&check; ${esc(r.feedback||'Saved')}</span>`;
+  inp.value='';
+  renderDatasetControlRules(prefix, context, r.ctx_rules||[]);
+}
+function renderDatasetControlRules(prefix, context, rules){
+  const box = document.getElementById(`${prefix}-dc-rules`);
+  if(!box) return;
+  box.innerHTML = rules.map(r=>`<div class="flex items-center justify-between card rounded px-2 py-1">
+    <span><span class="badge mr-1" style="background:rgba(56,189,248,.15);color:#7dd3fc">${esc(r.base_cat)}</span>${esc(r.rule)}</span>
+    <button onclick="deleteDatasetControlRule(${r.index},'${prefix}','${context}')" class="text-red-400 text-xs px-1">&times;</button></div>`).join('');
+}
+async function loadDatasetControlRules(prefix, context){
+  if(!SESSION) return;
+  try{
+    const r = await fetch(`/dataset-controls/${SESSION}/rules?context=${context}`).then(x=>x.json());
+    renderDatasetControlRules(prefix, context, r.ctx_rules||[]);
+  }catch(e){}
+}
+async function deleteDatasetControlRule(index, prefix, context){
+  await J('POST', `/rules/${SESSION}/delete`, {rule_index: index});
+  loadDatasetControlRules(prefix, context);
+}
 async function sendChat(){
   const inp=document.getElementById('chat-in'); const msg=inp.value.trim(); if(!msg) return;
   const log=document.getElementById('chat-log');
