@@ -19776,11 +19776,37 @@ async def download(session_id: str, fmt: str = "excel"):
         safe_name = f"{action}_{re.sub(r'[^a-zA-Z0-9_-]', '', session_id[:8])}"
 
 
-    # Default: Excel
+    fmt = (fmt or "excel").strip().lower()
+
+    if fmt == "json":
+        buf = io.BytesIO(json.dumps(_sanitize_json(data), indent=2, default=str).encode("utf-8"))
+        return StreamingResponse(
+            buf, media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{safe_name}.json"'},
+        )
 
     wb = generate_excel(data)
 
+    if fmt == "csv":
+        # Pick the largest non-Summary sheet and export it as CSV.
+        best_ws = None
+        for ws in wb.worksheets:
+            if ws.title == "Summary":
+                continue
+            if best_ws is None or ws.max_row > best_ws.max_row:
+                best_ws = ws
+        best_ws = best_ws or wb.worksheets[0]
+        csv_buf = io.StringIO()
+        writer = _csv.writer(csv_buf)
+        for row in best_ws.iter_rows(values_only=True):
+            writer.writerow(["" if v is None else v for v in row])
+        buf = io.BytesIO(csv_buf.getvalue().encode("utf-8"))
+        return StreamingResponse(
+            buf, media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{safe_name}.csv"'},
+        )
 
+    # Default: Excel
 
 # ==== SOURCE PAGE 0889 ====
 

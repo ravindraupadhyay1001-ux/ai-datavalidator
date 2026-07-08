@@ -409,7 +409,9 @@ function stat(label, val, color){
 
 function actionBar(sessionId){
   return `<div class="mt-4 flex gap-2 flex-wrap">
-    <a href="/download/${sessionId}" class="btn-emerald btn rounded-lg px-4 py-2 text-sm">&#11015; Download Excel</a>
+    <a href="/download/${sessionId}" class="btn-emerald btn rounded-lg px-4 py-2 text-sm">&#11015; Excel</a>
+    <a href="/download/${sessionId}?fmt=csv" class="btn-ghost btn rounded-lg px-4 py-2 text-sm">&#11015; CSV</a>
+    <a href="/download/${sessionId}?fmt=json" class="btn-ghost btn rounded-lg px-4 py-2 text-sm">&#11015; JSON</a>
     <button onclick="saveToWorkspace()" class="btn-indigo btn rounded-lg px-4 py-2 text-sm">&#128190; Save to Workspace</button>
     <button onclick="emailReport('${sessionId}')" class="btn-ghost btn rounded-lg px-4 py-2 text-sm">&#9993; Email Report</button>
   </div>`;
