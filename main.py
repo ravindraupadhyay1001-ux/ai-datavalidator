@@ -15421,7 +15421,13 @@ async def xref_analyze(request: Request):
         for row in _cov.get("rows", [])
     ]
     _conflicts = [
-        {"identifier": c["key"], "field": c["field"], "values": c.get("values", {})}
+        {
+            "identifier": c["key"], "field": c["field"], "values": c.get("source_values", c.get("values", {})),
+            "conflict_type": c.get("conflict_type", ""),
+            "golden_value": c.get("golden_value", ""),
+            "sources_agree": c.get("sources_agree", []),
+            "sources_differ": c.get("sources_differ", []),
+        }
         for c in xr.get("conflicts", [])
     ]
     return JSONResponse(_sanitize_json({
@@ -15432,6 +15438,7 @@ async def xref_analyze(request: Request):
             "conflicts": _summary.get("conflict_count", 0),
         },
         "identifier_key": xr.get("key_col_used", ""),
+        "golden_source": xr.get("golden_source", "auto (majority-wins)"),
         "sources": _cov_sources,
         "coverage_matrix": _cov_rows,
         "conflicts": _conflicts,

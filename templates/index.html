@@ -314,6 +314,11 @@
       </label>
     </div>
     <div id="chat-log" class="flex-1 overflow-auto p-3 space-y-2 text-sm"></div>
+    <div id="chat-quickstart" class="px-3 pb-2 flex gap-1.5 flex-wrap">
+      <button onclick="quickChat('What are the main breaks?')" class="btn-ghost rounded-full px-2.5 py-1 text-xs">What are the main breaks?</button>
+      <button onclick="quickChat('Summarize the data quality results')" class="btn-ghost rounded-full px-2.5 py-1 text-xs">Summarize DQ&hellip;</button>
+      <button onclick="quickChat('What should I fix first?')" class="btn-ghost rounded-full px-2.5 py-1 text-xs">What to fix first?</button>
+    </div>
     <div class="p-3 border-t border-[var(--line)] flex gap-2">
       <input id="chat-in" placeholder="Ask about results&hellip;" class="inp flex-1 text-sm" onkeydown="if(event.key==='Enter')sendChat()">
       <button onclick="sendChat()" class="btn rounded-lg px-3 text-sm">Send</button>
@@ -713,9 +718,13 @@ async function runCrossReference(){
     ${(data.coverage_matrix||[]).slice(0,100).map(row=>`<tr class="border-t border-[var(--line)]"><td class="p-2">${esc(row.identifier)}</td>
       ${(data.sources||[]).map(s=>`<td class="text-center">${row[s]?'<span class=\"text-emerald-400\">&check;</span>':'<span class=\"text-gray-600\">&times;</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
   if(data.conflicts?.length){
-    html+=`<h3 class="font-semibold mt-2 mb-2 text-amber-300">Conflicts</h3><div class="space-y-2">`+
-      data.conflicts.slice(0,30).map(c=>`<div class="card rounded-lg p-2 text-xs"><b class="text-sky-300">${esc(c.identifier)}</b> &middot; ${esc(c.field)}: `+
-        Object.entries(c.values).map(([src,v])=>`${esc(src)}=<span class="text-amber-300">${esc(v)}</span>`).join(' &middot; ')+`</div>`).join('')+`</div>`;
+    html+=`<h3 class="font-semibold mt-2 mb-2 text-amber-300">Conflicts &mdash; Golden Record (${esc(data.golden_source||'auto')})</h3><div class="space-y-2">`+
+      data.conflicts.slice(0,30).map(c=>`<div class="card rounded-lg p-2 text-xs">
+        <b class="text-sky-300">${esc(c.identifier)}</b> &middot; ${esc(c.field)}
+        <span class="badge ml-1" style="background:rgba(168,85,247,.18);color:#c4b5fd">${esc(c.conflict_type||'')}</span><br>`+
+        Object.entries(c.values).map(([src,v])=>`${esc(src)}=<span class="${(c.sources_agree||[]).includes(src)?'text-emerald-300':'text-amber-300'}">${esc(v)}</span>`).join(' &middot; ')+
+        (c.golden_value?` <span class="text-gray-400">&rarr; golden:</span> <span class="text-emerald-400 font-semibold">${esc(c.golden_value)}</span>`:'')+
+        `</div>`).join('')+`</div>`;
   }
   out.innerHTML=html+actionBar(data.session_id);
 }
@@ -734,6 +743,7 @@ async function runParse(){
 }
 
 // ---------- Chat ----------
+function quickChat(msg){ document.getElementById('chat-in').value = msg; sendChat(); }
 async function sendChat(){
   const inp=document.getElementById('chat-in'); const msg=inp.value.trim(); if(!msg) return;
   const log=document.getElementById('chat-log');
