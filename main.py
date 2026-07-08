@@ -16896,7 +16896,7 @@ async def analyze(request: Request):
              "changes": mr["changes"]}
             for mr in diff.get("modified_rows", [])
         ]
-        return JSONResponse(_sanitize_json({
+        _resp = {
             "session_id": session_id,
             "counts": {
                 "matched": diff.get("file1_rows", 0) - diff.get("removed_count", 0),
@@ -16914,7 +16914,10 @@ async def analyze(request: Request):
                 "file2": {"duplicate_rows": diff.get("file2_duplicate_count", 0)},
             },
             "modified": modified,
-        }))
+        }
+        if session_id in _results_store:
+            _results_store[session_id]["_digest"] = _resp
+        return JSONResponse(_sanitize_json(_resp))
 
     if action in ("quality", "profile"):
         q = quality_reports[0] if quality_reports else (profile_reports[0] if profile_reports else {})
@@ -16956,7 +16959,7 @@ async def analyze(request: Request):
             for c in profile.get("correlations", [])
         ]
 
-        return JSONResponse(_sanitize_json({
+        _resp = {
             "session_id": session_id,
             "name": q.get("file_name", ""),
             "dimensions": dims,
@@ -16970,7 +16973,10 @@ async def analyze(request: Request):
             "correlations": correlations,
             "ai_rule_results": q.get("ai_rule_results", []),
             "ai_dq_score": q.get("ai_dq_score", {}),
-        }))
+        }
+        if session_id in _results_store:
+            _results_store[session_id]["_digest"] = _resp
+        return JSONResponse(_sanitize_json(_resp))
 
     if action == "governance":
         g = governance_reports[0] if governance_reports else {}
@@ -17013,7 +17019,7 @@ async def analyze(request: Request):
         if g.get("undocumented_columns"):
             recommendations.append(f"{len(g['undocumented_columns'])} column(s) have no data-dictionary entry.")
 
-        return JSONResponse(_sanitize_json({
+        _resp = {
             "session_id": session_id,
             "overall_risk": overall_risk,
             "overall_classification": g.get("overall_classification", ""),
@@ -17027,7 +17033,10 @@ async def analyze(request: Request):
             "has_data_dict": bool(g.get("has_data_dict")),
             "columns": columns,
             "recommendations": recommendations,
-        }))
+        }
+        if session_id in _results_store:
+            _results_store[session_id]["_digest"] = _resp
+        return JSONResponse(_sanitize_json(_resp))
 
     if action == "parse":
         result = parse_reports[0] if parse_reports else {"columns": [], "rows": [], "error": "No file parsed."}
@@ -19152,7 +19161,12 @@ async def agent_chat(request: Request):
         return JSONResponse({"error": "session_id is required."}, status_code=400)
 
     try:
-        session_results = _results_store.get(session_id, {})
+        _raw_results = _results_store.get(session_id, {})
+        # _summarize_result() (agent/tools.py) expects the same digested shape
+        # /analyze already returns to the frontend (dimensions/score/counts/etc),
+        # not the raw internal storage (quality_reports/pairs/dataframes/...) --
+        # merge in the digest snapshot captured when that response was built.
+        session_results = {**_raw_results, **_raw_results.get("_digest", {})}
         dispatch = make_tool_dispatch(session_results, {})
         tools_called: list[str] = []
 
