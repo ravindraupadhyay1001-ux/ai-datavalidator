@@ -384,6 +384,11 @@
         <div><label class="text-xs text-gray-400">License Server URL</label><input id="cfg-license-server" class="inp w-full mt-1 text-sm"></div>
       </div>
 
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl">
+        <h3 class="font-semibold mb-3 text-sky-300">Account</h3>
+        <a href="/api/auth/change-password" target="_blank" class="btn-ghost btn rounded-lg px-4 py-2 text-sm inline-block">&#128272; Change Password</a>
+      </div>
+
       <div class="max-w-3xl mb-4 flex gap-2">
         <button onclick="saveAppSettings()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">&#128190; Save Settings</button>
         <span class="text-xs text-gray-500 self-center">Written to .env on the server &mdash; some changes need a restart to take effect.</span>
@@ -692,6 +697,11 @@ async function runQuality(){
   loadDatasetControlRules('q','quality');
 }
 
+async function setDqBaseline(fileName){
+  if(!SESSION){ alert('Run Data Quality first.'); return; }
+  const r = await J('POST', `/api/dq/baseline/${SESSION}/${encodeURIComponent(fileName)}`);
+  alert(r.ok ? '✅ Baseline saved.' : '❌ '+(r.error||'Could not save baseline.'));
+}
 async function loadDqHistory(fileName, currentScore){
   const box=document.getElementById('q-history'); box.innerHTML='';
   if(!fileName) return;
@@ -714,6 +724,7 @@ async function loadDqHistory(fileName, currentScore){
       <div class="text-xs text-gray-400 mb-2">DQ score trend &mdash; last 30 days (${hist.length} runs)</div>
       <canvas id="qHistChart" height="80"></canvas></div>`;
   }
+  html += `<button onclick="setDqBaseline('${esc(fileName)}')" class="btn-ghost btn rounded-lg px-3 py-1.5 text-xs mt-2">&#128204; Set as Baseline</button>`;
   box.innerHTML = html;
   if(Array.isArray(hist) && hist.length >= 2){
     chart('qHistChart',{type:'line',data:{
