@@ -447,7 +447,8 @@
 </div>
 
 <script>
-let SESSION = null;
+let SESSION = sessionStorage.getItem('SESSION') || null;
+function setSession(id){ SESSION = id || null; if(id) sessionStorage.setItem('SESSION', id); else sessionStorage.removeItem('SESSION'); }
 const _charts = {};
 function chart(id, cfg){ if(_charts[id])_charts[id].destroy(); const el=document.getElementById(id); if(el)_charts[id]=new Chart(el,cfg); }
 const esc = s => (''+s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -585,7 +586,7 @@ async function runCompare(){
     {key_columns:document.getElementById('cmp-keys').value, exclude_columns:document.getElementById('cmp-excl').value,
      ...advancedHints('cmp')}, 'cmp-refdocs');
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
-  SESSION=data.session_id; const c=data.counts||{};
+  setSession(data.session_id); const c=data.counts||{};
   out.innerHTML=`<div class="grid grid-cols-4 gap-3 mb-4">
     ${stat('Matched', c.matched??'&mdash;', '#10b981')}
     ${stat('Only in File 1', c.file1_only??0, '#f59e0b')}
@@ -619,7 +620,7 @@ async function runComplexRecon(){
   if(!textCol){ out.innerHTML='<div class="text-red-400">Enter the free-text description column name first.</div>'; return; }
   const {ok,data}=await postForm('lineage',[['files_a','cmp-f1'],['files_b','cmp-f2']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
-  SESSION=data.session_id;
+  setSession(data.session_id);
   out.innerHTML=`<div class="card rounded-xl p-4 text-sm text-gray-300">
     Files loaded (${(data.file_names||[]).join(' vs ')}). Complex matching on free-text columns is driven by the
     <b class="text-sky-300">AI Copilot</b> panel &rarr;. A starter message has been filled in for you &mdash;
@@ -634,7 +635,7 @@ async function _runAICopilotMode(action, fileId, outId, label){
   const out=document.getElementById(outId); out.innerHTML='<span class="text-gray-400">Loading file for the AI Copilot&hellip;</span>';
   const {ok,data}=await postForm(action,[['files',fileId]]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
-  SESSION=data.session_id;
+  setSession(data.session_id);
   out.innerHTML=`<div class="card rounded-xl p-4 text-sm text-gray-300">
     File loaded (${(data.file_names||[]).join(', ')}). Ask the <b class="text-sky-300">AI Copilot</b> panel &rarr;
     about ${label} for this file &mdash; a starter question has been filled in for you.</div>`;
@@ -656,7 +657,7 @@ async function runQuality(){
   if(aiEnhanced) extra.di_ai_enhanced = '1';
   const {ok,data}=await postForm('quality',[['files','q-f1','conn_ids','q-conn1']], extra, 'q-refdocs');
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
-  SESSION=data.session_id; const dim=data.dimensions||{};
+  setSession(data.session_id); const dim=data.dimensions||{};
   const gradeColor={A:'#10b981',B:'#84cc16',C:'#f59e0b',D:'#f97316',F:'#ef4444'}[data.grade]||'#38bdf8';
   out.innerHTML=`<div class="grid grid-cols-3 gap-4 mb-4">
     <div class="card rounded-xl p-4 flex flex-col items-center justify-center"><canvas id="qGauge" height="150"></canvas>
@@ -746,7 +747,7 @@ async function runProfile(){
   const out=document.getElementById('prof-out'); out.innerHTML='<span class="text-gray-400">Profiling&hellip;</span>';
   const {ok,data}=await postForm('quality',[['files','prof-f1','conn_ids','prof-conn1']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
-  SESSION=data.session_id;
+  setSession(data.session_id);
   let html=`<div class="grid grid-cols-3 gap-3 mb-4 text-sm">
     ${stat('Rows', data.rows, '#a855f7')}${stat('Columns', data.columns, '#38bdf8')}${stat('Duplicate rows', data.duplicate_rows, '#f59e0b')}</div>
     <div class="card rounded-xl p-3 overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400">
@@ -775,7 +776,7 @@ async function runGovernance(){
   const out=document.getElementById('gov-out'); out.innerHTML='<span class="text-gray-400">Scanning&hellip;</span>';
   const {ok,data}=await postForm('governance',[['files','gov-f1','conn_ids','gov-conn1']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
-  SESSION=data.session_id;
+  setSession(data.session_id);
   const rc={low:'#10b981',medium:'#f59e0b',high:'#f97316',critical:'#ef4444'}[data.overall_risk];
   const sc={public:'#10b981',internal:'#38bdf8',confidential:'#f59e0b','highly restricted':'#ef4444',restricted:'#ef4444'};
   const counts={}; data.columns.forEach(c=>counts[c.sensitivity]=(counts[c.sensitivity]||0)+1);
@@ -839,7 +840,7 @@ async function runCrossReference(){
   fd.append('xref_source_count', sourceCount);
   const r=await fetch('/xref',{method:'POST',body:fd}); const data=await r.json();
   if(!r.ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
-  SESSION=data.session_id; const c=data.counts||{};
+  setSession(data.session_id); const c=data.counts||{};
   let html=`<div class="grid grid-cols-3 gap-3 mb-4">
     ${stat('Total identifiers', c.total_identifiers??0, '#38bdf8')}
     ${stat('In all sources', c.in_all_sources??0, '#10b981')}
