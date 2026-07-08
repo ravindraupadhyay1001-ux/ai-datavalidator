@@ -3797,6 +3797,23 @@ def _build_modified_rows(changed_df, keys, use_cols, make_kv, out_list):
 
 
 
+def _series_differs(v1: pd.Series, v2: pd.Series) -> pd.Series:
+    # String-level inequality first -- cheap, and already correct for the
+    # (common) case where both sides match exactly.
+    raw_diff = v1 != v2
+    if not raw_diff.any():
+        return raw_diff
+    # For rows that differ as strings, check whether both sides are actually
+    # the same number just formatted differently (e.g. "100.50" vs "100.5",
+    # "300" vs "300.00", "200.25" vs "200.250") -- extremely common across
+    # BFSI source systems and not a real reconciliation break.
+    n1 = pd.to_numeric(v1, errors="coerce")
+    n2 = pd.to_numeric(v2, errors="coerce")
+    both_numeric = n1.notna() & n2.notna()
+    numerically_equal = both_numeric & (n1.sub(n2).abs() < 1e-9)
+    return raw_diff & ~numerically_equal
+
+
 def _key_based_diff(df1, df2, keys, common_cols, force_data_cols: list[str] | None = None):
     # Key-based comparison.
     #
@@ -3911,7 +3928,7 @@ def _key_based_diff(df1, df2, keys, common_cols, force_data_cols: list[str] | No
                     v2 = merged[c2].fillna("").astype(str).str.strip().apply(
                         # ==== SOURCE PAGE 0181 ====
                         lambda v: "" if v.lower() in _NULL_SENTINELS else v)
-                    diff_mask |= (v1 != v2)
+                    diff_mask |= _series_differs(v1, v2)
 
             changed_df = merged[diff_mask].head(_MAX_DIFF_ROWS)
             _build_modified_rows(changed_df, keys, use_cols, make_kv, modified_rows)
@@ -3937,7 +3954,7 @@ def _key_based_diff(df1, df2, keys, common_cols, force_data_cols: list[str] | No
                         lambda v: "" if v.lower() in _NULL_SENTINELS else v)
                     v2 = merged[c2].fillna("").astype(str).str.strip().apply(
                         lambda v: "" if v.lower() in _NULL_SENTINELS else v)
-                    diff_mask |= (v1 != v2)
+                    diff_mask |= _series_differs(v1, v2)
 
             changed_df = merged[diff_mask].head(_MAX_DIFF_ROWS)
             _build_modified_rows(changed_df, keys, use_cols, make_kv, modified_rows)
