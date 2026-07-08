@@ -104,6 +104,7 @@ if "tojson" not in templates.env.filters:
 _chat_contexts: dict[str, dict] = {}
 _results_store: dict[str, dict] = {}  # full results keyed by session_id for download/email
 _session_quality_cache: dict = {}     # session_id -> {file_name -> quality_report}
+_agent_chat_history: dict[str, list] = {}  # session_id -> [{"role","content"}, ...] for Agent mode
 
 
 # -- Workspace initialisation
@@ -19135,6 +19136,7 @@ async def agent_chat(request: Request):
     # { "reply": "<agent answer>", "tools_called": ["compare_files", ...] }
 
     from agent.executor import run_agent
+    from agent.tools import make_tool_dispatch
 
     body    = await request.json()
     session_id = body.get("session_id", "")
@@ -19150,11 +19152,27 @@ async def agent_chat(request: Request):
         return JSONResponse({"error": "session_id is required."}, status_code=400)
 
     try:
-        result = run_agent(session_id=session_id, user_input=question)
-        return JSONResponse({
-            "reply":        result.get("output", ""),
-            "tools_called": result.get("tools_used", []),
-        })
+        session_results = _results_store.get(session_id, {})
+        dispatch = make_tool_dispatch(session_results, {})
+        tools_called: list[str] = []
+
+        def _tracked_dispatch(name, arguments):
+            tools_called.append(name)
+            return dispatch(name, arguments)
+
+        history = _agent_chat_history.get(session_id, [])
+        fp = session_results.get("dataset_fingerprint", "")
+        extra_rules = _fp_rules_text(fp, module="agent") if fp else ""
+
+        answer = run_agent(question, history, _tracked_dispatch, extra_rules)
+
+        history = history + [
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": answer},
+        ]
+        _agent_chat_history[session_id] = history[-12:]
+
+        return JSONResponse({"reply": answer, "tools_called": tools_called})
     except ValueError as exc:
         # Raised by agent tools when no files are registered yet
         return JSONResponse({"reply": str(exc), "tools_called": []})
