@@ -540,22 +540,17 @@ def _sanitize_json(obj):
     return str(obj)
 
 
-def _ask_llm(messages: list[dict], system: str = "",
-             _module: str = "unknown", _call_type: str = "chat",
-             _username: str = "") -> str:
+def _ask_llm_bedrock(messages: list[dict], system: str = "",
+                      _module: str = "unknown", _call_type: str = "chat",
+                      _username: str = "") -> str:
     client = _get_bedrock_client()
     kwargs = {"modelId": MODEL_ID, "messages": messages}
     if system:
         kwargs["system"] = [{"text": system}]
 
-
-
-# ==== SOURCE PAGE 0028 ====
-
     response = client.converse(**kwargs)
 
     # -- Token usage tracking
-
     try:
         usage = response.get("usage", {})
         in_tok  = int(usage.get("inputTokens",  0))
@@ -573,11 +568,43 @@ def _ask_llm(messages: list[dict], system: str = "",
     except Exception:
         pass
 
-
-
-# ==== SOURCE PAGE 0029 ====
-
     return response["output"]["message"]["content"][0]["text"]
+
+
+def _ask_llm(messages: list[dict], system: str = "",
+             _module: str = "unknown", _call_type: str = "chat",
+             _username: str = "") -> str:
+    # Multi-provider fallback: try LLM_PROVIDER first, then the rest of the
+    # fallback order, so a misconfigured/unreachable Bedrock (no AWS creds,
+    # wrong profile, etc.) doesn't take down every AI feature in the app.
+    # Bedrock's native message format ({"content": [{"text": ...}]}) is used
+    # by every caller of _ask_llm; the other providers want plain strings.
+    from agent.llm import LLM_PROVIDER, _ask_groq, _ask_gemini, _ask_openai
+
+    plain_messages = [
+        {
+            "role": m["role"],
+            "content": m["content"][0]["text"] if isinstance(m.get("content"), list) else m.get("content", ""),
+        }
+        for m in messages
+    ]
+    providers = [LLM_PROVIDER] + [p for p in ("groq", "gemini", "bedrock", "openai") if p != LLM_PROVIDER]
+
+    last_err: Exception = RuntimeError("No LLM provider configured.")
+    for provider in providers:
+        try:
+            if provider == "bedrock":
+                return _ask_llm_bedrock(messages, system, _module, _call_type, _username)
+            elif provider == "groq":
+                return _ask_groq(plain_messages, system)
+            elif provider == "gemini":
+                return _ask_gemini(plain_messages, system)
+            elif provider == "openai":
+                return _ask_openai(plain_messages, system)
+        except Exception as exc:
+            last_err = exc
+            continue
+    raise last_err
 
 
 # ---------------------------------------------------------------------
