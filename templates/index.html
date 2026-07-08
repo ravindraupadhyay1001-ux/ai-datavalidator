@@ -301,6 +301,65 @@
         </div>
         <div id="users-out" class="text-sm"></div>
       </div>
+
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl">
+        <h3 class="font-semibold mb-3 text-sky-300">LLM Provider</h3>
+        <div class="grid grid-cols-2 gap-3 text-sm">
+          <div><label class="text-xs text-gray-400">Provider</label>
+            <select id="cfg-llm-provider" class="inp w-full mt-1 text-sm">
+              <option value="bedrock">AWS Bedrock (Claude)</option>
+              <option value="groq">Groq</option>
+              <option value="gemini">Google Gemini</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic Direct</option>
+            </select></div>
+          <div></div>
+          <div><label class="text-xs text-gray-400">Bedrock Model ID</label><input id="cfg-llm-model" class="inp w-full mt-1 text-sm" placeholder="arn:aws:bedrock:..."></div>
+          <div><label class="text-xs text-gray-400">AWS Region</label><input id="cfg-llm-region" class="inp w-full mt-1 text-sm" placeholder="us-east-1"></div>
+          <div><label class="text-xs text-gray-400">AWS Profile</label><input id="cfg-llm-profile" class="inp w-full mt-1 text-sm"></div>
+          <div></div>
+          <div><label class="text-xs text-gray-400">Groq Model ID</label><input id="cfg-llm-groqmodel" class="inp w-full mt-1 text-sm"></div>
+          <div><label class="text-xs text-gray-400">Groq API Key</label><input id="cfg-llm-groqkey" type="password" class="inp w-full mt-1 text-sm"></div>
+          <div><label class="text-xs text-gray-400">Gemini Model ID</label><input id="cfg-llm-geminimodel" class="inp w-full mt-1 text-sm"></div>
+          <div><label class="text-xs text-gray-400">Gemini API Key</label><input id="cfg-llm-geminikey" type="password" class="inp w-full mt-1 text-sm"></div>
+          <div><label class="text-xs text-gray-400">OpenAI Model ID</label><input id="cfg-llm-openaimodel" class="inp w-full mt-1 text-sm"></div>
+          <div><label class="text-xs text-gray-400">OpenAI API Key</label><input id="cfg-llm-openaikey" type="password" class="inp w-full mt-1 text-sm"></div>
+          <div><label class="text-xs text-gray-400">Anthropic Model ID</label><input id="cfg-llm-anthropicmodel" class="inp w-full mt-1 text-sm"></div>
+          <div><label class="text-xs text-gray-400">Anthropic API Key</label><input id="cfg-llm-anthropickey" type="password" class="inp w-full mt-1 text-sm"></div>
+        </div>
+      </div>
+
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl">
+        <h3 class="font-semibold mb-3 text-sky-300">Database / Storage</h3>
+        <div class="grid grid-cols-2 gap-3 text-sm">
+          <div><label class="text-xs text-gray-400">Backend</label>
+            <select id="cfg-db-backend" class="inp w-full mt-1 text-sm"><option value="sqlite">SQLite</option><option value="mssql">Microsoft SQL Server</option></select></div>
+          <div><label class="text-xs text-gray-400">SQLite Path</label><input id="cfg-db-sqlite" class="inp w-full mt-1 text-sm" placeholder="workspace.db"></div>
+          <div><label class="text-xs text-gray-400">MSSQL Server</label><input id="cfg-db-mssqlserver" class="inp w-full mt-1 text-sm"></div>
+          <div><label class="text-xs text-gray-400">MSSQL Database</label><input id="cfg-db-mssqldb" class="inp w-full mt-1 text-sm"></div>
+        </div>
+      </div>
+
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl">
+        <h3 class="font-semibold mb-3 text-sky-300">Email (SMTP)</h3>
+        <div class="grid grid-cols-2 gap-3 text-sm">
+          <div><label class="text-xs text-gray-400">From address</label><input id="cfg-email-from" class="inp w-full mt-1 text-sm"></div>
+          <div><label class="text-xs text-gray-400">SMTP Host</label><input id="cfg-email-host" class="inp w-full mt-1 text-sm" placeholder="smtp.gmail.com"></div>
+          <div><label class="text-xs text-gray-400">SMTP Port</label><input id="cfg-email-port" class="inp w-full mt-1 text-sm" placeholder="587"></div>
+          <div><label class="text-xs text-gray-400">SMTP User</label><input id="cfg-email-user" class="inp w-full mt-1 text-sm"></div>
+          <div><label class="text-xs text-gray-400">SMTP Password</label><input id="cfg-email-pass" type="password" class="inp w-full mt-1 text-sm"></div>
+        </div>
+      </div>
+
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl">
+        <h3 class="font-semibold mb-3 text-sky-300">License Server</h3>
+        <div><label class="text-xs text-gray-400">License Server URL</label><input id="cfg-license-server" class="inp w-full mt-1 text-sm"></div>
+      </div>
+
+      <div class="max-w-3xl mb-4 flex gap-2">
+        <button onclick="saveAppSettings()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">&#128190; Save Settings</button>
+        <span class="text-xs text-gray-500 self-center">Written to .env on the server &mdash; some changes need a restart to take effect.</span>
+      </div>
       <pre id="set-out" class="card rounded-xl p-4 text-xs text-gray-300 max-w-3xl"></pre>
     </section>
   </main>
@@ -820,9 +879,47 @@ async function saveToWorkspace(){ if(!SESSION){alert('Run an analysis first.');r
 async function loadSettings(){ const d=await fetch('/api/license/status').then(r=>r.json());
   document.getElementById('lic-state').innerHTML=`Tier: <b>${d.dev_mode?'DEV (all unlocked)':d.tier}</b> &middot; Status: <b class="${d.valid?'text-emerald-400':'text-red-400'}">${d.valid?'valid':'inactive'}</b>`+
     (d.expires_at?` &middot; expires ${d.expires_at.slice(0,10)}`:'')+`<br><span class="text-gray-500">${esc(d.message||'')}</span>`;
-  document.getElementById('set-out').textContent=JSON.stringify(d,null,2); }
+  document.getElementById('set-out').textContent=JSON.stringify(d,null,2);
+  try{
+    const s = await fetch('/api/settings').then(r=>r.json());
+    const set = (id,val) => { const el=document.getElementById(id); if(el && val!=null) el.value = val; };
+    set('cfg-llm-provider', s.llm?.provider);
+    set('cfg-llm-model', s.llm?.model_id);
+    set('cfg-llm-region', s.llm?.region);
+    set('cfg-llm-profile', s.llm?.profile);
+    set('cfg-llm-groqmodel', s.llm?.groq_model_id);
+    set('cfg-llm-geminimodel', s.llm?.gemini_model_id);
+    set('cfg-llm-openaimodel', s.llm?.openai_model_id);
+    set('cfg-llm-anthropicmodel', s.llm?.anthropic_model_id);
+    set('cfg-db-backend', s.storage?.backend);
+    set('cfg-db-sqlite', s.storage?.sqlite_path);
+    set('cfg-db-mssqlserver', s.storage?.mssql_server);
+    set('cfg-db-mssqldb', s.storage?.mssql_database);
+    set('cfg-email-from', s.email?.from_address);
+    set('cfg-email-host', s.email?.smtp_host);
+    set('cfg-email-port', s.email?.smtp_port);
+    set('cfg-license-server', s.license_server);
+  }catch(e){}
+}
 async function activateLicense(){ const token=document.getElementById('lic-token').value.trim(); if(!token)return;
   const r=await J('POST','/api/license/activate',{token}); alert(r.ok?'✅ License activated':'❌ Activation failed'); loadSettings(); }
+
+async function saveAppSettings(){
+  const v = id => document.getElementById(id)?.value?.trim() || '';
+  const body = {
+    llm: { provider: v('cfg-llm-provider'), model_id: v('cfg-llm-model'), region: v('cfg-llm-region'), profile: v('cfg-llm-profile'),
+      groq_model_id: v('cfg-llm-groqmodel'), groq_api_key: v('cfg-llm-groqkey'),
+      gemini_model_id: v('cfg-llm-geminimodel'), gemini_api_key: v('cfg-llm-geminikey'),
+      openai_model_id: v('cfg-llm-openaimodel'), openai_api_key: v('cfg-llm-openaikey'),
+      anthropic_model_id: v('cfg-llm-anthropicmodel'), anthropic_api_key: v('cfg-llm-anthropickey') },
+    storage: { backend: v('cfg-db-backend'), sqlite_path: v('cfg-db-sqlite'), mssql_server: v('cfg-db-mssqlserver'), mssql_database: v('cfg-db-mssqldb') },
+    email: { from_address: v('cfg-email-from'), smtp_host: v('cfg-email-host'), smtp_port: v('cfg-email-port'), smtp_user: v('cfg-email-user'), smtp_pass: v('cfg-email-pass') },
+  };
+  if(v('cfg-license-server')) body.license_server = v('cfg-license-server');
+  const r = await J('POST','/api/settings', body);
+  alert(r.ok!==false ? '✅ Settings saved (may need a restart to fully apply).' : '❌ '+(r.error||'Failed to save'));
+  loadSettings();
+}
 
 async function loadUsers(){
   const box=document.getElementById('users-out');
