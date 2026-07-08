@@ -65,6 +65,7 @@
       <button data-tab="xref" class="tab-btn text-left px-3 py-2 rounded-lg">&#128279; Cross Reference</button>
       <button data-tab="workspace" class="tab-btn text-left px-3 py-2 rounded-lg">&#9889; Workspace</button>
       <button data-tab="settings" class="tab-btn text-left px-3 py-2 rounded-lg">&#9881;&#65039; Settings</button>
+      <button onclick="openHelpModal()" class="tab-btn text-left px-3 py-2 rounded-lg">&#128218; User Guide</button>
     </nav>
     <div class="mt-auto p-3 m-3 card rounded-lg text-xs text-gray-400" id="licbar">license&hellip;</div>
   </aside>
@@ -410,6 +411,34 @@
       <button onclick="sendChat()" class="btn rounded-lg px-3 text-sm">Send</button>
     </div>
   </aside>
+</div>
+
+<!-- Help Modal / User Guide -->
+<div id="help-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6" style="background:rgba(0,0,0,.65);backdrop-filter:blur(4px)">
+  <div class="card rounded-xl w-full max-w-4xl h-[80vh] flex overflow-hidden">
+    <nav class="w-52 border-r border-[var(--line)] p-3 flex flex-col gap-1 text-sm overflow-auto">
+      <button data-help="overview" class="help-tab-btn text-left px-3 py-1.5 rounded-lg tab-active">Overview</button>
+      <button data-help="compare" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Reconciliation</button>
+      <button data-help="quality" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Data Quality</button>
+      <button data-help="profile" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Data Profile</button>
+      <button data-help="governance" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Governance</button>
+      <button data-help="parse" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Parse</button>
+      <button data-help="xref" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Cross Reference</button>
+      <button data-help="who" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Who Uses This</button>
+      <button data-help="ask" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">&#129302; Ask AI</button>
+      <button onclick="closeHelpModal()" class="mt-auto text-left px-3 py-1.5 rounded-lg btn-ghost">&times; Close</button>
+    </nav>
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <div id="help-panels" class="flex-1 overflow-auto p-5 text-sm text-gray-300 space-y-2"></div>
+      <div id="help-ask-box" class="hidden border-t border-[var(--line)] flex flex-col flex-1 overflow-hidden">
+        <div id="help-ask-log" class="flex-1 overflow-auto p-4 space-y-2 text-sm"></div>
+        <div class="p-3 border-t border-[var(--line)] flex gap-2">
+          <input id="help-ask-in" placeholder="Ask how to use this app&hellip;" class="inp flex-1 text-sm" onkeydown="if(event.key==='Enter')sendHelpAsk()">
+          <button onclick="sendHelpAsk()" class="btn rounded-lg px-3 text-sm">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -835,6 +864,77 @@ async function runParse(){
 
 // ---------- Chat ----------
 function quickChat(msg){ document.getElementById('chat-in').value = msg; sendChat(); }
+
+// ---------- Help Modal / User Guide ----------
+const HELP_CONTENT = {
+  overview: `<h3 class="text-lg font-bold grad-text mb-2">AI Agent &mdash; Data Validation</h3>
+    <p>Upload any BFSI data file and get instant reconciliation, data quality scoring, governance/PII scanning,
+    profiling, parsing, and cross-reference analysis &mdash; with an AI Copilot mode powered by Claude.</p>
+    <p class="mt-2 text-gray-400">Use the tabs on the left for each module, or switch on "AI Copilot Mode" /
+    Agent mode in the chat panel on the right to ask free-form questions about your data instead of running a
+    fixed report.</p>`,
+  compare: `<h3 class="font-semibold text-sky-300 mb-2">Reconciliation</h3>
+    <p>Compares two files (or two saved Workspace connections) and reports matched rows, rows only in one side,
+    and modified rows with per-field diffs. Keys are auto-inferred if left blank.</p>
+    <p class="mt-2 text-gray-400">Use <b>Complex Recon</b> when there's no clean key column and you need to match
+    rows via a free-text description (extracts buy/sell side + quantity). Use <b>Dataset Controls / Advanced
+    Options</b> to attach reference docs, mapping hints, or per-column DQ overrides.</p>`,
+  quality: `<h3 class="font-semibold text-sky-300 mb-2">Data Quality</h3>
+    <p>Scores a file across Completeness, Uniqueness, Validity, Consistency, Conformity and Precision, with a
+    letter grade and per-rule PASS/FAIL results. Pick a BFSI Rule Pack (Trade, Position, Payments, MiFID II,
+    Reference Data, Risk) to apply domain-specific validators (ISIN/LEI/BIC/currency checks, etc).</p>
+    <p class="mt-2 text-gray-400">"AI-Enhanced" asks the LLM to suggest extra rules from the column names.
+    Use <b>Dataset Controls</b> to teach it dataset-specific exceptions in plain English.</p>`,
+  profile: `<h3 class="font-semibold text-sky-300 mb-2">Data Profile</h3>
+    <p>Column-level statistics (type, nulls, distinct count, min/max), near-key candidate columns, and
+    correlated column pairs &mdash; useful for understanding an unfamiliar file before reconciling it.</p>`,
+  governance: `<h3 class="font-semibold text-sky-300 mb-2">Governance &amp; PII</h3>
+    <p>Detects PII and BFSI-sensitive identifiers per column, classifies overall sensitivity
+    (Public &rarr; Highly Restricted), flags applicable regulatory frameworks (GDPR, HIPAA, MiFID II, CCPA),
+    and routes issues to the right steward/team. Download a PII-masked CSV directly from the results.</p>`,
+  parse: `<h3 class="font-semibold text-sky-300 mb-2">Parse</h3>
+    <p>Extracts a clean structured table from semi-structured or non-tabular files (SWIFT MT, ISO 20022, FIX,
+    NACHA, XBRL, PDF, plus standard CSV/XLSX/JSON/XML/Parquet).</p>`,
+  xref: `<h3 class="font-semibold text-sky-300 mb-2">Cross Reference</h3>
+    <p>Matches an identifier (ISIN, CUSIP, LEI, trade_id, etc.) across 2&ndash;5 sources, producing a coverage
+    matrix and a conflicts list with a recommended "golden" value per field (majority-wins, or your chosen
+    authoritative source). Leave the identifier key blank to let the AI auto-detect it.</p>`,
+  who: `<h3 class="font-semibold text-sky-300 mb-2">Who Uses This</h3>
+    <p>Built for Trade Operations, Risk/Quant, Compliance, Data Engineering, Middle Office, Fund Administration,
+    and UAT/QA teams working with financial services data across trade, position, payments, and reference-data
+    files.</p>`,
+  ask: '',
+};
+function openHelpModal(){
+  document.getElementById('help-modal').classList.remove('hidden');
+  showHelpTab('overview');
+}
+function closeHelpModal(){ document.getElementById('help-modal').classList.add('hidden'); }
+function showHelpTab(key){
+  document.querySelectorAll('.help-tab-btn').forEach(b=>b.classList.toggle('tab-active', b.dataset.help===key));
+  const panels = document.getElementById('help-panels');
+  const askBox = document.getElementById('help-ask-box');
+  if(key==='ask'){ panels.classList.add('hidden'); askBox.classList.remove('hidden'); }
+  else { panels.classList.remove('hidden'); askBox.classList.add('hidden'); panels.innerHTML = HELP_CONTENT[key]||''; }
+}
+document.querySelectorAll('.help-tab-btn').forEach(b=>b.onclick=()=>showHelpTab(b.dataset.help));
+let _helpHistory = [];
+async function sendHelpAsk(){
+  const inp = document.getElementById('help-ask-in');
+  const q = inp.value.trim(); if(!q) return;
+  const log = document.getElementById('help-ask-log');
+  log.innerHTML += `<div class="text-right"><span class="inline-block px-3 py-1.5 rounded-2xl text-white" style="background:linear-gradient(90deg,#0ea5e9,#6366f1)">${esc(q)}</span></div>`;
+  inp.value=''; log.scrollTop = log.scrollHeight;
+  log.innerHTML += `<div id="help-ask-pending" class="text-gray-500 text-xs">thinking&hellip;</div>`;
+  const r = await J('POST','/help-chat',{question:q, history:_helpHistory,
+    system:"You are a helpful assistant embedded in the AI Agent -- Data Validation app's User Guide. Answer questions about how to use the app's Reconciliation, Data Quality, Data Profile, Governance, Parse, Cross Reference, Workspace and Settings features."});
+  document.getElementById('help-ask-pending')?.remove();
+  const reply = r.reply || r.error || 'No response.';
+  log.innerHTML += `<div><span class="inline-block px-3 py-1.5 rounded-2xl bg-white/5 border border-[var(--line)]">${esc(reply)}</span></div>`;
+  log.scrollTop = log.scrollHeight;
+  _helpHistory.push({role:'user', text:q}, {role:'assistant', text:reply});
+  _helpHistory = _helpHistory.slice(-8);
+}
 
 // ---------- Dataset Controls (plain-English, per-dataset AI memory) ----------
 async function applyDatasetControl(prefix, context){
