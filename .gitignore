@@ -15,6 +15,8 @@ workspace.db
 workspace.db-shm
 workspace.db-wal
 *.db
+feedback_rules.json
+workspace/dq_baselines/
 
 # Build output
 dist/
