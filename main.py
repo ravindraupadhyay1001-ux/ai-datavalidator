@@ -3811,7 +3811,22 @@ def _series_differs(v1: pd.Series, v2: pd.Series) -> pd.Series:
     n2 = pd.to_numeric(v2, errors="coerce")
     both_numeric = n1.notna() & n2.notna()
     numerically_equal = both_numeric & (n1.sub(n2).abs() < 1e-9)
-    return raw_diff & ~numerically_equal
+    still_diff = raw_diff & ~numerically_equal
+
+    # For remaining differences where at least one side isn't a plain number,
+    # check whether both sides parse to the same calendar date -- e.g.
+    # "2026-01-15" vs "01/15/2026" vs "15-Jan-2026" are the same date just
+    # formatted differently, also a very common cross-system artefact.
+    candidates = still_diff & ~both_numeric
+    if candidates.any():
+        try:
+            d1 = pd.to_datetime(v1[candidates], errors="coerce", format="mixed")
+            d2 = pd.to_datetime(v2[candidates], errors="coerce", format="mixed")
+            dates_equal = d1.notna() & d2.notna() & (d1 == d2)
+            still_diff.loc[dates_equal.index[dates_equal]] = False
+        except Exception:
+            pass
+    return still_diff
 
 
 def _key_based_diff(df1, df2, keys, common_cols, force_data_cols: list[str] | None = None):
