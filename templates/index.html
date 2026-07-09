@@ -160,33 +160,6 @@
           <div id="cmp-chip2" class="mt-2"></div>
         </div>
       </div>
-      <details class="card rounded-xl p-4 mb-4 text-sm">
-        <summary class="cursor-pointer text-gray-400">&#9881;&#65039; Adjust columns &amp; advanced options</summary>
-        <div class="mt-3 space-y-3">
-          <div class="grid grid-cols-2 gap-3">
-            <div><label class="text-xs text-gray-400">Key columns (optional)</label><input id="cmp-keys" class="inp w-full mt-1 text-sm"></div>
-            <div><label class="text-xs text-gray-400">Exclude columns (optional)</label><input id="cmp-excl" class="inp w-full mt-1 text-sm"></div>
-          </div>
-          <div><label class="text-xs text-gray-400">Reference Docs (data dictionary, business rules, regulatory ref &mdash; auto-classified)</label>
-            <input id="cmp-refdocs" type="file" multiple class="block w-full text-sm mt-1"></div>
-          <div><label class="text-xs text-gray-400">Domain / business context (free text for the AI)</label>
-            <textarea id="cmp-domain" rows="2" class="inp w-full mt-1 text-sm"></textarea></div>
-          <div class="grid grid-cols-2 gap-3">
-            <div><label class="text-xs text-gray-400">Column mapping hints</label><input id="cmp-maphints" class="inp w-full mt-1 text-sm"></div>
-            <div><label class="text-xs text-gray-400">Key column hints</label><input id="cmp-keyhints" class="inp w-full mt-1 text-sm"></div>
-            <div><label class="text-xs text-gray-400">Transform hints</label><input id="cmp-transformhints" class="inp w-full mt-1 text-sm"></div>
-            <div><label class="text-xs text-gray-400">Exclude hints</label><input id="cmp-excludehints" class="inp w-full mt-1 text-sm"></div>
-          </div>
-          <div><label class="text-xs text-gray-400">Cross-file / referential rules</label>
-            <textarea id="cmp-crossfilerules" rows="2" class="inp w-full mt-1 text-sm"></textarea></div>
-          <div><label class="text-xs text-gray-400">DQ Overrides &mdash; per column</label>
-            <div id="cmp-dqgrid" class="mt-1 space-y-1"></div>
-            <button type="button" onclick="addDqOverrideRow('cmp')" class="btn-ghost btn rounded px-2 py-1 text-xs mt-1">+ Add column override</button></div>
-          <div><label class="text-xs text-gray-400">Match rows via free-text column (Complex Recon &mdash; extracts buy/sell + quantity)</label>
-            <input id="cmp-textcol" placeholder="free-text column name" class="inp w-full mt-1 text-sm">
-            <button onclick="runComplexRecon()" class="btn-indigo btn px-3 py-1.5 rounded-lg text-xs font-semibold mt-2">&#9889; Run Complex Recon</button></div>
-        </div>
-      </details>
       <div class="flex gap-3 items-center flex-wrap">
         <div class="seg" id="cmp-seg">
           <span class="seg-btn active" data-mode="standard" onclick="setCmpMode('standard')">Standard</span>
@@ -859,7 +832,6 @@ function renderCompareResult(data, t0){
       ${stat('F1 dup rows', data.duplicates?.file1?.duplicate_rows??0, '#a855f7')}
       ${stat('F2 dup rows', data.duplicates?.file2?.duplicate_rows??0, '#a855f7')}
     </div>
-    <div class="card rounded-xl p-4 mb-4"><div class="text-xs text-gray-400 mb-2">Reconciliation breakdown</div><canvas id="cmpChart" height="90"></canvas></div>
     <details class="card rounded-xl p-4 text-sm">
       <summary class="cursor-pointer text-sky-700 font-semibold">&rarr; Adjust columns &amp; rerun</summary>
       <div class="mt-4">${allCols.length ? keyExcludeCheckboxes('cmp', allCols, data.keys||[]) : '<div class="text-xs text-gray-500">Rerun requires the original session (re-run the compare above first).</div>'}</div>
@@ -944,10 +916,6 @@ function renderCompareResult(data, t0){
     {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('cmp','compare', chips)},
     {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
   ], 'summary');
-  chart('cmpChart',{type:'bar',data:{labels:['File1 only','File2 only','Modified'],
-    datasets:[{data:[c.file1_only||0,c.file2_only||0,c.modified||0],
-      backgroundColor:['#dc2626','#d97706','#d97706'],borderRadius:6}]},
-    options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b'},grid:{color:'#e2e8f0'}}}}});
   loadDatasetControlRules('cmp','compare');
 }
 async function runCompare(){
@@ -955,8 +923,7 @@ async function runCompare(){
   const t0 = performance.now();
   const {ok,data}=await postForm('compare',
     [['files_a','cmp-f1','conn_a_ids','cmp-conn1'],['files_b','cmp-f2','conn_b_ids','cmp-conn2']],
-    {key_columns:document.getElementById('cmp-keys').value, exclude_columns:document.getElementById('cmp-excl').value,
-     ...advancedHints('cmp')}, 'cmp-refdocs');
+    {}, null);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   renderCompareResult(data, t0);
 }
@@ -991,22 +958,6 @@ async function runCompareAI(){
   chatInput.value = `Compare these two files and tell me the key differences, likely join keys, and any rows that look mismatched.`;
   chatInput.focus();
 }
-async function runComplexRecon(){
-  const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Loading files for the AI Copilot&hellip;</span>';
-  const textCol = document.getElementById('cmp-textcol').value.trim();
-  if(!textCol){ out.innerHTML='<div class="text-red-400">Enter the free-text description column name first.</div>'; return; }
-  const {ok,data}=await postForm('lineage',[['files_a','cmp-f1'],['files_b','cmp-f2']]);
-  if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
-  setSession(data.session_id);
-  out.innerHTML=`<div class="card rounded-xl p-4 text-sm text-gray-300">
-    Files loaded (${(data.file_names||[]).join(' vs ')}). Complex matching on free-text columns is driven by the
-    <b class="text-sky-300">AI Copilot</b> panel &rarr;. A starter message has been filled in for you &mdash;
-    review it and hit Send to define the match rule for <b class="text-sky-300">${esc(textCol)}</b>.</div>`;
-  const chatInput = document.getElementById('chat-in');
-  chatInput.value = `Match rows between the two files by extracting the buy/sell side and quantity from the free-text column "${textCol}", then compare the remaining fields for each matched row.`;
-  chatInput.focus();
-}
-
 // ---------- Quality / Profile / Governance -- AI Copilot mode ----------
 async function _runAICopilotMode(action, fileId, prefix, context, label, connId){
   const out=document.getElementById(prefix+'-out'); out.innerHTML='<span class="text-gray-400">Loading file for the AI Copilot&hellip;</span>';
@@ -1385,9 +1336,8 @@ const HELP_CONTENT = {
   compare: `<h3 class="font-semibold text-sky-300 mb-2">Reconciliation</h3>
     <p>Compares two files (or two saved Workspace connections) and reports matched rows, rows only in one side,
     and modified rows with per-field diffs. Keys are auto-inferred if left blank.</p>
-    <p class="mt-2 text-gray-400">Use <b>Complex Recon</b> when there's no clean key column and you need to match
-    rows via a free-text description (extracts buy/sell side + quantity). Use <b>Dataset Controls / Advanced
-    Options</b> to attach reference docs, mapping hints, or per-column DQ overrides.</p>`,
+    <p class="mt-2 text-gray-400">After a run, open <b>Adjust columns &amp; rerun</b> in the Summary tab to pick
+    the join key or exclude columns and rerun in place.</p>`,
   quality: `<h3 class="font-semibold text-sky-300 mb-2">Data Quality</h3>
     <p>Scores a file across Completeness, Uniqueness, Validity, Consistency, Conformity and Precision, with a
     letter grade and per-rule PASS/FAIL results. Pick a BFSI Rule Pack (Trade, Position, Payments, MiFID II,
