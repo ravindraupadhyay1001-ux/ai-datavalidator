@@ -19,45 +19,63 @@
       --font-ui:'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif;
       --font-mono:'Fira Mono','Consolas','Cascadia Code',monospace;
     }
-    body{ font-family:var(--font-ui); background:var(--bg); color:var(--txt-primary); }
+    body{ font-family:var(--font-ui); color:var(--txt-primary);
+      background:
+        radial-gradient(1100px 550px at 108% -8%, rgba(37,99,235,.10), transparent 60%),
+        radial-gradient(900px 480px at -8% 105%, rgba(124,58,237,.08), transparent 55%),
+        radial-gradient(700px 400px at 50% -15%, rgba(2,132,199,.06), transparent 60%),
+        var(--bg);
+      background-attachment:fixed; }
     .card{ background:linear-gradient(180deg, var(--surface), var(--surface-2));
-      border:1px solid var(--line); box-shadow:0 1px 3px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.04); border-radius:12px; }
+      border:1px solid var(--line); box-shadow:0 1px 3px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.04);
+      border-radius:14px; transition:box-shadow .2s, border-color .2s, transform .2s; }
+    .card:hover{ box-shadow:0 8px 24px -8px rgba(37,99,235,.18), 0 2px 8px rgba(15,23,42,.06); border-color:rgba(37,99,235,.25); }
     .tab-btn{ transition:all .15s; border:1px solid transparent; color:var(--txt-secondary); }
-    .tab-btn:hover{ background:var(--primary-dim); }
-    .tab-active{ background:var(--primary-mid);
-      border-color:var(--primary); color:var(--primary); font-weight:600; border-top:2px solid var(--primary); }
-    .grad-text{ background:linear-gradient(90deg,var(--primary),#4f46e5); -webkit-background-clip:text; background-clip:text; color:transparent; }
-    .btn{ background:linear-gradient(90deg,var(--primary),#3b82f6); transition:filter .15s, transform .05s; color:#fff; border-radius:8px; }
-    .btn:hover{ filter:brightness(1.08); } .btn:active{ transform:translateY(1px); }
-    .btn-emerald{ background:linear-gradient(90deg,#059669,#10b981); }
-    .btn-indigo{ background:linear-gradient(90deg,#4f46e5,#6366f1); }
-    .btn-ghost{ background:#fff; border:1px solid var(--line); border-radius:8px; color:var(--txt-secondary); }
+    .tab-btn:hover{ background:var(--primary-dim); transform:translateX(2px); }
+    .tab-active{ background:linear-gradient(90deg,var(--primary-mid),rgba(124,58,237,.12));
+      border-color:var(--primary); color:var(--primary); font-weight:600; border-top:2px solid var(--primary);
+      box-shadow:0 2px 10px -4px rgba(37,99,235,.35); }
+    .grad-text{ background:linear-gradient(90deg,var(--primary),#7c3aed,#0284c7); background-size:200% auto;
+      -webkit-background-clip:text; background-clip:text; color:transparent; }
+    .btn{ background:linear-gradient(90deg,var(--primary),#4f46e5); transition:filter .15s, transform .12s, box-shadow .2s;
+      color:#fff; border-radius:9px; box-shadow:0 2px 10px -3px rgba(37,99,235,.5); }
+    .btn:hover{ filter:brightness(1.1); box-shadow:0 4px 16px -3px rgba(37,99,235,.6); transform:translateY(-1px); }
+    .btn:active{ transform:translateY(1px); }
+    .btn-emerald{ background:linear-gradient(90deg,#059669,#10b981); box-shadow:0 2px 10px -3px rgba(16,185,129,.5); }
+    .btn-indigo{ background:linear-gradient(90deg,#4f46e5,#7c3aed); box-shadow:0 2px 10px -3px rgba(124,58,237,.5); }
+    .btn-ghost{ background:#fff; border:1px solid var(--line); border-radius:9px; color:var(--txt-secondary); transition:all .15s; }
+    .btn-ghost:hover{ border-color:var(--primary); color:var(--primary); background:var(--primary-dim); }
     .badge{ padding:2px 10px; border-radius:9999px; font-weight:700; font-size:11px; }
-    .inp{ background:#fff; border:1px solid var(--line); border-radius:8px; padding:6px 10px; color:var(--txt-primary); }
+    .inp{ background:#fff; border:1px solid var(--line); border-radius:8px; padding:6px 10px; color:var(--txt-primary); transition:border-color .15s, box-shadow .15s; }
     .inp:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-dim); }
     .logo-mark{ width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center;
-      background:linear-gradient(135deg,#2563eb,#4f46e5); transform:rotate(45deg); flex-shrink:0;
-      box-shadow:0 2px 8px -1px rgba(37,99,235,.45); }
+      background:linear-gradient(135deg,#2563eb,#7c3aed); transform:rotate(45deg); flex-shrink:0;
+      box-shadow:0 3px 14px -2px rgba(37,99,235,.55), 0 0 0 3px rgba(37,99,235,.08); }
     .logo-mark svg{ transform:rotate(-45deg); }
     pre{ white-space:pre-wrap; word-break:break-word; font-family:var(--font-mono); }
     code, .font-mono{ font-family:var(--font-mono) !important; }
     ::-webkit-scrollbar{width:10px;height:10px} ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:6px}
-    table tbody tr:hover{ background:var(--primary-dim); }
-    .seg{ display:inline-flex; background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:2px; }
-    .seg-btn{ padding:7px 16px; font-size:13px; border-radius:6px; color:var(--txt-muted); cursor:pointer; font-weight:600; transition:all .15s; }
-    .seg-btn.active{ background:var(--primary); color:#fff; }
-    .dropzone{ border:2px dashed var(--line); border-radius:10px; padding:16px; text-align:center; cursor:pointer;
-      transition:border-color .15s, background .15s; color:var(--txt-muted); font-size:13px; background:var(--surface-2); }
-    .dropzone:hover, .dropzone.dragover{ border-color:var(--primary); background:var(--primary-dim); }
+    table tbody tr{ transition:background .12s; } table tbody tr:hover{ background:var(--primary-dim); }
+    .seg{ display:inline-flex; background:var(--surface-2); border:1px solid var(--line); border-radius:9px; padding:3px; }
+    .seg-btn{ padding:7px 16px; font-size:13px; border-radius:7px; color:var(--txt-muted); cursor:pointer; font-weight:600; transition:all .15s; }
+    .seg-btn.active{ background:linear-gradient(90deg,var(--primary),#4f46e5); color:#fff; box-shadow:0 2px 8px -2px rgba(37,99,235,.5); }
+    .dropzone{ border:2px dashed var(--line); border-radius:12px; padding:16px; text-align:center; cursor:pointer;
+      transition:border-color .18s, background .18s, transform .12s; color:var(--txt-muted); font-size:13px; background:var(--surface-2); }
+    .dropzone:hover{ border-color:var(--primary); background:var(--primary-dim); transform:translateY(-1px); }
+    .dropzone.dragover{ border-color:var(--primary); background:var(--primary-mid); transform:scale(1.01); }
     .file-chip{ display:inline-flex; align-items:center; gap:6px; background:var(--primary-dim); border:1px solid var(--primary-mid);
       border-radius:9999px; padding:3px 10px; font-size:12px; color:var(--primary); }
     .file-chip button{ color:#dc2626; font-weight:700; line-height:1; }
-    .result-tab-btn{ padding:8px 14px; font-size:13px; font-weight:600; color:var(--txt-muted); border-bottom:2px solid transparent; cursor:pointer; }
+    .result-tab-btn{ padding:8px 14px; font-size:13px; font-weight:600; color:var(--txt-muted); border-bottom:2px solid transparent; cursor:pointer; transition:all .15s; }
+    .result-tab-btn:hover{ color:var(--primary); }
     .result-tab-btn.active{ color:var(--primary); border-bottom-color:var(--primary); }
     .suggest-chip{ background:rgba(2,132,199,.08); border:1px solid rgba(2,132,199,.25); color:#0369a1;
-      border-radius:9999px; padding:5px 12px; font-size:12px; cursor:pointer; transition:all .15s; }
-    .suggest-chip:hover{ background:rgba(2,132,199,.16); }
+      border-radius:9999px; padding:5px 12px; font-size:12px; cursor:pointer; transition:all .15s; font-weight:500; }
+    .suggest-chip:hover{ background:rgba(2,132,199,.16); transform:translateY(-1px); box-shadow:0 3px 10px -3px rgba(2,132,199,.35); }
     .suggest-chip.special{ background:rgba(219,39,119,.08); border-color:rgba(219,39,119,.25); color:#be185d; }
+    .suggest-chip.special:hover{ box-shadow:0 3px 10px -3px rgba(219,39,119,.35); }
+    .stat-card{ position:relative; overflow:hidden; }
+    h2.grad-text{ letter-spacing:-.01em; }
     /* Re-tuned text colors: the utility classes below were originally chosen for the
        dark theme (light text on dark cards) and are hard to read on the new light
        cards -- override with darker equivalents rather than touch every call site. */
@@ -778,13 +796,13 @@ async function runCompare(){
 
   const summaryHTML = `
     <div class="text-sm text-gray-400 mb-3">${esc(f1.name||'File 1')} &rarr; ${esc(f2.name||'File 2')}</div>
-    <div class="mb-4"><span class="badge" style="background:rgba(245,158,11,.15);color:#fbbf24">&#9889; Key method: ${esc(data.method||'n/a')}</span>
+    <div class="mb-4"><span class="badge" style="background:rgba(217,119,6,.12);color:#b45309">&#9889; Key method: ${esc(data.method||'n/a')}</span>
       ${(data.keys||[]).length?` &mdash; ${esc((data.keys||[]).join(', '))}`:''}</div>
     <div class="grid grid-cols-2 gap-4 mb-4">
-      <div class="card rounded-xl p-4"><div class="text-xs font-semibold text-gray-300 mb-1">FILE 1 &mdash; ${esc((f1.name||'').toUpperCase())} ${f1.format?`<span class="badge ml-1" style="background:rgba(56,189,248,.15);color:#7dd3fc">${esc(f1.format)} (AUTO-DETECTED)</span>`:''}</div>
+      <div class="card rounded-xl p-4"><div class="text-xs font-semibold text-gray-300 mb-1">FILE 1 &mdash; ${esc((f1.name||'').toUpperCase())} ${f1.format?`<span class="badge ml-1" style="background:rgba(2,132,199,.12);color:#0369a1">${esc(f1.format)} (AUTO-DETECTED)</span>`:''}</div>
         <div class="flex gap-6 mt-2"><div><div class="text-2xl font-bold">${f1.rows??'&mdash;'}</div><div class="text-xs text-gray-500">rows</div></div>
         <div><div class="text-2xl font-bold">${f1.columns??'&mdash;'}</div><div class="text-xs text-gray-500">columns</div></div></div></div>
-      <div class="card rounded-xl p-4"><div class="text-xs font-semibold text-gray-300 mb-1">FILE 2 &mdash; ${esc((f2.name||'').toUpperCase())} ${f2.format?`<span class="badge ml-1" style="background:rgba(56,189,248,.15);color:#7dd3fc">${esc(f2.format)} (AUTO-DETECTED)</span>`:''}</div>
+      <div class="card rounded-xl p-4"><div class="text-xs font-semibold text-gray-300 mb-1">FILE 2 &mdash; ${esc((f2.name||'').toUpperCase())} ${f2.format?`<span class="badge ml-1" style="background:rgba(2,132,199,.12);color:#0369a1">${esc(f2.format)} (AUTO-DETECTED)</span>`:''}</div>
         <div class="flex gap-6 mt-2"><div><div class="text-2xl font-bold">${f2.rows??'&mdash;'}</div><div class="text-xs text-gray-500">rows</div></div>
         <div><div class="text-2xl font-bold">${f2.columns??'&mdash;'}</div><div class="text-xs text-gray-500">columns</div></div></div></div>
     </div>
@@ -972,7 +990,7 @@ async function runQuality(){
   ${(data.near_key_columns?.length||data.correlations?.length) ? `<div class="grid grid-cols-2 gap-4 mt-4 text-sm">
     ${data.near_key_columns?.length ? `<div class="card rounded-xl p-4">
       <div class="text-xs text-gray-400 mb-2">Near-key columns <span class="text-gray-600">(80&ndash;95% unique &mdash; candidate join keys)</span></div>
-      <div class="flex flex-wrap gap-1">${data.near_key_columns.map(c=>`<span class="badge" style="background:rgba(168,85,247,.18);color:#c4b5fd">${esc(c)}</span>`).join('')}</div></div>` : ''}
+      <div class="flex flex-wrap gap-1">${data.near_key_columns.map(c=>`<span class="badge" style="background:rgba(147,51,234,.12);color:#7e22ce">${esc(c)}</span>`).join('')}</div></div>` : ''}
     ${data.correlations?.length ? `<div class="card rounded-xl p-4">
       <div class="text-xs text-gray-400 mb-2">Correlated columns <span class="text-gray-600">(|r| &gt; 0.7)</span></div>
       <div class="space-y-1">${data.correlations.map(c=>`<div>${esc(c.col_a)} &harr; ${esc(c.col_b)}: <span class="${Math.abs(c.r)>0.9?'text-emerald-300':'text-amber-300'}">${c.r}</span></div>`).join('')}</div></div>` : ''}
@@ -1090,7 +1108,7 @@ async function runProfile(){
     summaryHTML+=`<div class="grid grid-cols-2 gap-4 mt-4 text-sm">
     ${data.near_key_columns?.length?`<div class="card rounded-xl p-4">
       <div class="text-xs text-gray-400 mb-2">Near-key columns <span class="text-gray-600">(80&ndash;95% unique)</span></div>
-      <div class="flex flex-wrap gap-1">${data.near_key_columns.map(c=>`<span class="badge" style="background:rgba(168,85,247,.18);color:#c4b5fd">${esc(c)}</span>`).join('')}</div></div>`:''}
+      <div class="flex flex-wrap gap-1">${data.near_key_columns.map(c=>`<span class="badge" style="background:rgba(147,51,234,.12);color:#7e22ce">${esc(c)}</span>`).join('')}</div></div>`:''}
     ${data.correlations?.length?`<div class="card rounded-xl p-4">
       <div class="text-xs text-gray-400 mb-2">Correlated columns <span class="text-gray-600">(|r| &gt; 0.7)</span></div>
       <div class="space-y-1">${data.correlations.map(c=>`<div>${esc(c.col_a)} &harr; ${esc(c.col_b)}: <span class="${Math.abs(c.r)>0.9?'text-emerald-300':'text-amber-300'}">${c.r}</span></div>`).join('')}</div></div>`:''}
@@ -1196,7 +1214,7 @@ async function runCrossReference(){
   const exceptionsHTML = data.conflicts?.length ? `<h3 class="font-semibold mt-2 mb-2 text-amber-300">Conflicts &mdash; Golden Record (${esc(data.golden_source||'auto')})</h3><div class="space-y-2">`+
       data.conflicts.slice(0,30).map(c=>`<div class="card rounded-lg p-2 text-xs">
         <b class="text-sky-300">${esc(c.identifier)}</b> &middot; ${esc(c.field)}
-        <span class="badge ml-1" style="background:rgba(168,85,247,.18);color:#c4b5fd">${esc(c.conflict_type||'')}</span><br>`+
+        <span class="badge ml-1" style="background:rgba(147,51,234,.12);color:#7e22ce">${esc(c.conflict_type||'')}</span><br>`+
         Object.entries(c.values).map(([src,v])=>`${esc(src)}=<span class="${(c.sources_agree||[]).includes(src)?'text-emerald-300':'text-amber-300'}">${esc(v)}</span>`).join(' &middot; ')+
         (c.golden_value?` <span class="text-gray-400">&rarr; golden:</span> <span class="text-emerald-400 font-semibold">${esc(c.golden_value)}</span>`:'')+
         `</div>`).join('')+`</div>` : '<div class="text-sm text-gray-500">No conflicts.</div>';
@@ -1332,7 +1350,7 @@ function renderDatasetControlRules(prefix, context, rules){
   const box = document.getElementById(`${prefix}-dc-rules`);
   if(!box) return;
   box.innerHTML = rules.map(r=>`<div class="flex items-center justify-between card rounded px-2 py-1">
-    <span><span class="badge mr-1" style="background:rgba(56,189,248,.15);color:#7dd3fc">${esc(r.base_cat)}</span>${esc(r.rule)}</span>
+    <span><span class="badge mr-1" style="background:rgba(2,132,199,.12);color:#0369a1">${esc(r.base_cat)}</span>${esc(r.rule)}</span>
     <button onclick="deleteDatasetControlRule(${r.index},'${prefix}','${context}')" class="text-red-400 text-xs px-1">&times;</button></div>`).join('');
 }
 async function loadDatasetControlRules(prefix, context){
