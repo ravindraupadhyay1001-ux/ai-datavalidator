@@ -77,7 +77,7 @@
 <body class="min-h-screen">
 <div class="flex h-screen">
   <!-- Sidebar -->
-  <aside class="w-60 flex flex-col border-r border-[var(--line)]" style="background:linear-gradient(180deg,#0b1120,#0a0f1e);">
+  <aside class="w-60 flex flex-col border-r border-[var(--line)]" style="background:linear-gradient(180deg,#ffffff,#f3f6fb);">
     <div class="p-5 flex items-center gap-2">
       <div class="logo-mark"><span>D</span></div>
       <div><div class="text-lg font-bold grad-text leading-none">Data Validator</div>
@@ -275,15 +275,23 @@
     <section id="tab-xref" class="tab-panel hidden">
       <h2 class="text-2xl font-bold mb-1 grad-text">Cross Reference</h2>
       <p class="text-sm text-gray-500 mb-4">Match an identifier (ISIN/CUSIP/LEI/trade_id) across 2&ndash;4 sources; coverage matrix + conflicts.</p>
-      <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-4 max-w-3xl">
-        <div><label class="text-sm text-gray-400">Source 1</label><input id="xref-f1" type="file" class="block w-full text-sm mt-1">
-          <select id="xref-conn1" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
-        <div><label class="text-sm text-gray-400">Source 2</label><input id="xref-f2" type="file" class="block w-full text-sm mt-1">
-          <select id="xref-conn2" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
-        <div><label class="text-sm text-gray-400">Source 3 (optional)</label><input id="xref-f3" type="file" class="block w-full text-sm mt-1">
-          <select id="xref-conn3" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
-        <div><label class="text-sm text-gray-400">Source 4 (optional)</label><input id="xref-f4" type="file" class="block w-full text-sm mt-1">
-          <select id="xref-conn4" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
+      <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-6">
+        <div><div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Source 1</div>
+          <div class="flex gap-2 items-stretch"><div id="xref-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
+          <select id="xref-conn1" class="inp text-xs conn-select" style="width:150px"><option value="">&#128179; Connection</option></select></div>
+          <input id="xref-f1" type="file" class="hidden"><div id="xref-chip1" class="mt-2"></div></div>
+        <div><div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Source 2</div>
+          <div class="flex gap-2 items-stretch"><div id="xref-zone2" class="dropzone flex-1">Drag &amp; drop or click</div>
+          <select id="xref-conn2" class="inp text-xs conn-select" style="width:150px"><option value="">&#128179; Connection</option></select></div>
+          <input id="xref-f2" type="file" class="hidden"><div id="xref-chip2" class="mt-2"></div></div>
+        <div><div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Source 3 (optional)</div>
+          <div class="flex gap-2 items-stretch"><div id="xref-zone3" class="dropzone flex-1">Drag &amp; drop or click</div>
+          <select id="xref-conn3" class="inp text-xs conn-select" style="width:150px"><option value="">&#128179; Connection</option></select></div>
+          <input id="xref-f3" type="file" class="hidden"><div id="xref-chip3" class="mt-2"></div></div>
+        <div><div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Source 4 (optional)</div>
+          <div class="flex gap-2 items-stretch"><div id="xref-zone4" class="dropzone flex-1">Drag &amp; drop or click</div>
+          <select id="xref-conn4" class="inp text-xs conn-select" style="width:150px"><option value="">&#128179; Connection</option></select></div>
+          <input id="xref-f4" type="file" class="hidden"><div id="xref-chip4" class="mt-2"></div></div>
         <div class="col-span-2"><label class="text-sm text-gray-400">Identifier key (blank = AI auto-detect)</label>
           <input id="xref-key" placeholder="e.g. isin, cusip, lei, trade_id" class="inp w-full mt-1 text-sm">
           <div class="flex gap-1.5 mt-1.5">
@@ -294,7 +302,7 @@
             <button type="button" onclick="document.getElementById('xref-key').value='trade_id'" class="btn-ghost rounded px-2 py-0.5 text-xs">trade_id</button>
           </div></div>
       </div>
-      <button onclick="runCrossReference()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Run Cross Reference</button>
+      <button onclick="runCrossReference()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">&#128279; Run Cross Reference</button>
       <div id="xref-out" class="mt-6"></div>
     </section>
 
@@ -302,9 +310,17 @@
     <section id="tab-parse" class="tab-panel hidden">
       <h2 class="text-2xl font-bold mb-1 grad-text">Unstructured Parser</h2>
       <p class="text-sm text-gray-500 mb-4">Extract a clean table from any file.</p>
-      <div class="card rounded-xl p-5 mb-4 max-w-3xl"><label class="text-sm text-gray-400">File</label><input id="par-f1" type="file" class="block w-full text-sm mt-1">
-        <select id="par-conn1" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
-      <button onclick="runParse()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Parse</button>
+      <div class="card rounded-xl p-5 mb-4">
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Dataset</div>
+        <div class="flex gap-2 items-stretch">
+          <div id="par-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
+          <span class="text-gray-600 text-xs self-center">or</span>
+          <select id="par-conn1" class="inp text-xs conn-select" style="width:180px"><option value="">&#128179; Use Saved Connection</option></select>
+        </div>
+        <input id="par-f1" type="file" class="hidden">
+        <div id="par-chip1" class="mt-2"></div>
+      </div>
+      <button onclick="runParse()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">&#128206; Parse</button>
       <div id="par-out" class="mt-6"></div>
     </section>
 
@@ -604,7 +620,10 @@ function wireDropzone(zoneId, inputId, chipId){
     if(e.dataTransfer.files.length){ input.files = e.dataTransfer.files; updateChip(); }
   };
 }
-['cmp-zone1|cmp-f1|cmp-chip1','cmp-zone2|cmp-f2|cmp-chip2','q-zone1|q-f1|q-chip1'].forEach(spec=>wireDropzone(...spec.split('|')));
+['cmp-zone1|cmp-f1|cmp-chip1','cmp-zone2|cmp-f2|cmp-chip2','q-zone1|q-f1|q-chip1',
+ 'prof-zone1|prof-f1|prof-chip1','gov-zone1|gov-f1|gov-chip1','par-zone1|par-f1|par-chip1',
+ 'xref-zone1|xref-f1|xref-chip1','xref-zone2|xref-f2|xref-chip2','xref-zone3|xref-f3|xref-chip3','xref-zone4|xref-f4|xref-chip4'
+].forEach(spec=>wireDropzone(...spec.split('|')));
 
 // ---------- Reconciliation: Standard vs AI Copilot mode ----------
 let cmpMode = 'standard';
@@ -1137,6 +1156,7 @@ async function runGovernance(){
 // ---------- Cross Reference ----------
 async function runCrossReference(){
   const out=document.getElementById('xref-out'); out.innerHTML='<span class="text-gray-400">Cross-referencing&hellip;</span>';
+  const t0 = performance.now();
   const key=document.getElementById('xref-key').value.trim();
   const fd=new FormData(); if(key) fd.append('xref_key_col',key);
   const fileIds=['xref-f1','xref-f2','xref-f3','xref-f4'];
@@ -1153,37 +1173,61 @@ async function runCrossReference(){
   const r=await fetch('/xref',{method:'POST',body:fd}); const data=await r.json();
   if(!r.ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   setSession(data.session_id); const c=data.counts||{};
-  let html=`<div class="grid grid-cols-3 gap-3 mb-4">
+
+  const summaryHTML = `<div class="grid grid-cols-3 gap-3 mb-4">
     ${stat('Total identifiers', c.total_identifiers??0, '#38bdf8')}
     ${stat('In all sources', c.in_all_sources??0, '#10b981')}
-    ${stat('Conflicts', c.conflicts??0, '#ef4444')}</div>
-    <div class="card rounded-xl p-3 overflow-auto mb-4"><table class="w-full text-xs"><thead class="text-gray-400">
+    ${stat('Conflicts', c.conflicts??0, '#dc2626')}</div>
+    <div class="card rounded-xl p-3 overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400">
     <tr><th class="text-left p-2">${esc(data.identifier_key||'identifier')}</th>${(data.sources||[]).map(s=>`<th class="text-center">${esc(s)}</th>`).join('')}</tr></thead><tbody>
     ${(data.coverage_matrix||[]).slice(0,100).map(row=>`<tr class="border-t border-[var(--line)]"><td class="p-2">${esc(row.identifier)}</td>
       ${(data.sources||[]).map(s=>`<td class="text-center">${row[s]?'<span class=\"text-emerald-400\">&check;</span>':'<span class=\"text-gray-600\">&times;</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
-  if(data.conflicts?.length){
-    html+=`<h3 class="font-semibold mt-2 mb-2 text-amber-300">Conflicts &mdash; Golden Record (${esc(data.golden_source||'auto')})</h3><div class="space-y-2">`+
+
+  const exceptionsHTML = data.conflicts?.length ? `<h3 class="font-semibold mt-2 mb-2 text-amber-300">Conflicts &mdash; Golden Record (${esc(data.golden_source||'auto')})</h3><div class="space-y-2">`+
       data.conflicts.slice(0,30).map(c=>`<div class="card rounded-lg p-2 text-xs">
         <b class="text-sky-300">${esc(c.identifier)}</b> &middot; ${esc(c.field)}
         <span class="badge ml-1" style="background:rgba(168,85,247,.18);color:#c4b5fd">${esc(c.conflict_type||'')}</span><br>`+
         Object.entries(c.values).map(([src,v])=>`${esc(src)}=<span class="${(c.sources_agree||[]).includes(src)?'text-emerald-300':'text-amber-300'}">${esc(v)}</span>`).join(' &middot; ')+
         (c.golden_value?` <span class="text-gray-400">&rarr; golden:</span> <span class="text-emerald-400 font-semibold">${esc(c.golden_value)}</span>`:'')+
-        `</div>`).join('')+`</div>`;
-  }
-  out.innerHTML=html+actionBar(data.session_id);
+        `</div>`).join('')+`</div>` : '<div class="text-sm text-gray-500">No conflicts.</div>';
+
+  const chips = [
+    {label:'Which identifiers are missing from which sources?', q:'Which identifiers are missing from which sources, and does that look like a real gap?'},
+    {label:'Explain the conflicts and which value to trust', q:'Explain the conflicts found and which value you would trust as golden, and why.'},
+    {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
+  ];
+  out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('xref', [
+    {key:'summary', label:'Summary', content: summaryHTML},
+    {key:'exceptions', label:`Conflicts (${(data.conflicts||[]).length})`, content: exceptionsHTML},
+    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('xref','xref', chips)},
+    {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
+  ], 'summary');
+  loadDatasetControlRules('xref','xref');
 }
 
 // ---------- Parse ----------
 async function runParse(){
   const out=document.getElementById('par-out'); out.innerHTML='<span class="text-gray-400">Parsing&hellip;</span>';
+  const t0 = performance.now();
   const {ok,data}=await postForm('parse',[['files','par-f1','conn_ids','par-conn1']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   if(data.error){ out.innerHTML=`<div class="text-red-400">${esc(data.error)}</div>`; return; }
-  let html=`<div class="text-sm text-gray-400 mb-2">${(data.columns||[]).length} columns &middot; ${(data.rows||[]).length} rows</div>`;
-  html+=`<div class="card rounded-xl overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400"><tr>${
-    (data.columns||[]).map(c=>`<th class="p-2 text-left">${esc(c)}</th>`).join('')}</tr></thead><tbody>`;
-  (data.rows||[]).slice(0,100).forEach(row=>{ html+=`<tr class="border-t border-[var(--line)]">${row.map(v=>`<td class="p-1">${esc(v)}</td>`).join('')}</tr>`; });
-  out.innerHTML=html+'</tbody></table></div>';
+  setSession(data.session_id);
+  const resultsHTML = `<div class="text-sm text-gray-400 mb-2">${(data.columns||[]).length} columns &middot; ${(data.rows||[]).length} rows</div>
+    <div class="card rounded-xl overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400"><tr>${
+      (data.columns||[]).map(c=>`<th class="p-2 text-left">${esc(c)}</th>`).join('')}</tr></thead><tbody>${
+      (data.rows||[]).slice(0,100).map(row=>`<tr class="border-t border-[var(--line)]">${row.map(v=>`<td class="p-1">${esc(v)}</td>`).join('')}</tr>`).join('')
+    }</tbody></table></div>`;
+  const chips = [
+    {label:'Summarize what this file contains', q:'Summarize what this parsed file contains and any anomalies you notice.'},
+    {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
+  ];
+  out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('par', [
+    {key:'results', label:'Results', content: resultsHTML},
+    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('par','parse', chips)},
+    {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
+  ], 'results');
+  loadDatasetControlRules('par','parse');
 }
 
 // ---------- Chat ----------

@@ -15504,6 +15504,7 @@ async def xref_analyze(request: Request):
         "conflicts": _conflicts,
         "dataset_fingerprint": _dataset_fingerprint,
         "elapsed": total_elapsed,
+        "logs": proc_logs,
     }))
 
 
@@ -17057,6 +17058,10 @@ async def analyze(request: Request):
         result = parse_reports[0] if parse_reports else {"columns": [], "rows": [], "error": "No file parsed."}
         result = dict(result)
         result["session_id"] = session_id
+        result["elapsed"] = total_elapsed
+        result["logs"] = proc_logs
+        if session_id in _results_store:
+            _results_store[session_id]["_digest"] = result
         return JSONResponse(_sanitize_json(result))
 
     # lineage / quality_ai / profile_ai / governance_ai -- these modes are
