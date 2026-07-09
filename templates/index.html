@@ -791,6 +791,74 @@ function topBrokenColumns(modified){
   (modified||[]).forEach(m => { Object.keys(m.changes||{}).forEach(col => { tally[col] = (tally[col]||0) + 1; }); });
   return Object.entries(tally).sort((a,b)=>b[1]-a[1]);
 }
+// ---------- Break / exception workflow (assign, status, comments) ----------
+let _breaksCache = {};
+async function loadBreaksForSession(sessionId){
+  if(_breaksCache[sessionId]) return _breaksCache[sessionId];
+  let map = {};
+  try {
+    const r = await fetch(`/api/ws/breaks?session_id=${encodeURIComponent(sessionId)}`);
+    if(r.ok){ const list = await r.json(); (list||[]).forEach(b => map[`${b.break_type}::${b.break_key}`] = b); }
+  } catch(e){ /* workspace DB unavailable; workflow controls still render, lazily create on first use */ }
+  _breaksCache[sessionId] = map;
+  return map;
+}
+function breakWorkflowHTML(breaksMap, sessionId, breakKey, breakType){
+  const rec = breaksMap[`${breakType}::${breakKey}`] || {};
+  const status = rec.status || 'open';
+  const assignee = rec.assignee || '';
+  const count = rec.comment_count || 0;
+  const opts = ['open','investigating','resolved','escalated'].map(s=>
+    `<option value="${s}" ${s===status?'selected':''}>${s[0].toUpperCase()+s.slice(1)}</option>`).join('');
+  return `<div class="break-workflow flex flex-wrap items-center gap-2 mt-2 pt-2 border-t border-dashed border-gray-200"
+      data-session="${esc(sessionId)}" data-key="${esc(breakKey)}" data-type="${esc(breakType)}" data-break-id="${rec.id||''}">
+    <select class="text-xs border border-[var(--line)] rounded px-1.5 py-1 bg-white" onchange="onBreakStatusChange(this)">${opts}</select>
+    <input type="text" placeholder="Assign to&hellip;" value="${esc(assignee)}" class="text-xs border border-[var(--line)] rounded px-1.5 py-1 w-28" onblur="onBreakAssign(this)">
+    <button type="button" class="text-xs text-sky-600 font-medium" onclick="onToggleBreakComments(this)">&#128172; <span class="comment-count">${count}</span></button>
+    <div class="break-thread hidden basis-full mt-1 space-y-1 text-xs"></div>
+  </div>`;
+}
+async function postBreakUpdate(wrap, patch){
+  const body = {session_id: wrap.dataset.session, break_key: wrap.dataset.key, break_type: wrap.dataset.type, ...patch};
+  const r = await fetch('/api/ws/breaks', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+  const rec = await r.json();
+  if(rec && rec.id){
+    wrap.dataset.breakId = rec.id;
+    const map = _breaksCache[wrap.dataset.session] || (_breaksCache[wrap.dataset.session] = {});
+    map[`${wrap.dataset.type}::${wrap.dataset.key}`] = rec;
+  }
+  return rec;
+}
+async function onBreakStatusChange(sel){ await postBreakUpdate(sel.closest('.break-workflow'), {status: sel.value}); }
+async function onBreakAssign(inp){ await postBreakUpdate(inp.closest('.break-workflow'), {assignee: inp.value.trim()}); }
+async function onToggleBreakComments(btn){
+  const wrap = btn.closest('.break-workflow');
+  const thread = wrap.querySelector('.break-thread');
+  if(!thread.classList.contains('hidden')){ thread.classList.add('hidden'); return; }
+  thread.classList.remove('hidden');
+  let breakId = wrap.dataset.breakId;
+  if(!breakId){ const rec = await postBreakUpdate(wrap, {}); breakId = rec.id; }
+  await renderBreakThread(thread, breakId);
+}
+async function renderBreakThread(thread, breakId){
+  const r = await fetch(`/api/ws/breaks/${breakId}/comments`);
+  const comments = await r.json();
+  thread.innerHTML = (comments||[]).map(c=>`<div class="card rounded p-1.5"><b>${esc(c.username)}</b>: ${esc(c.comment)} <span class="text-gray-400">${esc((c.created_at||'').slice(0,16).replace('T',' '))}</span></div>`).join('') +
+    `<div class="flex gap-1 mt-1"><input type="text" class="flex-1 text-xs border border-[var(--line)] rounded px-1.5 py-1 comment-input" placeholder="Add a comment&hellip;" onkeydown="if(event.key==='Enter'){event.preventDefault();this.nextElementSibling.click();}"><button type="button" class="btn px-2 py-1 text-xs rounded" onclick="onAddBreakComment(this)">Post</button></div>`;
+}
+async function onAddBreakComment(btn){
+  const thread = btn.closest('.break-thread');
+  const wrap = thread.closest('.break-workflow');
+  const input = thread.querySelector('.comment-input');
+  const text = input.value.trim();
+  if(!text) return;
+  let breakId = wrap.dataset.breakId;
+  if(!breakId){ const rec = await postBreakUpdate(wrap, {}); breakId = rec.id; }
+  await fetch(`/api/ws/breaks/${breakId}/comments`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({comment:text})});
+  await renderBreakThread(thread, breakId);
+  const countSpan = wrap.querySelector('.comment-count');
+  if(countSpan) countSpan.textContent = String(parseInt(countSpan.textContent||'0',10)+1);
+}
 function keyExcludeCheckboxes(prefix, columns, currentKeys){
   const keyBoxes = columns.map(c => `<label class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border-[1.5px] border-[var(--line)] cursor-pointer hover:border-blue-400 hover:bg-blue-50">
     <input type="checkbox" class="${prefix}-key-cb accent-blue-600" value="${esc(c)}" ${currentKeys.includes(c)?'checked':''}>${esc(c)}</label>`).join(' ');
@@ -830,14 +898,15 @@ async function rerunCompare(prefix){
   const r = await fetch(`/rerun/${sid}`, {method:'POST', body:fd});
   const data = await r.json();
   if(!r.ok){ alert(data.detail||'Rerun failed.'); return; }
-  renderCompareResult(data, t0);
+  await renderCompareResult(data, t0);
   out.scrollTop = priorScroll;
 }
-function renderCompareResult(data, t0){
+async function renderCompareResult(data, t0){
   const out=document.getElementById('cmp-out');
   setSession(data.session_id); const c=data.counts||{};
   const f1=data.files?.file1||{}, f2=data.files?.file2||{};
   const allCols = data.common_columns_list || [];
+  const breaksMap = await loadBreaksForSession(data.session_id);
 
   const summaryHTML = `
     <div class="text-sm text-gray-400 mb-3">${esc(f1.name||'File 1')} &rarr; ${esc(f2.name||'File 2')}</div>
@@ -888,20 +957,20 @@ function renderCompareResult(data, t0){
     </div>` : ''}
     <details class="mb-3" ${(c.file1_only||0)>0?'':'open'}>
       <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(220,38,38,.06)">&times; Only in ${esc(f1.name||'File 1')} &mdash; not present in ${esc(f2.name||'File 2')} (${c.file1_only??0} rows)</summary>
-      <div class="mt-2 text-xs">${(data.only_in_file1||[]).length ? `<div class="card rounded-xl overflow-auto"><table class="w-full text-xs"><tbody>${
-        data.only_in_file1.slice(0,50).map(r=>`<tr class="border-t border-[var(--line)]"><td class="p-2 font-mono">${esc(r.key)}</td></tr>`).join('')
-      }</tbody></table></div>` : `<span class="text-gray-500">No rows exclusive to ${esc(f1.name||'File 1')}.</span>`}</div>
+      <div class="mt-2 text-xs">${(data.only_in_file1||[]).length ? `<div class="space-y-2">${
+        data.only_in_file1.slice(0,50).map(r=>`<div class="card rounded-lg p-2"><div class="font-mono">${esc(r.key)}</div>${breakWorkflowHTML(breaksMap, data.session_id, r.key, 'file1_only')}</div>`).join('')
+      }</div>` : `<span class="text-gray-500">No rows exclusive to ${esc(f1.name||'File 1')}.</span>`}</div>
     </details>
     <details class="mb-3" ${(c.file2_only||0)>0?'':'open'}>
       <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(217,119,6,.06)">&check; Only in ${esc(f2.name||'File 2')} &mdash; not present in ${esc(f1.name||'File 1')} (${c.file2_only??0} rows)</summary>
-      <div class="mt-2 text-xs">${(data.only_in_file2||[]).length ? `<div class="card rounded-xl overflow-auto"><table class="w-full text-xs"><tbody>${
-        data.only_in_file2.slice(0,50).map(r=>`<tr class="border-t border-[var(--line)]"><td class="p-2 font-mono">${esc(r.key)}</td></tr>`).join('')
-      }</tbody></table></div>` : `<span class="text-gray-500">No rows exclusive to ${esc(f2.name||'File 2')}.</span>`}</div>
+      <div class="mt-2 text-xs">${(data.only_in_file2||[]).length ? `<div class="space-y-2">${
+        data.only_in_file2.slice(0,50).map(r=>`<div class="card rounded-lg p-2"><div class="font-mono">${esc(r.key)}</div>${breakWorkflowHTML(breaksMap, data.session_id, r.key, 'file2_only')}</div>`).join('')
+      }</div>` : `<span class="text-gray-500">No rows exclusive to ${esc(f2.name||'File 2')}.</span>`}</div>
     </details>
     <details class="mb-4" ${(c.modified||0)>0?'open':''}>
       <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(217,119,6,.08)">&equals; Rows in both files with changed values (${c.modified??0})</summary>
       <div class="mt-2 space-y-2 text-xs">${(data.modified||[]).length ? data.modified.slice(0,50).map(m=>`<div class="card rounded-lg p-2"><b class="text-sky-300">${esc(m.key)}</b>: `+
-        Object.entries(m.changes).map(([k,v])=>`${esc(k)}: <span class="text-amber-300">${esc(v.file1)}</span>&rarr;<span class="text-emerald-300">${esc(v.file2)}</span>`).join(' &middot; ')+`</div>`).join('') : '<span class="text-gray-500">No modified rows.</span>'}</div>
+        Object.entries(m.changes).map(([k,v])=>`${esc(k)}: <span class="text-amber-300">${esc(v.file1)}</span>&rarr;<span class="text-emerald-300">${esc(v.file2)}</span>`).join(' &middot; ')+breakWorkflowHTML(breaksMap, data.session_id, m.key, 'modified')+`</div>`).join('') : '<span class="text-gray-500">No modified rows.</span>'}</div>
     </details>
     ${(data.null_column_exceptions||[]).length ? `<details class="mb-4" open>
       <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(37,99,235,.08)">&#9632; Null column exceptions &mdash; column populated on one side, entirely null on the other (${data.null_column_exceptions.length} columns)</summary>
@@ -958,7 +1027,7 @@ async function runCompare(){
     {key_columns:document.getElementById('cmp-keys').value, exclude_columns:document.getElementById('cmp-excl').value,
      ...advancedHints('cmp')}, 'cmp-refdocs');
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
-  renderCompareResult(data, t0);
+  await renderCompareResult(data, t0);
 }
 
 // ---------- Reconciliation: AI Copilot mode (chat-driven, no fixed compare) ----------
