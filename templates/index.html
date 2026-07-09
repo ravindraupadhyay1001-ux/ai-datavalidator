@@ -82,6 +82,12 @@
       transition:border-color .18s, background .18s, transform .12s; color:var(--txt-muted); font-size:13.5px; font-weight:500; background:var(--surface-2); }
     .dropzone:hover{ border-color:var(--primary); background:var(--primary-dim); transform:translateY(-1px); }
     .dropzone.dragover{ border-color:var(--primary); background:var(--primary-mid); transform:scale(1.01); }
+    .upload-or{ align-self:center; flex-shrink:0; display:flex; align-items:center; justify-content:center;
+      width:32px; height:32px; border-radius:9999px; background:linear-gradient(180deg,#fff,var(--surface-2));
+      border:1.5px solid var(--line); color:var(--txt-dim); font-size:10.5px; font-weight:800; letter-spacing:.03em;
+      text-transform:uppercase; box-shadow:0 1px 3px rgba(15,23,42,.08); }
+    .conn-select{ font-weight:600; color:var(--txt-secondary); cursor:pointer; transition:border-color .15s, background .15s, transform .12s; }
+    .conn-select:hover{ border-color:var(--primary); background:var(--primary-dim); transform:translateY(-1px); }
     .file-chip{ display:inline-flex; align-items:center; gap:6px; background:var(--primary-dim); border:1.5px solid var(--primary-mid);
       border-radius:9999px; padding:4px 12px; font-size:12px; font-weight:500; color:var(--primary); }
     .file-chip button{ color:#dc2626; font-weight:700; line-height:1; }
@@ -156,7 +162,7 @@
           <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Dataset A</div>
           <div class="flex gap-2 items-stretch">
             <div id="cmp-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
-            <span class="text-gray-600 text-xs self-center">or</span>
+            <span class="upload-or">or</span>
             <select id="cmp-conn1" class="inp text-xs conn-select" style="width:180px">
               <option value="">&#128179; Use Saved Connection</option>
             </select>
@@ -168,7 +174,7 @@
           <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Dataset B</div>
           <div class="flex gap-2 items-stretch">
             <div id="cmp-zone2" class="dropzone flex-1">Drag &amp; drop or click</div>
-            <span class="text-gray-600 text-xs self-center">or</span>
+            <span class="upload-or">or</span>
             <select id="cmp-conn2" class="inp text-xs conn-select" style="width:180px">
               <option value="">&#128179; Use Saved Connection</option>
             </select>
@@ -197,7 +203,7 @@
           <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Dataset</div>
           <div class="flex gap-2 items-stretch">
             <div id="q-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
-            <span class="text-gray-600 text-xs self-center">or</span>
+            <span class="upload-or">or</span>
             <select id="q-conn1" class="inp text-xs conn-select" style="width:180px"><option value="">&#128179; Use Saved Connection</option></select>
           </div>
           <input id="q-f1" type="file" class="hidden">
@@ -250,7 +256,7 @@
         <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Dataset</div>
         <div class="flex gap-2 items-stretch">
           <div id="prof-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
-          <span class="text-gray-600 text-xs self-center">or</span>
+          <span class="upload-or">or</span>
           <select id="prof-conn1" class="inp text-xs conn-select" style="width:180px"><option value="">&#128179; Use Saved Connection</option></select>
         </div>
         <input id="prof-f1" type="file" class="hidden">
@@ -275,7 +281,7 @@
         <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Dataset</div>
         <div class="flex gap-2 items-stretch">
           <div id="gov-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
-          <span class="text-gray-600 text-xs self-center">or</span>
+          <span class="upload-or">or</span>
           <select id="gov-conn1" class="inp text-xs conn-select" style="width:180px"><option value="">&#128179; Use Saved Connection</option></select>
         </div>
         <input id="gov-f1" type="file" class="hidden">
@@ -335,7 +341,7 @@
         <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Dataset</div>
         <div class="flex gap-2 items-stretch">
           <div id="par-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
-          <span class="text-gray-600 text-xs self-center">or</span>
+          <span class="upload-or">or</span>
           <select id="par-conn1" class="inp text-xs conn-select" style="width:180px"><option value="">&#128179; Use Saved Connection</option></select>
         </div>
         <input id="par-f1" type="file" class="hidden">
