@@ -17046,6 +17046,8 @@ async def analyze(request: Request):
             "has_data_dict": bool(g.get("has_data_dict")),
             "columns": columns,
             "recommendations": recommendations,
+            "elapsed": total_elapsed,
+            "logs": proc_logs,
         }
         if session_id in _results_store:
             _results_store[session_id]["_digest"] = _resp

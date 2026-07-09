@@ -225,46 +225,50 @@
     <section id="tab-profile" class="tab-panel hidden">
       <h2 class="text-2xl font-bold mb-1 grad-text">Data Profile</h2>
       <p class="text-sm text-gray-500 mb-4">Column stats, correlations, near-key candidates.</p>
-      <div class="card rounded-xl p-5 mb-4 max-w-3xl"><label class="text-sm text-gray-400">File</label><input id="prof-f1" type="file" class="block w-full text-sm mt-1">
-        <select id="prof-conn1" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
-      <div class="flex items-center gap-3 mb-3">
-        <button onclick="runProfile()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Run Data Profile</button>
-        <span class="text-gray-600 text-xs">or</span>
-        <button onclick="runProfileAI()" class="btn-indigo btn px-4 py-2 rounded-lg text-sm font-semibold" title="Load this file and ask the AI Copilot about it instead of a fixed profile report">&#129302; AI Copilot Mode</button>
+      <div class="card rounded-xl p-5 mb-4">
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Dataset</div>
+        <div class="flex gap-2 items-stretch">
+          <div id="prof-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
+          <span class="text-gray-600 text-xs self-center">or</span>
+          <select id="prof-conn1" class="inp text-xs conn-select" style="width:180px"><option value="">&#128179; Use Saved Connection</option></select>
+        </div>
+        <input id="prof-f1" type="file" class="hidden">
+        <div id="prof-chip1" class="mt-2"></div>
+      </div>
+      <div class="flex gap-3 items-center flex-wrap">
+        <div class="seg" id="prof-seg">
+          <span class="seg-btn active" data-mode="standard" onclick="setProfMode('standard')">Standard</span>
+          <span class="seg-btn" data-mode="ai" onclick="setProfMode('ai')">&#9889; AI Copilot</span>
+        </div>
+        <button onclick="runDataProfile()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">&#128269; Run Data Profile</button>
+        <span class="text-gray-500 text-xs" id="prof-mode-help">Standard profile &mdash; column stats, correlations, near-key candidates.</span>
       </div>
       <div id="prof-out" class="mt-6"></div>
-      <div class="card rounded-xl p-4 mt-4 max-w-3xl text-sm">
-        <div class="text-xs text-gray-400 mb-2">&#128172; Dataset Controls &mdash; teach the AI how to handle this dataset (remembered next time)</div>
-        <div class="flex gap-2">
-          <input id="prof-dc-input" placeholder='e.g. &quot;exclude column X&quot; or &quot;set remarks as nullable&quot;' class="inp flex-1 text-sm" onkeydown="if(event.key==='Enter')applyDatasetControl('prof','profile')">
-          <button onclick="applyDatasetControl('prof','profile')" class="btn px-3 py-1.5 rounded-lg text-sm">Apply</button>
-        </div>
-        <div id="prof-dc-feedback" class="text-xs mt-2"></div>
-        <div id="prof-dc-rules" class="text-xs mt-2 space-y-1"></div>
-      </div>
     </section>
 
     <!-- GOVERNANCE -->
     <section id="tab-governance" class="tab-panel hidden">
       <h2 class="text-2xl font-bold mb-1 grad-text">Governance &amp; PII</h2>
       <p class="text-sm text-gray-500 mb-4">PII detection, sensitivity classification, risk.</p>
-      <div class="card rounded-xl p-5 mb-4 max-w-3xl"><label class="text-sm text-gray-400">File</label><input id="gov-f1" type="file" class="block w-full text-sm mt-1">
-        <select id="gov-conn1" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
-      <div class="flex items-center gap-3 mb-3">
-        <button onclick="runGovernance()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Scan</button>
-        <span class="text-gray-600 text-xs">or</span>
-        <button onclick="runGovernanceAI()" class="btn-indigo btn px-4 py-2 rounded-lg text-sm font-semibold" title="Load this file and ask the AI Copilot about PII/sensitivity instead of a fixed scan">&#129302; AI Copilot Mode</button>
+      <div class="card rounded-xl p-5 mb-4">
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Dataset</div>
+        <div class="flex gap-2 items-stretch">
+          <div id="gov-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
+          <span class="text-gray-600 text-xs self-center">or</span>
+          <select id="gov-conn1" class="inp text-xs conn-select" style="width:180px"><option value="">&#128179; Use Saved Connection</option></select>
+        </div>
+        <input id="gov-f1" type="file" class="hidden">
+        <div id="gov-chip1" class="mt-2"></div>
+      </div>
+      <div class="flex gap-3 items-center flex-wrap">
+        <div class="seg" id="gov-seg">
+          <span class="seg-btn active" data-mode="standard" onclick="setGovMode('standard')">Standard</span>
+          <span class="seg-btn" data-mode="ai" onclick="setGovMode('ai')">&#9889; AI Copilot</span>
+        </div>
+        <button onclick="runDataGovernance()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">&#128274; Run Governance Scan</button>
+        <span class="text-gray-500 text-xs" id="gov-mode-help">Standard scan &mdash; PII detection, sensitivity classification, regulatory flags.</span>
       </div>
       <div id="gov-out" class="mt-6"></div>
-      <div class="card rounded-xl p-4 mt-4 max-w-3xl text-sm">
-        <div class="text-xs text-gray-400 mb-2">&#128172; Dataset Controls &mdash; teach the AI how to handle this dataset (remembered next time)</div>
-        <div class="flex gap-2">
-          <input id="gov-dc-input" placeholder='e.g. &quot;mark CUSIP as not PII&quot; or &quot;BusinessDate is not a date of birth&quot;' class="inp flex-1 text-sm" onkeydown="if(event.key==='Enter')applyDatasetControl('gov','governance')">
-          <button onclick="applyDatasetControl('gov','governance')" class="btn px-3 py-1.5 rounded-lg text-sm">Apply</button>
-        </div>
-        <div id="gov-dc-feedback" class="text-xs mt-2"></div>
-        <div id="gov-dc-rules" class="text-xs mt-2 space-y-1"></div>
-      </div>
     </section>
 
     <!-- CROSS REFERENCE -->
@@ -451,9 +455,13 @@
       <pre id="set-out" class="card rounded-xl p-4 text-xs text-gray-300 max-w-3xl"></pre>
     </section>
   </main>
+</div>
 
-  <!-- AI chat -->
-  <aside class="w-80 flex flex-col border-l border-[var(--line)]" style="background:linear-gradient(180deg,#0b1120,#0a0f1e);">
+<!-- AI Copilot chat widget: parked here by default, moved into whichever module's
+     "AI Copilot" result tab is active (see mountCopilotChat()) so it never occupies
+     fixed screen space of its own. -->
+<template id="copilot-chat-template">
+  <div class="card rounded-xl flex flex-col" style="height:420px">
     <div class="p-3 border-b border-[var(--line)] flex items-center justify-between">
       <span class="text-sm font-semibold text-sky-300">&#129302; AI Copilot</span>
       <label class="flex items-center gap-1.5 text-[11px] text-gray-400 cursor-pointer" title="Agent mode calls tools to look up real results instead of a single canned summary">
@@ -470,8 +478,8 @@
       <input id="chat-in" placeholder="Ask about results&hellip;" class="inp flex-1 text-sm" onkeydown="if(event.key==='Enter')sendChat()">
       <button onclick="sendChat()" class="btn rounded-lg px-3 text-sm">Send</button>
     </div>
-  </aside>
-</div>
+  </div>
+</template>
 
 <!-- Help Modal / User Guide -->
 <div id="help-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6" style="background:rgba(0,0,0,.65);backdrop-filter:blur(4px)">
@@ -619,6 +627,23 @@ function showResultTab(prefix, key){
   const out = document.getElementById(`${prefix}-out`);
   out.querySelectorAll('.result-tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.rtab===key));
   out.querySelectorAll('[data-rpanel]').forEach(p=>p.classList.toggle('hidden', p.dataset.rpanel!==key));
+  if(key==='copilot') mountCopilotChat(prefix);
+}
+// ---------- AI Copilot chat widget: a single live instance, moved (not cloned) into
+// whichever module's "AI Copilot" tab is currently visible so it never duplicates IDs
+// and never takes fixed screen space of its own.
+let _copilotWidgetNode = null;
+function mountCopilotChat(prefix){
+  const slot = document.getElementById(`${prefix}-chat-mount`);
+  if(!slot) return;
+  if(!_copilotWidgetNode){
+    const tpl = document.getElementById('copilot-chat-template');
+    _copilotWidgetNode = tpl.content.firstElementChild.cloneNode(true);
+  }
+  if(_copilotWidgetNode.parentElement !== slot){
+    slot.innerHTML = '';
+    slot.appendChild(_copilotWidgetNode);
+  }
 }
 function logsPanelHTML(logs){
   if(!logs?.length) return '<div class="text-sm text-gray-500">No processing logs for this run.</div>';
@@ -631,12 +656,12 @@ function copilotPanelHTML(prefix, context, chips){
     <div class="col-span-2">
       <div class="card rounded-xl p-4 mb-3">
         <div class="font-semibold text-sky-300 mb-1">&#9889; AI Copilot</div>
-        <div class="text-xs text-gray-400 mb-3">Full context of this analysis &mdash; ask anything in the panel &rarr;, or click a suggestion to send it. Say "remember: ..." to save a rule.</div>
+        <div class="text-xs text-gray-400 mb-3">Full context of this analysis &mdash; ask anything below, or click a suggestion to send it. Say "remember: ..." to save a rule.</div>
         <div class="flex flex-wrap gap-2">
           ${chips.map(c=>`<span class="suggest-chip${c.special?' special':''}" onclick="quickChat(${JSON.stringify(c.q)})">${esc(c.label)}</span>`).join('')}
         </div>
       </div>
-      <div class="text-sm text-gray-400">Conversation happens in the <b class="text-sky-300">AI Copilot</b> panel on the right &rarr;</div>
+      <div id="${prefix}-chat-mount"></div>
     </div>
     <div>
       <div class="card rounded-xl p-4">
@@ -800,6 +825,7 @@ async function runCompareAI(){
     {key:'copilot', label:'&#9889; AI Copilot', content: statsHTML + '<div class="mt-4">' + copilotPanelHTML('cmp','compare', chips) + '</div>'},
     {key:'logs', label:'Logs', content: logsPanelHTML(data.proc_logs||[])},
   ], 'copilot');
+  mountCopilotChat('cmp');
   loadDatasetControlRules('cmp','compare');
   const chatInput = document.getElementById('chat-in');
   chatInput.value = `Compare these two files and tell me the key differences, likely join keys, and any rows that look mismatched.`;
@@ -822,20 +848,48 @@ async function runComplexRecon(){
 }
 
 // ---------- Quality / Profile / Governance -- AI Copilot mode ----------
-async function _runAICopilotMode(action, fileId, outId, label){
-  const out=document.getElementById(outId); out.innerHTML='<span class="text-gray-400">Loading file for the AI Copilot&hellip;</span>';
-  const {ok,data}=await postForm(action,[['files',fileId]]);
+async function _runAICopilotMode(action, fileId, prefix, context, label, connId){
+  const out=document.getElementById(prefix+'-out'); out.innerHTML='<span class="text-gray-400">Loading file for the AI Copilot&hellip;</span>';
+  const t0 = performance.now();
+  const fileInputs = connId ? [['files',fileId,'conn_ids',connId]] : [['files',fileId]];
+  const {ok,data}=await postForm(action, fileInputs);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
   setSession(data.session_id);
-  out.innerHTML=`<div class="card rounded-xl p-4 text-sm text-gray-300">
-    File loaded (${(data.file_names||[]).join(', ')}). Ask the <b class="text-sky-300">AI Copilot</b> panel &rarr;
-    about ${label} for this file &mdash; a starter question has been filled in for you.</div>`;
+  const chips = [
+    {label:`What ${label} issues should I be aware of?`, q:`What ${label} issues should I be aware of in this dataset?`},
+    {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
+  ];
+  out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell(prefix, [
+    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML(prefix, context, chips)},
+    {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
+  ], 'copilot');
+  mountCopilotChat(prefix);
+  loadDatasetControlRules(prefix, context);
   const chatInput = document.getElementById('chat-in');
   chatInput.value = `What ${label} issues should I be aware of in this dataset?`;
   chatInput.focus();
 }
-function runProfileAI(){ return _runAICopilotMode('profile_ai', 'prof-f1', 'prof-out', 'the structure and profile'); }
-function runGovernanceAI(){ return _runAICopilotMode('governance_ai', 'gov-f1', 'gov-out', 'PII, sensitivity and governance'); }
+function runProfileAI(){ return _runAICopilotMode('profile_ai', 'prof-f1', 'prof', 'profile', 'the structure and profile', 'prof-conn1'); }
+function runGovernanceAI(){ return _runAICopilotMode('governance_ai', 'gov-f1', 'gov', 'governance', 'PII, sensitivity and governance', 'gov-conn1'); }
+
+// ---------- Profile / Governance: Standard vs AI Copilot mode ----------
+let profMode = 'standard', govMode = 'standard';
+function setProfMode(mode){
+  profMode = mode;
+  document.querySelectorAll('#prof-seg .seg-btn').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
+  document.getElementById('prof-mode-help').textContent = mode==='standard'
+    ? 'Standard profile — column stats, correlations, near-key candidates.'
+    : 'AI Copilot — load the file and let the AI Copilot investigate its structure for you.';
+}
+function setGovMode(mode){
+  govMode = mode;
+  document.querySelectorAll('#gov-seg .seg-btn').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
+  document.getElementById('gov-mode-help').textContent = mode==='standard'
+    ? 'Standard scan — PII detection, sensitivity classification, regulatory flags.'
+    : 'AI Copilot — load the file and let the AI Copilot investigate PII/governance for you.';
+}
+function runDataProfile(){ return profMode==='standard' ? runProfile() : runProfileAI(); }
+function runDataGovernance(){ return govMode==='standard' ? runGovernance() : runGovernanceAI(); }
 
 // ---------- Quality: Standard vs AI Copilot mode ----------
 let qMode = 'standard';
@@ -936,6 +990,7 @@ async function runQualityAI(){
     {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('q','quality', qualityChips((data.file_names||[])[0]))},
     {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
   ], 'copilot');
+  mountCopilotChat('q');
   loadDatasetControlRules('q','quality');
   const chatInput = document.getElementById('chat-in');
   chatInput.value = `What data quality issues should I be aware of in this dataset?`;
@@ -989,10 +1044,11 @@ function bar(pct){ const c=pct>=90?'#16a34a':pct>=60?'#d97706':'#dc2626';
 // ---------- Mapping ----------
 async function runProfile(){
   const out=document.getElementById('prof-out'); out.innerHTML='<span class="text-gray-400">Profiling&hellip;</span>';
+  const t0 = performance.now();
   const {ok,data}=await postForm('quality',[['files','prof-f1','conn_ids','prof-conn1']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   setSession(data.session_id);
-  let html=`<div class="grid grid-cols-3 gap-3 mb-4 text-sm">
+  let summaryHTML=`<div class="grid grid-cols-3 gap-3 mb-4 text-sm">
     ${stat('Rows', data.rows, '#a855f7')}${stat('Columns', data.columns, '#38bdf8')}${stat('Duplicate rows', data.duplicate_rows, '#f59e0b')}</div>
     <div class="card rounded-xl p-3 overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400">
     <tr><th class="text-left p-2">Column</th><th>Type</th><th>Nulls</th><th>Distinct</th><th>Unique%</th><th>Min/Max</th></tr></thead><tbody>
@@ -1002,7 +1058,7 @@ async function runProfile(){
       <td class="text-center">${bar(c.uniqueness_pct)}</td>
       <td class="text-center text-gray-400">${c.numeric?`${c.numeric.min}&ndash;${c.numeric.max}`:(c.string?`${c.string.min_length}&ndash;${c.string.max_length} chars`:'&mdash;')}</td></tr>`).join('')}</tbody></table></div>`;
   if(data.near_key_columns?.length||data.correlations?.length){
-    html+=`<div class="grid grid-cols-2 gap-4 mt-4 text-sm">
+    summaryHTML+=`<div class="grid grid-cols-2 gap-4 mt-4 text-sm">
     ${data.near_key_columns?.length?`<div class="card rounded-xl p-4">
       <div class="text-xs text-gray-400 mb-2">Near-key columns <span class="text-gray-600">(80&ndash;95% unique)</span></div>
       <div class="flex flex-wrap gap-1">${data.near_key_columns.map(c=>`<span class="badge" style="background:rgba(168,85,247,.18);color:#c4b5fd">${esc(c)}</span>`).join('')}</div></div>`:''}
@@ -1011,58 +1067,70 @@ async function runProfile(){
       <div class="space-y-1">${data.correlations.map(c=>`<div>${esc(c.col_a)} &harr; ${esc(c.col_b)}: <span class="${Math.abs(c.r)>0.9?'text-emerald-300':'text-amber-300'}">${c.r}</span></div>`).join('')}</div></div>`:''}
     </div>`;
   }
-  out.innerHTML=html+actionBar(data.session_id);
+  const chips = [
+    {label:'Summarize this dataset', q:'Summarize this dataset — column types, key candidates, anything unusual.'},
+    {label:'What columns look like join keys?', q:'Which columns look like good join keys for reconciling this file against another?'},
+    {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
+  ];
+  out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('prof', [
+    {key:'summary', label:'Summary', content: summaryHTML},
+    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('prof','profile', chips)},
+    {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
+  ], 'summary');
   loadDatasetControlRules('prof','profile');
 }
 
 // ---------- Governance ----------
 async function runGovernance(){
   const out=document.getElementById('gov-out'); out.innerHTML='<span class="text-gray-400">Scanning&hellip;</span>';
+  const t0 = performance.now();
   const {ok,data}=await postForm('governance',[['files','gov-f1','conn_ids','gov-conn1']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   setSession(data.session_id);
-  const rc={low:'#10b981',medium:'#f59e0b',high:'#f97316',critical:'#ef4444'}[data.overall_risk];
-  const sc={public:'#10b981',internal:'#38bdf8',confidential:'#f59e0b','highly restricted':'#ef4444',restricted:'#ef4444'};
+  const rc={low:'#16a34a',medium:'#d97706',high:'#ea580c',critical:'#dc2626'}[data.overall_risk];
+  const sc={public:'#16a34a',internal:'#0284c7',confidential:'#d97706','highly restricted':'#dc2626',restricted:'#dc2626'};
   const counts={}; data.columns.forEach(c=>counts[c.sensitivity]=(counts[c.sensitivity]||0)+1);
-  let html=`<div class="grid grid-cols-4 gap-4 mb-4">
+  const summaryHTML=`<div class="grid grid-cols-4 gap-4 mb-4">
     <div class="card rounded-xl p-4 flex flex-col items-center justify-center">
       <div class="text-xs text-gray-400">Overall risk</div><div class="text-2xl font-extrabold" style="color:${rc}">${data.overall_risk.toUpperCase()}</div></div>
     <div class="card rounded-xl p-4 flex flex-col items-center justify-center">
       <div class="text-xs text-gray-400">Classification</div><div class="text-sm font-bold text-center mt-1">${esc(data.overall_classification||'&mdash;')}</div>
       <div class="text-xs text-gray-500 mt-1">PII cols: ${data.pii_column_count??0} &middot; Reg flags: ${(data.regulatory_frameworks||[]).length}</div></div>
-    <div class="card rounded-xl p-4 col-span-2"><div class="text-xs text-gray-400 mb-2">Columns by sensitivity</div><canvas id="govChart" height="120"></canvas></div></div>`;
-  if((data.regulatory_frameworks||[]).length){
-    html+=`<div class="mb-4 flex gap-2 flex-wrap items-center"><span class="text-xs text-gray-400">Regulatory frameworks:</span>
-      ${data.regulatory_frameworks.map(r=>`<span class="badge" style="background:rgba(239,68,68,.18);color:#fca5a5">${esc(r)}</span>`).join('')}</div>`;
-  }
-  html+=`<div class="card rounded-xl overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400">
-    <tr><th class="text-left p-2">Column</th><th>PII</th><th>Types</th><th>Sensitivity</th><th>Regulatory</th><th>Steward</th></tr></thead><tbody>`;
-  data.columns.forEach(c=>{ html+=`<tr class="border-t border-[var(--line)]"><td class="p-2">${esc(c.name)}</td>
-    <td class="text-center">${c.pii_detected?'&#9888;&#65039;':'&mdash;'}</td><td class="text-center">${(c.pii_types||[]).join(', ')||'&mdash;'}</td>
-    <td class="text-center"><span class="badge" style="background:${sc[c.sensitivity]}22;color:${sc[c.sensitivity]}">${esc(c.sensitivity)}</span></td>
-    <td class="text-center">${(c.regulatory||[]).join(', ')||'&mdash;'}</td>
-    <td class="text-center text-gray-400">${esc(c.steward||'')}</td></tr>`;});
-  html+='</tbody></table></div>';
-  if(data.mandatory_breaches?.length){
-    html+=`<h3 class="font-semibold mt-4 mb-2 text-red-400">Mandatory breaches</h3><div class="space-y-1 text-xs">${
-      data.mandatory_breaches.map(b=>`<div class="card rounded-lg p-2">${esc(typeof b==='string'?b:JSON.stringify(b))}</div>`).join('')}</div>`;
-  }
-  if(data.stewardship_routing && Object.keys(data.stewardship_routing).length){
-    html+=`<h3 class="font-semibold mt-4 mb-2">Stewardship routing</h3><div class="space-y-1 text-xs">${
-      Object.entries(data.stewardship_routing).map(([owner,cols])=>`<div class="card rounded-lg p-2"><b class="text-sky-300">${esc(owner)}</b>: ${cols.map(esc).join(', ')}</div>`).join('')}</div>`;
-  }
-  if(data.undocumented_columns?.length){
-    html+=`<div class="mt-3 text-xs text-amber-300">&#9888;&#65039; No data-dictionary entry: ${data.undocumented_columns.map(esc).join(', ')}</div>`;
-  }
-  if(data.recommendations?.length) html+=`<ul class="mt-3 text-sm text-gray-300 list-disc list-inside">${data.recommendations.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>`;
-  if(data.columns.some(c=>c.pii_detected))
-    html+=`<a href="/api/dq/mask/${data.session_id}" class="inline-block mt-4 mr-2 btn-emerald btn rounded-lg px-4 py-2 text-sm">&#128274; Download Masked CSV</a>`;
-  html+=actionBar(data.session_id);
-  out.innerHTML=html;
+    <div class="card rounded-xl p-4 col-span-2"><div class="text-xs text-gray-400 mb-2">Columns by sensitivity</div><canvas id="govChart" height="120"></canvas></div></div>
+    ${(data.regulatory_frameworks||[]).length ? `<div class="mb-4 flex gap-2 flex-wrap items-center"><span class="text-xs text-gray-400">Regulatory frameworks:</span>
+      ${data.regulatory_frameworks.map(r=>`<span class="badge" style="background:rgba(220,38,38,.12);color:#dc2626">${esc(r)}</span>`).join('')}</div>` : ''}
+    <div class="card rounded-xl overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400">
+    <tr><th class="text-left p-2">Column</th><th>PII</th><th>Types</th><th>Sensitivity</th><th>Regulatory</th><th>Steward</th></tr></thead><tbody>
+    ${data.columns.map(c=>`<tr class="border-t border-[var(--line)]"><td class="p-2">${esc(c.name)}</td>
+      <td class="text-center">${c.pii_detected?'&#9888;&#65039;':'&mdash;'}</td><td class="text-center">${(c.pii_types||[]).join(', ')||'&mdash;'}</td>
+      <td class="text-center"><span class="badge" style="background:${sc[c.sensitivity]}22;color:${sc[c.sensitivity]}">${esc(c.sensitivity)}</span></td>
+      <td class="text-center">${(c.regulatory||[]).join(', ')||'&mdash;'}</td>
+      <td class="text-center text-gray-400">${esc(c.steward||'')}</td></tr>`).join('')}</tbody></table></div>
+    ${data.columns.some(c=>c.pii_detected) ? `<a href="/api/dq/mask/${data.session_id}" class="inline-block mt-4 btn-emerald btn rounded-lg px-4 py-2 text-sm">&#128274; Download Masked CSV</a>` : ''}`;
+
+  const exceptionsHTML = `
+    ${data.mandatory_breaches?.length ? `<h3 class="font-semibold mb-2 text-red-400">Mandatory breaches</h3><div class="space-y-1 text-xs mb-4">${
+      data.mandatory_breaches.map(b=>`<div class="card rounded-lg p-2">${esc(typeof b==='string'?b:JSON.stringify(b))}</div>`).join('')}</div>` : '<div class="text-sm text-gray-500 mb-4">No mandatory breaches.</div>'}
+    ${data.stewardship_routing && Object.keys(data.stewardship_routing).length ? `<h3 class="font-semibold mb-2">Stewardship routing</h3><div class="space-y-1 text-xs mb-4">${
+      Object.entries(data.stewardship_routing).map(([owner,cols])=>`<div class="card rounded-lg p-2"><b class="text-sky-300">${esc(owner)}</b>: ${cols.map(esc).join(', ')}</div>`).join('')}</div>` : ''}
+    ${data.undocumented_columns?.length ? `<div class="text-xs text-amber-300 mb-2">&#9888;&#65039; No data-dictionary entry: ${data.undocumented_columns.map(esc).join(', ')}</div>` : ''}
+    ${data.recommendations?.length ? `<ul class="text-sm text-gray-300 list-disc list-inside">${data.recommendations.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>` : ''}`;
+
+  const chips = [
+    {label:'Which columns need masking before sharing?', q:'Which columns need masking or restriction before this data can be shared?'},
+    {label:'Explain the regulatory flags', q:'Explain the regulatory frameworks that apply here and why.'},
+    {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
+  ];
+  out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('gov', [
+    {key:'summary', label:'Summary', content: summaryHTML},
+    {key:'exceptions', label:`Exceptions (${(data.mandatory_breaches||[]).length})`, content: exceptionsHTML},
+    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('gov','governance', chips)},
+    {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
+  ], 'summary');
   const labels=Object.keys(counts);
   chart('govChart',{type:'bar',data:{labels,datasets:[{data:labels.map(k=>counts[k]),
     backgroundColor:labels.map(k=>sc[k]),borderRadius:6}]},options:{plugins:{legend:{display:false}},
-    scales:{x:{ticks:{color:'#94a3b8'}},y:{ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}}}}});
+    scales:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b'},grid:{color:'#e2e8f0'}}}}});
   loadDatasetControlRules('gov','governance');
 }
 
