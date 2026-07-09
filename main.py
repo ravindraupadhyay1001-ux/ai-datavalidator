@@ -21064,68 +21064,6 @@ async def ws_delete_saved_run(run_id: str, request: Request):
     return JSONResponse({"status": "deleted"})
 
 
-# --------------------------------------------------------------------
-# Break / exception workflow (assign, status, comments)
-# --------------------------------------------------------------------
-@app.post("/api/ws/breaks")
-async def ws_upsert_break(request: Request):
-    """Get-or-create a break record for one exception row, then optionally
-    update its status/assignee/priority in the same call."""
-    _ws_check()
-    username = _ws_get_user(request)
-    body = await request.json()
-    session_id = str(body.get("session_id", "")).strip()
-    break_key = str(body.get("break_key", "")).strip()
-    break_type = str(body.get("break_type", "")).strip()
-    if not session_id or not break_key or not break_type:
-        raise HTTPException(400, "session_id, break_key and break_type are required.")
-    rec = _ws_db.get_or_create_break(session_id, break_key, break_type, username,
-                                      detail=body.get("detail"))
-    status = body.get("status")
-    assignee = body.get("assignee")
-    priority = body.get("priority")
-    if status or assignee is not None or priority is not None:
-        _ws_db.update_break(rec["id"], status=status, assignee=assignee, priority=priority)
-        rec = _ws_db.get_break(rec["id"])
-    return JSONResponse(_sanitize_json(rec))
-
-
-@app.get("/api/ws/breaks")
-async def ws_list_breaks(request: Request, session_id: str):
-    _ws_check()
-    return JSONResponse(_sanitize_json(_ws_db.list_breaks(session_id)))
-
-
-@app.patch("/api/ws/breaks/{break_id}")
-async def ws_update_break(break_id: int, request: Request):
-    _ws_check()
-    body = await request.json()
-    _ws_db.update_break(break_id, status=body.get("status"), assignee=body.get("assignee"),
-                         priority=body.get("priority"))
-    rec = _ws_db.get_break(break_id)
-    if not rec:
-        raise HTTPException(404, "Break not found.")
-    return JSONResponse(_sanitize_json(rec))
-
-
-@app.post("/api/ws/breaks/{break_id}/comments")
-async def ws_add_break_comment(break_id: int, request: Request):
-    _ws_check()
-    username = _ws_get_user(request)
-    body = await request.json()
-    comment = str(body.get("comment", "")).strip()
-    if not comment:
-        raise HTTPException(400, "Comment text is required.")
-    _ws_db.add_break_comment(break_id, username, comment)
-    return JSONResponse(_sanitize_json(_ws_db.list_break_comments(break_id)))
-
-
-@app.get("/api/ws/breaks/{break_id}/comments")
-async def ws_list_break_comments(break_id: int, request: Request):
-    _ws_check()
-    return JSONResponse(_sanitize_json(_ws_db.list_break_comments(break_id)))
-
-
 # -- current user info
 # --------------------------------------------------------------------
 

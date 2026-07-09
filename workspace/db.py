@@ -189,29 +189,6 @@ _DDL = [
     "ALTER TABLE ws_saved_runs ADD COLUMN conn_a_id INTEGER",
     "ALTER TABLE ws_saved_runs ADD COLUMN conn_b_id INTEGER",
     "ALTER TABLE ws_saved_runs ADD COLUMN source_conn_id INTEGER",
-    """CREATE TABLE IF NOT EXISTS ws_breaks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id TEXT NOT NULL,
-        break_key TEXT NOT NULL,
-        break_type TEXT NOT NULL,
-        status TEXT DEFAULT 'open',
-        assignee TEXT,
-        priority TEXT,
-        detail_json TEXT,
-        created_by TEXT,
-        created_at TEXT,
-        updated_at TEXT,
-        resolved_at TEXT
-    )""",
-    "CREATE INDEX IF NOT EXISTS idx_breaks_session ON ws_breaks(session_id)",
-    """CREATE TABLE IF NOT EXISTS ws_break_comments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        break_id INTEGER NOT NULL,
-        username TEXT,
-        comment TEXT,
-        created_at TEXT
-    )""",
-    "CREATE INDEX IF NOT EXISTS idx_break_comments_break ON ws_break_comments(break_id)",
 ]
 
 
@@ -583,100 +560,6 @@ def delete_saved_run(run_id, username):
         (run_id, username),
     )
     conn.commit()
-
-
-# --------------------------------------------------------------------------
-# Break / exception workflow (assign, status, comments)
-# --------------------------------------------------------------------------
-def get_or_create_break(session_id, break_key, break_type, username, detail=None):
-    cur = _conn().cursor()
-    cur.execute(
-        f"SELECT * FROM ws_breaks WHERE session_id={_ph()} AND break_key={_ph()} "
-        f"AND break_type={_ph()}",
-        (session_id, break_key, break_type),
-    )
-    rows = _rows(cur)
-    if rows:
-        return rows[0]
-    conn = _conn()
-    cur = conn.cursor()
-    cur.execute(
-        f"INSERT INTO ws_breaks (session_id, break_key, break_type, status, "
-        f"detail_json, created_by, created_at, updated_at) "
-        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
-        (session_id, break_key, break_type, "open", _b64(detail) if detail else None,
-         username, _now(), _now()),
-    )
-    conn.commit()
-    cur.execute(f"SELECT * FROM ws_breaks WHERE id={_ph()}", (cur.lastrowid,))
-    return _rows(cur)[0]
-
-
-def get_break(break_id):
-    cur = _conn().cursor()
-    cur.execute(f"SELECT * FROM ws_breaks WHERE id={_ph()}", (break_id,))
-    rows = _rows(cur)
-    return rows[0] if rows else None
-
-
-def list_breaks(session_id):
-    cur = _conn().cursor()
-    cur.execute(
-        f"SELECT b.*, (SELECT COUNT(*) FROM ws_break_comments c WHERE c.break_id=b.id) "
-        f"AS comment_count FROM ws_breaks b WHERE b.session_id={_ph()} ORDER BY b.id DESC",
-        (session_id,),
-    )
-    return _rows(cur)
-
-
-def update_break(break_id, status=None, assignee=None, priority=None):
-    conn = _conn()
-    cur = conn.cursor()
-    sets, params = [], []
-    if status is not None:
-        sets.append(f"status={_ph()}")
-        params.append(status)
-        if status in ("resolved", "closed"):
-            sets.append(f"resolved_at={_ph()}")
-            params.append(_now())
-    if assignee is not None:
-        sets.append(f"assignee={_ph()}")
-        params.append(assignee)
-    if priority is not None:
-        sets.append(f"priority={_ph()}")
-        params.append(priority)
-    if not sets:
-        return
-    sets.append(f"updated_at={_ph()}")
-    params.append(_now())
-    params.append(break_id)
-    cur.execute(f"UPDATE ws_breaks SET {', '.join(sets)} WHERE id={_ph()}", params)
-    conn.commit()
-
-
-def add_break_comment(break_id, username, comment):
-    conn = _conn()
-    cur = conn.cursor()
-    cur.execute(
-        f"INSERT INTO ws_break_comments (break_id, username, comment, created_at) "
-        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()})",
-        (break_id, username, comment, _now()),
-    )
-    conn.commit()
-    cur.execute(
-        f"UPDATE ws_breaks SET updated_at={_ph()} WHERE id={_ph()}", (_now(), break_id)
-    )
-    conn.commit()
-    return cur.lastrowid
-
-
-def list_break_comments(break_id):
-    cur = _conn().cursor()
-    cur.execute(
-        f"SELECT * FROM ws_break_comments WHERE break_id={_ph()} ORDER BY id ASC",
-        (break_id,),
-    )
-    return _rows(cur)
 
 
 # --------------------------------------------------------------------------
