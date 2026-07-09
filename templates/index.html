@@ -87,15 +87,20 @@
       border:1.5px solid var(--line); color:var(--txt-dim); font-size:10.5px; font-weight:800; letter-spacing:.03em;
       text-transform:uppercase; box-shadow:0 1px 3px rgba(15,23,42,.08); }
     .conn-select{ appearance:none; -webkit-appearance:none; -moz-appearance:none;
-      font-weight:600; color:var(--txt-secondary); cursor:pointer;
-      border-radius:12px !important; padding:9px 32px 9px 13px !important; background-color:#fff;
-      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%232563eb' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
-      background-repeat:no-repeat; background-position:right 12px center; background-size:11px 7px;
-      box-shadow:0 1px 3px rgba(15,23,42,.06);
-      transition:border-color .15s, background-color .15s, transform .12s, box-shadow .15s; }
-    .conn-select:hover{ border-color:var(--primary); background-color:var(--primary-dim); transform:translateY(-1px);
-      box-shadow:0 5px 14px -5px rgba(37,99,235,.35); }
-    .conn-select:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 3.5px var(--primary-dim); }
+      font-weight:700; color:var(--txt-primary); cursor:pointer; letter-spacing:.01em;
+      border-radius:12px !important; padding:11px 34px 11px 14px !important;
+      border:1.5px solid rgba(184,137,74,.32) !important;
+      background-color:transparent;
+      background-image:
+        linear-gradient(165deg,#ffffff 0%,#fbf8f2 55%,var(--surface-2) 100%),
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%232563eb' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat:no-repeat; background-position:center, right 13px center; background-size:auto, 11px 7px;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.85), 0 3px 14px -5px rgba(37,99,235,.22), 0 0 0 1px rgba(184,137,74,.1);
+      transition:border-color .2s, box-shadow .25s, transform .15s; }
+    .conn-select:hover{ border-color:var(--gold) !important; transform:translateY(-1.5px);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.85), 0 10px 26px -8px rgba(37,99,235,.4), 0 0 0 3px rgba(184,137,74,.16); }
+    .conn-select:focus{ outline:none; border-color:var(--primary) !important;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.85), 0 0 0 3.5px rgba(37,99,235,.18), 0 10px 26px -8px rgba(37,99,235,.35); }
     .file-chip{ display:inline-flex; align-items:center; gap:6px; background:var(--primary-dim); border:1.5px solid var(--primary-mid);
       border-radius:9999px; padding:4px 12px; font-size:12px; font-weight:500; color:var(--primary); }
     .file-chip button{ color:#dc2626; font-weight:700; line-height:1; }
@@ -172,7 +177,7 @@
             <div id="cmp-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
             <span class="upload-or">or</span>
             <select id="cmp-conn1" class="inp text-xs conn-select" style="width:180px">
-              <option value="">&#128179; Saved Connector</option>
+              <option value="">&#128268; Saved Connector</option>
             </select>
           </div>
           <input id="cmp-f1" type="file" class="hidden">
@@ -184,7 +189,7 @@
             <div id="cmp-zone2" class="dropzone flex-1">Drag &amp; drop or click</div>
             <span class="upload-or">or</span>
             <select id="cmp-conn2" class="inp text-xs conn-select" style="width:180px">
-              <option value="">&#128179; Saved Connector</option>
+              <option value="">&#128268; Saved Connector</option>
             </select>
           </div>
           <input id="cmp-f2" type="file" class="hidden">
@@ -212,7 +217,7 @@
           <div class="flex gap-2 items-stretch">
             <div id="q-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
             <span class="upload-or">or</span>
-            <select id="q-conn1" class="inp text-xs conn-select" style="width:180px"><option value="">&#128179; Saved Connector</option></select>
+            <select id="q-conn1" class="inp text-xs conn-select" style="width:180px"><option value="">&#128268; Saved Connector</option></select>
           </div>
           <input id="q-f1" type="file" class="hidden">
           <div id="q-chip1" class="mt-2"></div>
@@ -265,7 +270,7 @@
         <div class="flex gap-2 items-stretch">
           <div id="prof-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
           <span class="upload-or">or</span>
-          <select id="prof-conn1" class="inp text-xs conn-select" style="width:180px"><option value="">&#128179; Saved Connector</option></select>
+          <select id="prof-conn1" class="inp text-xs conn-select" style="width:180px"><option value="">&#128268; Saved Connector</option></select>
         </div>
         <input id="prof-f1" type="file" class="hidden">
         <div id="prof-chip1" class="mt-2"></div>
@@ -290,7 +295,7 @@
         <div class="flex gap-2 items-stretch">
           <div id="gov-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
           <span class="upload-or">or</span>
-          <select id="gov-conn1" class="inp text-xs conn-select" style="width:180px"><option value="">&#128179; Saved Connector</option></select>
+          <select id="gov-conn1" class="inp text-xs conn-select" style="width:180px"><option value="">&#128268; Saved Connector</option></select>
         </div>
         <input id="gov-f1" type="file" class="hidden">
         <div id="gov-chip1" class="mt-2"></div>
@@ -313,19 +318,19 @@
       <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-6">
         <div><div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Source 1</div>
           <div class="flex gap-2 items-stretch"><div id="xref-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
-          <select id="xref-conn1" class="inp text-xs conn-select" style="width:150px"><option value="">&#128179; Connector</option></select></div>
+          <select id="xref-conn1" class="inp text-xs conn-select" style="width:150px"><option value="">&#128268; Connector</option></select></div>
           <input id="xref-f1" type="file" class="hidden"><div id="xref-chip1" class="mt-2"></div></div>
         <div><div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Source 2</div>
           <div class="flex gap-2 items-stretch"><div id="xref-zone2" class="dropzone flex-1">Drag &amp; drop or click</div>
-          <select id="xref-conn2" class="inp text-xs conn-select" style="width:150px"><option value="">&#128179; Connector</option></select></div>
+          <select id="xref-conn2" class="inp text-xs conn-select" style="width:150px"><option value="">&#128268; Connector</option></select></div>
           <input id="xref-f2" type="file" class="hidden"><div id="xref-chip2" class="mt-2"></div></div>
         <div><div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Source 3 (optional)</div>
           <div class="flex gap-2 items-stretch"><div id="xref-zone3" class="dropzone flex-1">Drag &amp; drop or click</div>
-          <select id="xref-conn3" class="inp text-xs conn-select" style="width:150px"><option value="">&#128179; Connector</option></select></div>
+          <select id="xref-conn3" class="inp text-xs conn-select" style="width:150px"><option value="">&#128268; Connector</option></select></div>
           <input id="xref-f3" type="file" class="hidden"><div id="xref-chip3" class="mt-2"></div></div>
         <div><div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Source 4 (optional)</div>
           <div class="flex gap-2 items-stretch"><div id="xref-zone4" class="dropzone flex-1">Drag &amp; drop or click</div>
-          <select id="xref-conn4" class="inp text-xs conn-select" style="width:150px"><option value="">&#128179; Connector</option></select></div>
+          <select id="xref-conn4" class="inp text-xs conn-select" style="width:150px"><option value="">&#128268; Connector</option></select></div>
           <input id="xref-f4" type="file" class="hidden"><div id="xref-chip4" class="mt-2"></div></div>
         <div class="col-span-2"><label class="text-sm text-gray-400">Identifier key (blank = AI auto-detect)</label>
           <input id="xref-key" placeholder="e.g. isin, cusip, lei, trade_id" class="inp w-full mt-1 text-sm">
@@ -350,7 +355,7 @@
         <div class="flex gap-2 items-stretch">
           <div id="par-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
           <span class="upload-or">or</span>
-          <select id="par-conn1" class="inp text-xs conn-select" style="width:180px"><option value="">&#128179; Saved Connector</option></select>
+          <select id="par-conn1" class="inp text-xs conn-select" style="width:180px"><option value="">&#128268; Saved Connector</option></select>
         </div>
         <input id="par-f1" type="file" class="hidden">
         <div id="par-chip1" class="mt-2"></div>
@@ -631,7 +636,7 @@ async function loadConnDropdowns(){
   if(!Array.isArray(rows)) return;
   document.querySelectorAll('select.conn-select').forEach(sel=>{
     const cur = sel.value;
-    sel.innerHTML = '<option value="">&mdash; Saved Connector &mdash;</option>' +
+    sel.innerHTML = '<option value="">&#128268; Saved Connector</option>' +
       rows.map(c=>`<option value="${c.id}">${esc(c.name)} [${esc(c.source_type)}]</option>`).join('');
     sel.value = cur;
   });
