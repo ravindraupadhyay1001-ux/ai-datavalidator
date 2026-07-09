@@ -113,6 +113,9 @@
     .suggest-chip.special{ background:rgba(219,39,119,.08); border-color:rgba(219,39,119,.25); color:#be185d; }
     .suggest-chip.special:hover{ box-shadow:0 3px 10px -3px rgba(219,39,119,.35); }
     .stat-card{ position:relative; overflow:hidden; }
+    .settings-icon{ width:36px; height:36px; border-radius:11px; display:flex; align-items:center; justify-content:center;
+      font-size:16px; color:#fff; box-shadow:0 4px 12px -3px rgba(15,23,42,.35); flex-shrink:0; }
+    .settings-h{ font-family:var(--font-display); font-weight:700; font-size:15.5px; color:var(--txt-primary); }
     h2.grad-text{ letter-spacing:-.01em; }
     /* Re-tuned text colors: the utility classes below were originally chosen for the
        dark theme (light text on dark cards) and are hard to read on the new light
@@ -428,8 +431,11 @@
     <!-- SETTINGS -->
     <section id="tab-settings" class="tab-panel hidden">
       <h2 class="text-3xl font-bold mb-4 grad-text">Settings &amp; License</h2>
-      <div class="card rounded-xl p-5 mb-4 max-w-3xl">
-        <h3 class="font-semibold mb-2 text-sky-300">License</h3>
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid var(--gold)">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="settings-icon" style="background:linear-gradient(135deg,var(--gold),var(--gold-light))">&#128273;</div>
+          <h3 class="settings-h">License</h3>
+        </div>
         <div id="lic-state" class="text-sm text-gray-300 mb-3"></div>
         <div class="flex gap-2">
           <input id="lic-token" placeholder="Paste license JWT to activate" class="inp flex-1 text-sm font-mono">
@@ -437,16 +443,22 @@
           <button onclick="loadSettings()" class="btn-ghost rounded-lg px-3 py-1 text-sm">Refresh</button>
         </div>
       </div>
-      <div class="card rounded-xl p-5 mb-4 max-w-3xl">
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid var(--primary)">
         <div class="flex items-center justify-between mb-2">
-          <h3 class="font-semibold text-sky-300">Users &amp; Roles</h3>
+          <div class="flex items-center gap-3">
+            <div class="settings-icon" style="background:linear-gradient(135deg,#2563eb,#38bdf8)">&#128101;</div>
+            <h3 class="settings-h">Users &amp; Roles</h3>
+          </div>
           <button onclick="loadUsers()" class="btn-ghost rounded-lg px-3 py-1 text-sm">Refresh</button>
         </div>
         <div id="users-out" class="text-sm"></div>
       </div>
 
-      <div class="card rounded-xl p-5 mb-4 max-w-3xl">
-        <h3 class="font-semibold mb-3 text-sky-300">LLM Provider</h3>
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid #7c3aed">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="settings-icon" style="background:linear-gradient(135deg,#7c3aed,#a855f7)">&#129302;</div>
+          <h3 class="settings-h">LLM Provider</h3>
+        </div>
         <div class="grid grid-cols-2 gap-3 text-sm">
           <div><label class="text-xs text-gray-400">Provider</label>
             <select id="cfg-llm-provider" class="inp w-full mt-1 text-sm">
@@ -472,8 +484,11 @@
         </div>
       </div>
 
-      <div class="card rounded-xl p-5 mb-4 max-w-3xl">
-        <h3 class="font-semibold mb-3 text-sky-300">Database / Storage</h3>
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid #0284c7">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="settings-icon" style="background:linear-gradient(135deg,#0284c7,#22d3ee)">&#128451;&#65039;</div>
+          <h3 class="settings-h">Database / Storage</h3>
+        </div>
         <div class="grid grid-cols-2 gap-3 text-sm">
           <div><label class="text-xs text-gray-400">Backend</label>
             <select id="cfg-db-backend" class="inp w-full mt-1 text-sm"><option value="sqlite">SQLite</option><option value="mssql">Microsoft SQL Server</option></select></div>
@@ -483,8 +498,11 @@
         </div>
       </div>
 
-      <div class="card rounded-xl p-5 mb-4 max-w-3xl">
-        <h3 class="font-semibold mb-3 text-sky-300">Email (SMTP)</h3>
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid #059669">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="settings-icon" style="background:linear-gradient(135deg,#059669,#10b981)">&#128231;</div>
+          <h3 class="settings-h">Email (SMTP)</h3>
+        </div>
         <div class="grid grid-cols-2 gap-3 text-sm">
           <div><label class="text-xs text-gray-400">From address</label><input id="cfg-email-from" class="inp w-full mt-1 text-sm"></div>
           <div><label class="text-xs text-gray-400">SMTP Host</label><input id="cfg-email-host" class="inp w-full mt-1 text-sm" placeholder="smtp.gmail.com"></div>
@@ -494,19 +512,25 @@
         </div>
       </div>
 
-      <div class="card rounded-xl p-5 mb-4 max-w-3xl">
-        <h3 class="font-semibold mb-3 text-sky-300">License Server</h3>
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid #d97706">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="settings-icon" style="background:linear-gradient(135deg,#d97706,#f59e0b)">&#127760;</div>
+          <h3 class="settings-h">License Server</h3>
+        </div>
         <div><label class="text-xs text-gray-400">License Server URL</label><input id="cfg-license-server" class="inp w-full mt-1 text-sm"></div>
       </div>
 
-      <div class="card rounded-xl p-5 mb-4 max-w-3xl">
-        <h3 class="font-semibold mb-3 text-sky-300">Account</h3>
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid #e11d48">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="settings-icon" style="background:linear-gradient(135deg,#e11d48,#fb7185)">&#128274;</div>
+          <h3 class="settings-h">Account</h3>
+        </div>
         <a href="/api/auth/change-password" target="_blank" class="btn-ghost btn rounded-lg px-4 py-2 text-sm inline-block">&#128272; Change Password</a>
       </div>
 
-      <div class="max-w-3xl mb-4 flex gap-2">
-        <button onclick="saveAppSettings()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">&#128190; Save Settings</button>
-        <span class="text-xs text-gray-500 self-center">Written to .env on the server &mdash; some changes need a restart to take effect.</span>
+      <div class="max-w-3xl mb-4 flex gap-2 items-center">
+        <button onclick="saveAppSettings()" class="btn px-5 py-2 rounded-lg text-sm font-semibold">&#128190; Save Settings</button>
+        <span class="text-xs text-gray-500">Written to .env on the server &mdash; some changes need a restart to take effect.</span>
       </div>
       <pre id="set-out" class="card rounded-xl p-4 text-xs text-gray-300 max-w-3xl"></pre>
     </section>
