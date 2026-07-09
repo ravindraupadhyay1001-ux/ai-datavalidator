@@ -16936,6 +16936,14 @@ async def analyze(request: Request):
              "changes": mr["changes"]}
             for mr in diff.get("modified_rows", [])
         ]
+        _only1 = [
+            {"key": ", ".join(f"{k}={v}" for k, v in r["key_values"].items()), "row": r.get("row_data", {})}
+            for r in diff.get("file1_only", [])
+        ]
+        _only2 = [
+            {"key": ", ".join(f"{k}={v}" for k, v in r["key_values"].items()), "row": r.get("row_data", {})}
+            for r in diff.get("file2_only", [])
+        ]
         (_f1_name, _f1_df), (_f2_name, _f2_df) = dataframes[0], dataframes[1]
         _resp = {
             "session_id": session_id,
@@ -16951,17 +16959,25 @@ async def analyze(request: Request):
             "type_mismatches": [{"column": k, **v} for k, v in diff.get("type_mismatches", {}).items()],
             "null_column_exceptions": diff.get("null_column_exceptions", []),
             "duplicates": {
-                "file1": {"duplicate_rows": diff.get("file1_duplicate_count", 0)},
-                "file2": {"duplicate_rows": diff.get("file2_duplicate_count", 0)},
+                "file1": {"duplicate_rows": diff.get("file1_duplicate_count", 0), "rows": diff.get("file1_duplicate_rows", [])},
+                "file2": {"duplicate_rows": diff.get("file2_duplicate_count", 0), "rows": diff.get("file2_duplicate_rows", [])},
             },
             "modified": modified,
+            "only_in_file1": _only1,
+            "only_in_file2": _only2,
+            "schema_added_columns": diff.get("schema_added_columns", []),
+            "schema_removed_columns": diff.get("schema_removed_columns", []),
+            "excluded_meta_cols": diff.get("excluded_meta_cols", []),
             "files": {
                 "file1": {"name": _f1_name, "rows": len(_f1_df), "columns": len(_f1_df.columns),
-                          "format": str(_f1_df.attrs.get("_format", "") or "").upper()},
+                          "format": str(_f1_df.attrs.get("_format", "") or "").upper(),
+                          "all_columns": list(_f1_df.columns)},
                 "file2": {"name": _f2_name, "rows": len(_f2_df), "columns": len(_f2_df.columns),
-                          "format": str(_f2_df.attrs.get("_format", "") or "").upper()},
+                          "format": str(_f2_df.attrs.get("_format", "") or "").upper(),
+                          "all_columns": list(_f2_df.columns)},
             },
             "common_columns": len(set(_f1_df.columns) & set(_f2_df.columns)),
+            "common_columns_list": diff.get("common_columns", sorted(set(_f1_df.columns) & set(_f2_df.columns))),
             "elapsed": total_elapsed,
             "logs": proc_logs,
         }
@@ -17130,7 +17146,7 @@ def _load_saved_recon_hints(fingerprint: str) -> dict:
   return {}
 
 
-@app.post("/rerun/{session_id}", response_class=HTMLResponse)
+@app.post("/rerun/{session_id}")
 
 
 # ==== SOURCE PAGE 0771 ====
@@ -17226,33 +17242,59 @@ async def rerun(session_id: str, request: Request):
         "key_columns": key_columns,
     }
 
-    all_file_columns = sorted(set(c for _, df in dataframes for c in df.columns))
-
-    return templates.TemplateResponse(
-        request=request,
-        name="index.html",
-        context={
-            "action":      "compare",
-            "file_names":    [n for n, _ in dataframes],
-            "pairs":       pairs,
-            "quality_reports": [],
-
-            # ==== SOURCE PAGE 0776 ====
-            "governance_reports": [],
-            "mappings":     mappings,
-            "parse_reports":   [],
-            "has_data_dict":   False,
-            "has_rules":     False,
-            "has_mapping_spec":  False,
-            "ref_log":      [],
-            "proc_logs":     [],
-            "elapsed":      0,
-            "session_id":     new_session_id,
-            "all_file_columns":  all_file_columns,
-            "excluded_cols":   excluded_cols,
-            "key_columns_val":  key_columns,
+    diff = pairs[0]["diff"]
+    modified = [
+        {"key": ", ".join(f"{k}={v}" for k, v in mr["key_values"].items()),
+         "changes": mr["changes"]}
+        for mr in diff.get("modified_rows", [])
+    ]
+    _only1 = [
+        {"key": ", ".join(f"{k}={v}" for k, v in r["key_values"].items()), "row": r.get("row_data", {})}
+        for r in diff.get("file1_only", [])
+    ]
+    _only2 = [
+        {"key": ", ".join(f"{k}={v}" for k, v in r["key_values"].items()), "row": r.get("row_data", {})}
+        for r in diff.get("file2_only", [])
+    ]
+    (_f1_name, _f1_df), (_f2_name, _f2_df) = dataframes[0], dataframes[1]
+    _resp = {
+        "session_id": new_session_id,
+        "counts": {
+            "matched": diff.get("file1_rows", 0) - diff.get("removed_count", 0),
+            "file1_only": diff.get("file1_only_count", 0),
+            "file2_only": diff.get("file2_only_count", 0),
+            "modified": diff.get("modified_count", 0),
         },
-    )
+        "keys": diff.get("key_columns", []),
+        "method": diff.get("key_method", ""),
+        "fingerprint": "",
+        "type_mismatches": [{"column": k, **v} for k, v in diff.get("type_mismatches", {}).items()],
+        "null_column_exceptions": diff.get("null_column_exceptions", []),
+        "duplicates": {
+            "file1": {"duplicate_rows": diff.get("file1_duplicate_count", 0), "rows": diff.get("file1_duplicate_rows", [])},
+            "file2": {"duplicate_rows": diff.get("file2_duplicate_count", 0), "rows": diff.get("file2_duplicate_rows", [])},
+        },
+        "modified": modified,
+        "only_in_file1": _only1,
+        "only_in_file2": _only2,
+        "schema_added_columns": diff.get("schema_added_columns", []),
+        "schema_removed_columns": diff.get("schema_removed_columns", []),
+        "excluded_meta_cols": diff.get("excluded_meta_cols", []),
+        "files": {
+            "file1": {"name": _f1_name, "rows": len(_f1_df), "columns": len(_f1_df.columns),
+                      "format": str(_f1_df.attrs.get("_format", "") or "").upper(),
+                      "all_columns": list(_f1_df.columns)},
+            "file2": {"name": _f2_name, "rows": len(_f2_df), "columns": len(_f2_df.columns),
+                      "format": str(_f2_df.attrs.get("_format", "") or "").upper(),
+                      "all_columns": list(_f2_df.columns)},
+        },
+        "common_columns": len(set(_f1_df.columns) & set(_f2_df.columns)),
+        "common_columns_list": diff.get("common_columns", sorted(set(_f1_df.columns) & set(_f2_df.columns))),
+        "elapsed": 0,
+        "logs": [],
+    }
+    _results_store[new_session_id]["_digest"] = _resp
+    return JSONResponse(_sanitize_json(_resp))
 
 
 @app.get("/dq-ai-results/{session_id}", response_class=HTMLResponse)
