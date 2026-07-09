@@ -104,8 +104,10 @@
             <button type="button" onclick="addDqOverrideRow('cmp')" class="btn-ghost btn rounded px-2 py-1 text-xs mt-1">+ Add column override</button></div>
         </div>
       </details>
-      <div class="flex gap-2 items-center">
+      <div class="flex gap-2 items-center flex-wrap">
         <button onclick="runCompare()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Compare</button>
+        <span class="text-gray-600 text-xs">or</span>
+        <button onclick="runCompareAI()" class="btn-indigo btn px-4 py-2 rounded-lg text-sm font-semibold" title="Load both files and ask the AI Copilot about reconciling them instead of a fixed compare">&#129302; AI Copilot Mode</button>
         <span class="text-gray-500 text-xs">or, if there's no clean key column&hellip;</span>
         <input id="cmp-textcol" placeholder="free-text column name" class="inp text-sm w-48">
         <button onclick="runComplexRecon()" class="btn-indigo btn px-4 py-2 rounded-lg text-sm font-semibold" title="Match rows by extracting buy/sell side + quantity from a free-text description column">&#9889; Complex Recon</button>
@@ -614,6 +616,18 @@ async function runCompare(){
 }
 
 // ---------- Complex Recon (AI Copilot chat-driven) ----------
+async function runCompareAI(){
+  const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Loading files for the AI Copilot&hellip;</span>';
+  const {ok,data}=await postForm('lineage',[['files_a','cmp-f1'],['files_b','cmp-f2']]);
+  if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
+  setSession(data.session_id);
+  out.innerHTML=`<div class="card rounded-xl p-4 text-sm text-gray-300">
+    Files loaded (${(data.file_names||[]).join(' vs ')}). Ask the <b class="text-sky-300">AI Copilot</b> panel &rarr;
+    about reconciling these two files instead of a fixed compare &mdash; a starter question has been filled in for you.</div>`;
+  const chatInput = document.getElementById('chat-in');
+  chatInput.value = `Compare these two files and tell me the key differences, likely join keys, and any rows that look mismatched.`;
+  chatInput.focus();
+}
 async function runComplexRecon(){
   const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Loading files for the AI Copilot&hellip;</span>';
   const textCol = document.getElementById('cmp-textcol').value.trim();
