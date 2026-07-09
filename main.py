@@ -2112,6 +2112,29 @@ def _parse_reuters_ric(raw: bytes, enc: str) -> pd.DataFrame:
                         engine="python", on_bad_lines="skip")
 
 
+def _extract_first_file_from_zip(raw: bytes, zip_name: str) -> tuple[bytes, str]:
+    # Extract the largest usable file from a .zip upload (largest = the actual
+    # data file, not a bundled README/manifest) so users don't have to unzip
+    # manually before uploading.
+    import zipfile
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(raw))
+    except zipfile.BadZipFile:
+        raise HTTPException(400, f"'{zip_name}' is not a valid zip file.")
+
+    candidates = [
+        info for info in zf.infolist()
+        if not info.is_dir()
+        and not info.filename.startswith("__MACOSX/")
+        and not os.path.basename(info.filename).startswith(".")
+    ]
+    if not candidates:
+        raise HTTPException(400, f"Zip file '{zip_name}' contains no usable files.")
+
+    best = max(candidates, key=lambda info: info.file_size)
+    return zf.read(best), os.path.basename(best.filename)
+
+
 def _load_file(upload, delimiter=None) -> pd.DataFrame:
     # ==== SOURCE PAGE 0096 ====
     # Load any supported file format into a DataFrame.
@@ -2139,6 +2162,13 @@ def _load_file(upload, delimiter=None) -> pd.DataFrame:
     raw = upload.file.read()
     name = upload.filename or ""
     ext = os.path.splitext(name)[1].lower()
+
+    _resolved_name = name
+    if ext == ".zip":
+        raw, _resolved_name = _extract_first_file_from_zip(raw, name)
+        ext = os.path.splitext(_resolved_name)[1].lower()
+        name = _resolved_name
+
     enc = _detect_encoding(raw)
 
     # Normalise escape sequences that users type in a text box (e.g. "\t" -> tab)
@@ -2155,6 +2185,9 @@ def _load_file(upload, delimiter=None) -> pd.DataFrame:
         # Surface any parse warnings -- _load_file() has no logger of its own, so
         # warnings are left on df.attrs for the caller's own _log() to pick up.
         df.attrs["_parse_warnings"] = df.attrs.pop("_parse_warnings", [])
+        # Resolved filename (differs from upload.filename when the upload was a
+        # .zip -- callers should prefer this over upload.filename for display).
+        df.attrs["_source_filename"] = _resolved_name
         return df
 
     def _try_read(sep: str) -> pd.DataFrame | None:
@@ -3921,6 +3954,7 @@ def _key_based_diff(df1, df2, keys, common_cols, force_data_cols: list[str] | No
     # For non-unique / best-effort keys: positional alignment within each group
     # (avoids Cartesian explosion when one key value maps to 1000s of rows).
     modified_rows = []
+    _true_modified_count = 0  # real total, independent of the _MAX_DIFF_ROWS display cap
 
     # ==== SOURCE PAGE 0180 ====
     if common_keys and data_cols:
@@ -3946,6 +3980,7 @@ def _key_based_diff(df1, df2, keys, common_cols, force_data_cols: list[str] | No
                         lambda v: "" if v.lower() in _NULL_SENTINELS else v)
                     diff_mask |= _series_differs(v1, v2)
 
+            _true_modified_count = int(diff_mask.sum())
             changed_df = merged[diff_mask].head(_MAX_DIFF_ROWS)
             _build_modified_rows(changed_df, keys, use_cols, make_kv, modified_rows)
         else:
@@ -3972,6 +4007,7 @@ def _key_based_diff(df1, df2, keys, common_cols, force_data_cols: list[str] | No
                         lambda v: "" if v.lower() in _NULL_SENTINELS else v)
                     diff_mask |= _series_differs(v1, v2)
 
+            _true_modified_count = int(diff_mask.sum())
             changed_df = merged[diff_mask].head(_MAX_DIFF_ROWS)
             _build_modified_rows(changed_df, keys, use_cols, make_kv, modified_rows)
 
@@ -3986,7 +4022,7 @@ def _key_based_diff(df1, df2, keys, common_cols, force_data_cols: list[str] | No
         "file1_only_count": len(only1_keys),
         # ==== SOURCE PAGE 0183 ====
         "file2_only_count": len(only2_keys),
-        "modified_count":   len(modified_rows),
+        "modified_count":   _true_modified_count,
         # aliases kept for Excel/email export backward-compat
         "added_count":      len(only2_keys),
         "removed_count":    len(only1_keys),
@@ -15299,7 +15335,8 @@ async def xref_analyze(request: Request):
                 df = _load_file(upload)
                 # Use filename without extension as the source label
                 import os as _os
-                name_raw = _os.path.splitext(upload.filename)[0] if upload.filename else name_raw
+                _resolved_fname = df.attrs.get("_source_filename") or upload.filename
+                name_raw = _os.path.splitext(_resolved_fname)[0] if _resolved_fname else name_raw
 
 
 
@@ -15726,9 +15763,10 @@ async def analyze(request: Request):
             df = _load_file(f, delimiter=delimiter)
             fmt  = df.attrs.get("_format",  "unknown")
             delim = df.attrs.get("_delimiter", "")
+            _resolved_fname = df.attrs.get("_source_filename") or f.filename
             delim_info = f" delim={repr(delim)}" if delim and delim != "auto" else ""
-            _log(f"Loaded '{f.filename}' [format: {fmt}{delim_info}] → {len(df)} rows × {len(df.columns)} cols")
-            result.append((f.filename, df))
+            _log(f"Loaded '{_resolved_fname}' [format: {fmt}{delim_info}] -> {len(df)} rows x {len(df.columns)} cols")
+            result.append((_resolved_fname, df))
         return result
 
     def _concat_group(tuples: list[tuple[str, pd.DataFrame]], label: str) -> tuple[str, pd.DataFrame]:
@@ -15847,9 +15885,10 @@ async def analyze(request: Request):
         df = _load_file(f, delimiter=delimiter)
         fmt  = df.attrs.get("_format",  "unknown")
         delim = df.attrs.get("_delimiter", "")
-        dataframes.append((f.filename, df))
+        _resolved_fname = df.attrs.get("_source_filename") or f.filename
+        dataframes.append((_resolved_fname, df))
         delim_info = f" delim={repr(delim)}" if delim and delim != "auto" else ""
-        _log(f"Loaded '{f.filename}' [format: {fmt}{delim_info}] → {len(df)} rows × {len(df.columns)} cols")
+        _log(f"Loaded '{_resolved_fname}' [format: {fmt}{delim_info}] -> {len(df)} rows x {len(df.columns)} cols")
       # Then connection sources
       for cname, df in _load_conn_list(_conn_ids, "data"):
         dataframes.append((cname, df))
