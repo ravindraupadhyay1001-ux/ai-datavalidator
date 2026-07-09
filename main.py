@@ -16983,6 +16983,9 @@ async def analyze(request: Request):
             "correlations": correlations,
             "ai_rule_results": q.get("ai_rule_results", []),
             "ai_dq_score": q.get("ai_dq_score", {}),
+            "rule_results": q.get("rule_results", []),
+            "elapsed": total_elapsed,
+            "logs": proc_logs,
         }
         if session_id in _results_store:
             _results_store[session_id]["_digest"] = _resp

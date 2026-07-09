@@ -171,9 +171,17 @@
     <section id="tab-quality" class="tab-panel hidden">
       <h2 class="text-2xl font-bold mb-1 grad-text">Data Quality</h2>
       <p class="text-sm text-gray-500 mb-4">7-dimension scoring with rule checks.</p>
-      <div class="card rounded-xl p-5 mb-4 max-w-3xl grid grid-cols-2 gap-4">
-        <div><label class="text-sm text-gray-400">File</label><input id="q-f1" type="file" class="block w-full text-sm mt-1">
-          <select id="q-conn1" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
+      <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-6">
+        <div>
+          <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Dataset</div>
+          <div class="flex gap-2 items-stretch">
+            <div id="q-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
+            <span class="text-gray-600 text-xs self-center">or</span>
+            <select id="q-conn1" class="inp text-xs conn-select" style="width:180px"><option value="">&#128179; Use Saved Connection</option></select>
+          </div>
+          <input id="q-f1" type="file" class="hidden">
+          <div id="q-chip1" class="mt-2"></div>
+        </div>
         <div><label class="text-sm text-gray-400">BFSI Rule Pack</label>
           <select id="q-rulepack" class="inp w-full mt-1 text-sm">
             <option value="">None</option>
@@ -183,10 +191,13 @@
             <option value="refdata">Reference Data</option>
             <option value="mifid2">MiFID II</option>
             <option value="risk">Risk</option>
-          </select></div>
+          </select>
+          <label class="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer mt-3" title="After the standard rule checks, ask the LLM to suggest additional rules from the column names and re-run with them included">
+            <input id="q-ai-enhanced" type="checkbox" class="accent-sky-500"> &#9889; AI-Enhanced (suggest &amp; apply extra rules)
+          </label></div>
       </div>
-      <details class="card rounded-xl p-4 mb-4 max-w-3xl text-sm">
-        <summary class="cursor-pointer text-gray-400">&#9881;&#65039; Advanced Options &mdash; Reference Docs &amp; DQ Overrides</summary>
+      <details class="card rounded-xl p-4 mb-4 text-sm">
+        <summary class="cursor-pointer text-gray-400">&#9881;&#65039; Advanced options</summary>
         <div class="mt-3 space-y-3">
           <div><label class="text-xs text-gray-400">Reference Docs (data dictionary, business rules, regulatory ref &mdash; auto-classified)</label>
             <input id="q-refdocs" type="file" multiple class="block w-full text-sm mt-1"></div>
@@ -199,25 +210,15 @@
             <textarea id="q-crosscolrules" rows="2" class="inp w-full mt-1 text-sm"></textarea></div>
         </div>
       </details>
-      <div class="flex items-center gap-3 mb-3 flex-wrap">
-        <button onclick="runQuality()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Analyze</button>
-        <label class="flex items-center gap-1.5 text-xs text-gray-400 cursor-pointer" title="After the standard rule checks, ask the LLM to suggest additional rules from the column names and re-run with them included">
-          <input id="q-ai-enhanced" type="checkbox" class="accent-sky-500"> &#9889; AI-Enhanced (suggest &amp; apply extra rules)
-        </label>
-        <span class="text-gray-600 text-xs">or</span>
-        <button onclick="runQualityAI()" class="btn-indigo btn px-4 py-2 rounded-lg text-sm font-semibold" title="Load this file and describe what to check via the AI Copilot chat instead of a fixed rule set">&#129302; AI Copilot Mode</button>
+      <div class="flex gap-3 items-center flex-wrap">
+        <div class="seg" id="q-seg">
+          <span class="seg-btn active" data-mode="standard" onclick="setQMode('standard')">Standard</span>
+          <span class="seg-btn" data-mode="ai" onclick="setQMode('ai')">&#9889; AI Copilot</span>
+        </div>
+        <button onclick="runDataQuality()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">&#9989; Run Data Quality</button>
+        <span class="text-gray-500 text-xs" id="q-mode-help">Standard scoring &mdash; 7-dimension score, grade, and rule checks.</span>
       </div>
       <div id="q-out" class="mt-6"></div>
-      <div id="q-history" class="mt-4"></div>
-      <div class="card rounded-xl p-4 mt-4 max-w-3xl text-sm">
-        <div class="text-xs text-gray-400 mb-2">&#128172; Dataset Controls &mdash; teach the AI how to handle this dataset (remembered next time)</div>
-        <div class="flex gap-2">
-          <input id="q-dc-input" placeholder='e.g. &quot;exclude column X&quot; or &quot;CUSIP is not PII&quot;' class="inp flex-1 text-sm" onkeydown="if(event.key==='Enter')applyDatasetControl('q','quality')">
-          <button onclick="applyDatasetControl('q','quality')" class="btn px-3 py-1.5 rounded-lg text-sm">Apply</button>
-        </div>
-        <div id="q-dc-feedback" class="text-xs mt-2"></div>
-        <div id="q-dc-rules" class="text-xs mt-2 space-y-1"></div>
-      </div>
     </section>
 
     <!-- DATA PROFILE -->
@@ -595,7 +596,7 @@ function wireDropzone(zoneId, inputId, chipId){
     if(e.dataTransfer.files.length){ input.files = e.dataTransfer.files; updateChip(); }
   };
 }
-['cmp-zone1|cmp-f1|cmp-chip1','cmp-zone2|cmp-f2|cmp-chip2'].forEach(spec=>wireDropzone(...spec.split('|')));
+['cmp-zone1|cmp-f1|cmp-chip1','cmp-zone2|cmp-f2|cmp-chip2','q-zone1|q-f1|q-chip1'].forEach(spec=>wireDropzone(...spec.split('|')));
 
 // ---------- Reconciliation: Standard vs AI Copilot mode ----------
 let cmpMode = 'standard';
@@ -833,13 +834,34 @@ async function _runAICopilotMode(action, fileId, outId, label){
   chatInput.value = `What ${label} issues should I be aware of in this dataset?`;
   chatInput.focus();
 }
-function runQualityAI(){ return _runAICopilotMode('quality_ai', 'q-f1', 'q-out', 'data quality'); }
 function runProfileAI(){ return _runAICopilotMode('profile_ai', 'prof-f1', 'prof-out', 'the structure and profile'); }
 function runGovernanceAI(){ return _runAICopilotMode('governance_ai', 'gov-f1', 'gov-out', 'PII, sensitivity and governance'); }
+
+// ---------- Quality: Standard vs AI Copilot mode ----------
+let qMode = 'standard';
+function setQMode(mode){
+  qMode = mode;
+  document.querySelectorAll('#q-seg .seg-btn').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
+  document.getElementById('q-mode-help').textContent = mode==='standard'
+    ? 'Standard scoring — 7-dimension score, grade, and rule checks.'
+    : 'AI Copilot — load the file and let the AI Copilot investigate data quality for you.';
+}
+function runDataQuality(){ return qMode==='standard' ? runQuality() : runQualityAI(); }
+
+function qualityChips(fileName){
+  return [
+    {label:'What are the biggest data quality issues?', q:`What are the biggest data quality issues in ${fileName||'this file'}?`},
+    {label:'Which columns fail completeness or validity checks?', q:'Which columns fail completeness or validity checks, and why?'},
+    {label:'Suggest additional rules from the column names', q:'Suggest additional validation rules based on the column names and sample values.'},
+    {label:'What should I fix first?', q:'What should I fix first to improve the data quality score?'},
+    {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
+  ];
+}
 
 // ---------- Quality ----------
 async function runQuality(){
   const out=document.getElementById('q-out'); out.innerHTML='<span class="text-gray-400">Analyzing&hellip;</span>';
+  const t0 = performance.now();
   const rulePack = document.getElementById('q-rulepack').value;
   const aiEnhanced = document.getElementById('q-ai-enhanced').checked;
   const extra = {di_scope: 'quality', ...advancedHints('q')};
@@ -849,7 +871,8 @@ async function runQuality(){
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   setSession(data.session_id); const dim=data.dimensions||{};
   const gradeColor={A:'#10b981',B:'#84cc16',C:'#f59e0b',D:'#f97316',F:'#ef4444'}[data.grade]||'#38bdf8';
-  out.innerHTML=`<div class="grid grid-cols-3 gap-4 mb-4">
+
+  const summaryHTML = `<div class="grid grid-cols-3 gap-4 mb-4">
     <div class="card rounded-xl p-4 flex flex-col items-center justify-center"><canvas id="qGauge" height="150"></canvas>
       <div class="text-center -mt-2"><span class="text-3xl font-extrabold" style="color:${gradeColor}">${data.grade}</span>
       <span class="text-gray-400 text-sm"> &middot; ${data.score}/100</span></div></div>
@@ -871,21 +894,52 @@ async function runQuality(){
       <div class="text-xs text-gray-400 mb-2">Correlated columns <span class="text-gray-600">(|r| &gt; 0.7)</span></div>
       <div class="space-y-1">${data.correlations.map(c=>`<div>${esc(c.col_a)} &harr; ${esc(c.col_b)}: <span class="${Math.abs(c.r)>0.9?'text-emerald-300':'text-amber-300'}">${c.r}</span></div>`).join('')}</div></div>` : ''}
   </div>` : ''}
-  ${data.ai_rule_results?.length ? `<div class="card rounded-xl p-4 mt-4">
+  <div id="q-history" class="mt-4"></div>
+  <details class="text-sm mt-3"><summary class="cursor-pointer text-sky-300">&rarr; Adjust columns &amp; rerun</summary>
+    <div class="text-xs text-gray-400 mt-2">Use "Advanced options" above the Run button, then run again.</div></details>`;
+
+  const failedRules = (data.rule_results||[]).filter(r=>r.status==='FAIL');
+  const exceptionsHTML = `
+    ${data.ai_rule_results?.length ? `<div class="card rounded-xl p-4 mb-4">
       <div class="text-xs text-sky-300 mb-2">&#9889; AI-Enhanced &mdash; ${data.ai_rule_results.length} additional rule(s) suggested and checked
         ${data.ai_dq_score?.score!=null ? `(re-scored: ${data.ai_dq_score.score}/100 ${data.ai_dq_score.grade||''})` : ''}</div>
       <div class="space-y-1 text-xs">${data.ai_rule_results.map(r=>`<div>${esc(r.rule_name||r.rule_type||'')} &middot; ${esc(r.column_name||'')}: <span class="${r.status==='PASS'?'text-emerald-300':'text-red-300'}">${esc(r.status||'')}</span></div>`).join('')}</div>
-    </div>` : ''}`;
-  out.innerHTML += actionBar(data.session_id);
+    </div>` : ''}
+    <div class="text-sm text-gray-400 mb-2">Rule failures: <span class="text-red-400 font-semibold">${failedRules.length}</span> of ${(data.rule_results||[]).length}</div>
+    ${failedRules.length ? `<div class="card rounded-xl p-3 text-xs space-y-1">${failedRules.map(r=>`<div><b class="text-sky-300">${esc(r.column_name||r.column||'')}</b> &middot; ${esc(r.rule_name||r.rule_type||'')}: <span class="text-red-400">${esc(r.reason||r.status)}</span></div>`).join('')}</div>` : '<div class="text-sm text-gray-500">No rule failures.</div>'}`;
+
+  out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('q', [
+    {key:'summary', label:'Summary', content: summaryHTML},
+    {key:'exceptions', label:`Exceptions (${failedRules.length})`, content: exceptionsHTML},
+    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('q','quality', qualityChips(data.name))},
+    {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
+  ], 'summary');
   chart('qGauge',{type:'doughnut',data:{datasets:[{data:[data.score,100-data.score],
-    backgroundColor:[gradeColor,'#1e2740'],borderWidth:0,circumference:180,rotation:270}]},
+    backgroundColor:[gradeColor,'#e2e8f0'],borderWidth:0,circumference:180,rotation:270}]},
     options:{cutout:'72%',plugins:{legend:{display:false},tooltip:{enabled:false}}}});
   const dk=Object.keys(dim);
   chart('qDims',{type:'bar',data:{labels:dk,datasets:[{data:dk.map(k=>dim[k]),
-    backgroundColor:'#38bdf8',borderRadius:6}]},options:{indexAxis:'y',plugins:{legend:{display:false}},
-    scales:{x:{max:100,ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}},y:{ticks:{color:'#cbd5e1'}}}}});
+    backgroundColor:'#2563eb',borderRadius:6}]},options:{indexAxis:'y',plugins:{legend:{display:false}},
+    scales:{x:{max:100,ticks:{color:'#64748b'},grid:{color:'#e2e8f0'}},y:{ticks:{color:'#334155'}}}}});
   loadDqHistory(data.name, data.score);
   loadDatasetControlRules('q','quality');
+}
+
+// ---------- Quality: AI Copilot mode ----------
+async function runQualityAI(){
+  const out=document.getElementById('q-out'); out.innerHTML='<span class="text-gray-400">Loading file for the AI Copilot&hellip;</span>';
+  const t0 = performance.now();
+  const {ok,data}=await postForm('quality_ai',[['files','q-f1','conn_ids','q-conn1']]);
+  if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
+  setSession(data.session_id);
+  out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('q', [
+    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('q','quality', qualityChips((data.file_names||[])[0]))},
+    {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
+  ], 'copilot');
+  loadDatasetControlRules('q','quality');
+  const chatInput = document.getElementById('chat-in');
+  chatInput.value = `What data quality issues should I be aware of in this dataset?`;
+  chatInput.focus();
 }
 
 async function setDqBaseline(fileName){
@@ -926,8 +980,8 @@ async function loadDqHistory(fileName, currentScore){
         scales:{x:{ticks:{color:'#94a3b8'}},y:{min:0,max:100,ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}}}}});
   }
 }
-function bar(pct){ const c=pct>=90?'#10b981':pct>=60?'#f59e0b':'#ef4444';
-  return `<div style="background:#1e2740;border-radius:4px;height:14px;width:64px;display:inline-block;position:relative;vertical-align:middle">
+function bar(pct){ const c=pct>=90?'#16a34a':pct>=60?'#d97706':'#dc2626';
+  return `<div style="background:#e2e8f0;border-radius:4px;height:14px;width:64px;display:inline-block;position:relative;vertical-align:middle">
     <div style="background:${c};height:100%;width:${Math.max(0,Math.min(100,pct))}%;border-radius:4px"></div></div>
     <span class="ml-1 text-gray-400">${pct}</span>`;
 }
