@@ -186,6 +186,9 @@ _DDL = [
     "ALTER TABLE ws_dq_history ADD COLUMN session_id TEXT",
     "ALTER TABLE ws_dq_history ADD COLUMN bfsi_pack TEXT",
     "ALTER TABLE ws_dq_history ADD COLUMN di_scope TEXT",
+    "ALTER TABLE ws_saved_runs ADD COLUMN conn_a_id INTEGER",
+    "ALTER TABLE ws_saved_runs ADD COLUMN conn_b_id INTEGER",
+    "ALTER TABLE ws_saved_runs ADD COLUMN source_conn_id INTEGER",
 ]
 
 
@@ -524,16 +527,17 @@ def list_runs(username, job_id=None, limit=50):
 # Saved runs
 # --------------------------------------------------------------------------
 def save_manual_run(username, name, action, sources, session_id,
-                    summary, key_columns=None):
+                    summary, key_columns=None, conn_a_id=None, conn_b_id=None,
+                    source_conn_id=None):
     conn = _conn()
     cur = conn.cursor()
     cur.execute(
         f"INSERT INTO ws_saved_runs "
         f"(username, name, action, sources, session_id, summary_json, "
-        f"key_columns, created_at, saved_at) "
-        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
+        f"key_columns, conn_a_id, conn_b_id, source_conn_id, created_at, saved_at) "
+        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
         (username, name, action, _b64(sources), session_id, _b64(summary),
-         key_columns, _now(), _now()),
+         key_columns, conn_a_id, conn_b_id, source_conn_id, _now(), _now()),
     )
     conn.commit()
     return cur.lastrowid
