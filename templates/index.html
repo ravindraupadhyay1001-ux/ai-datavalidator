@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&family=Fira+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
     /* Light workspace theme */
     :root{
@@ -17,8 +17,11 @@
       --accent:#0284c7; --success:#16a34a; --warning:#d97706; --danger:#dc2626;
       --txt-primary:#0f172a; --txt-secondary:#334155; --txt-muted:#64748b; --txt-dim:#94a3b8;
       --font-ui:'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif;
+      --font-display:'Sora','Inter','Segoe UI',sans-serif;
       --font-mono:'Fira Mono','Consolas','Cascadia Code',monospace;
+      --gold:#b8894a; --gold-light:#e7c58a;
     }
+    h1,h2,h3,.grad-text{ font-family:var(--font-display); }
     body{ font-family:var(--font-ui); color:var(--txt-primary); font-size:15px; line-height:1.55;
       background:
         radial-gradient(1100px 550px at 108% -8%, rgba(37,99,235,.10), transparent 60%),
@@ -27,19 +30,27 @@
         var(--bg);
       background-attachment:fixed; }
     .card{ background:linear-gradient(180deg, var(--surface), var(--surface-2));
-      border:1.5px solid var(--line); box-shadow:0 1px 3px rgba(15,23,42,.07), 0 1px 2px rgba(15,23,42,.05);
+      border:1.5px solid var(--line);
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.7), 0 1px 3px rgba(15,23,42,.07), 0 1px 2px rgba(15,23,42,.05);
       border-radius:16px; transition:box-shadow .2s, border-color .2s, transform .2s; }
-    .card:hover{ box-shadow:0 10px 28px -8px rgba(37,99,235,.2), 0 2px 8px rgba(15,23,42,.07); border-color:rgba(37,99,235,.3); }
+    .card:hover{ box-shadow:inset 0 1px 0 rgba(255,255,255,.7), 0 14px 32px -10px rgba(37,99,235,.22), 0 2px 8px rgba(15,23,42,.07);
+      border-color:rgba(37,99,235,.3); transform:translateY(-1px); }
     .tab-btn{ transition:all .15s; border:1.5px solid transparent; color:var(--txt-secondary); font-weight:500;
       border-left:3px solid transparent; }
     .tab-btn:hover{ background:var(--primary-dim); transform:translateX(2px); }
     .tab-active{ background:linear-gradient(90deg,var(--primary-mid),rgba(124,58,237,.12));
       border-color:var(--primary); color:var(--primary); font-weight:700; border-top:1.5px solid var(--primary);
-      border-left:3px solid var(--primary); box-shadow:0 2px 10px -4px rgba(37,99,235,.35); }
-    .grad-text{ background:linear-gradient(90deg,var(--primary),#7c3aed,#0284c7); background-size:200% auto;
-      -webkit-background-clip:text; background-clip:text; color:transparent; }
-    .btn{ background:linear-gradient(90deg,var(--primary),#4f46e5); transition:filter .15s, transform .12s, box-shadow .2s;
+      border-left:3px solid var(--gold); box-shadow:0 2px 10px -4px rgba(37,99,235,.35); }
+    .grad-text{ background:linear-gradient(90deg,var(--primary),#7c3aed,#0284c7,var(--primary)); background-size:300% auto;
+      -webkit-background-clip:text; background-clip:text; color:transparent; animation:gradShift 7s ease infinite; }
+    @keyframes gradShift{ 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
+    @keyframes glowPulse{ 0%,100%{ box-shadow:0 3px 14px -2px rgba(37,99,235,.55), 0 0 0 3px rgba(37,99,235,.1), 0 0 22px -4px rgba(124,58,237,.35); }
+      50%{ box-shadow:0 3px 18px -1px rgba(37,99,235,.7), 0 0 0 5px rgba(37,99,235,.14), 0 0 30px -2px rgba(124,58,237,.55); } }
+    .btn{ position:relative; overflow:hidden; background:linear-gradient(90deg,var(--primary),#4f46e5); transition:filter .15s, transform .12s, box-shadow .2s;
       color:#fff; border-radius:10px; box-shadow:0 2px 10px -3px rgba(37,99,235,.5); font-weight:600; letter-spacing:.005em; }
+    .btn::after{ content:''; position:absolute; inset:0; background:linear-gradient(115deg,transparent 20%,rgba(255,255,255,.35) 40%,transparent 60%);
+      background-size:250% 100%; background-position:150% 0; transition:background-position .55s ease; pointer-events:none; }
+    .btn:hover::after{ background-position:-50% 0; }
     .btn:hover{ filter:brightness(1.1); box-shadow:0 6px 18px -4px rgba(37,99,235,.65); transform:translateY(-1.5px); }
     .btn:active{ transform:translateY(1px); }
     .btn-emerald{ background:linear-gradient(90deg,#059669,#10b981); box-shadow:0 2px 10px -3px rgba(16,185,129,.5); }
@@ -51,7 +62,7 @@
     .inp:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 3.5px var(--primary-dim); }
     .logo-mark{ width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center;
       background:linear-gradient(135deg,#2563eb,#7c3aed); transform:rotate(45deg); flex-shrink:0;
-      box-shadow:0 3px 14px -2px rgba(37,99,235,.55), 0 0 0 3px rgba(37,99,235,.1); }
+      animation:glowPulse 4.5s ease-in-out infinite; }
     .logo-mark svg{ transform:rotate(-45deg); }
     pre{ white-space:pre-wrap; word-break:break-word; font-family:var(--font-mono); }
     code, .font-mono{ font-family:var(--font-mono) !important; }
@@ -98,7 +109,7 @@
 <body class="min-h-screen">
 <div class="flex h-screen">
   <!-- Sidebar -->
-  <aside class="w-60 flex flex-col border-r border-[var(--line)]" style="background:linear-gradient(180deg,#ffffff,#f3f6fb);">
+  <aside class="w-60 flex flex-col border-r border-[var(--line)]" style="background:linear-gradient(180deg,#ffffff,#f3f6fb); box-shadow:4px 0 24px -12px rgba(15,23,42,.15);">
     <div class="px-5 pt-6 pb-5 flex items-center gap-3">
       <div class="logo-mark">
         <svg viewBox="0 0 24 24" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
