@@ -15075,40 +15075,40 @@ def _render_login_page(
 <title>{title} -- AI Agent Data Validation</title>
 <style>
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:"Inter","Segoe UI",sans-serif;background:#0f1117;color:#f1f5f9;
+body{{font-family:"Inter","Segoe UI",sans-serif;background:#eef1f6;color:#0f172a;
  min-height:100vh;display:flex;align-items:center;justify-content:center;
  -webkit-font-smoothing:antialiased}}
 .auth-wrap{{width:100%;max-width:400px;padding:1.5rem}}
-.auth-card{{background:#1a1d27;border:1px solid #2a2d3e;border-top:2px solid #4f8ef7;
- border-radius:12px;padding:2rem 2rem 1.75rem}}
+.auth-card{{background:#fff;border:1px solid #e2e8f0;border-top:2px solid #2563eb;
+ border-radius:12px;padding:2rem 2rem 1.75rem;box-shadow:0 1px 3px rgba(15,23,42,.08),0 4px 12px rgba(15,23,42,.05)}}
 .auth-logo{{display:flex;align-items:center;gap:.65rem;margin-bottom:1.75rem}}
-.auth-logo-mark{{width:36px;height:36px;background:#4f8ef7;border-radius:8px;
+.auth-logo-mark{{width:36px;height:36px;background:#2563eb;border-radius:8px;
  display:flex;align-items:center;justify-content:center;font-size:1.1rem;color:#fff;flex-shrink:0}}
-.auth-logo-text h1{{font-size:.95rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#f1f5f9}}
+.auth-logo-text h1{{font-size:.95rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#0f172a}}
 .auth-logo-text p{{font-size:.68rem;color:#64748b;margin-top:.1rem;letter-spacing:.06em;text-transform:uppercase}}
-.auth-title{{font-size:1.15rem;font-weight:700;color:#f1f5f9;margin-bottom:.25rem}}
+.auth-title{{font-size:1.15rem;font-weight:700;color:#0f172a;margin-bottom:.25rem}}
 .auth-subtitle{{font-size:.78rem;color:#64748b;margin-bottom:1.5rem}}
 .auth-field{{margin-bottom:.9rem}}
-.auth-field label{{display:block;font-size:.72rem;font-weight:700;color:#94a3b8;
+.auth-field label{{display:block;font-size:.72rem;font-weight:700;color:#64748b;
  text-transform:uppercase;letter-spacing:.04em;margin-bottom:.3rem}}
 .auth-hint{{font-weight:400;color:#64748b;text-transform:none;letter-spacing:0}}
-.auth-field input{{width:100%;padding:.5rem .75rem;border:1px solid #2a2d3e;border-radius:8px;
- font-size:.86rem;background:rgba(255,255,255,.04);color:#f1f5f9;outline:none;
+.auth-field input{{width:100%;padding:.5rem .75rem;border:1px solid #cbd5e1;border-radius:8px;
+ font-size:.86rem;background:#fff;color:#0f172a;outline:none;
  transition:border-color .15s;font-family:inherit}}
-.auth-field input:focus{{border-color:#4f8ef7}}
-.auth-field input::placeholder{{color:#3d4a5c}}
-.auth-btn{{width:100%;padding:.6rem;border:none;border-radius:8px;background:#4f8ef7;
+.auth-field input:focus{{border-color:#2563eb}}
+.auth-field input::placeholder{{color:#94a3b8}}
+.auth-btn{{width:100%;padding:.6rem;border:none;border-radius:8px;background:#2563eb;
  color:#fff;font-weight:700;font-size:.88rem;cursor:pointer;margin-top:.25rem;
  transition:filter .15s;letter-spacing:.01em}}
 .auth-btn:hover{{filter:brightness(1.1)}}
-.auth-error{{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);
- color:#fca5a5;border-radius:7px;padding:.5rem .75rem;font-size:.8rem;margin-bottom:.9rem}}
-.auth-ok{{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.25);
- color:#4ade80;border-radius:7px;padding:.5rem .75rem;font-size:.8rem;margin-bottom:.9rem}}
+.auth-error{{background:#fef2f2;border:1px solid #fecaca;
+ color:#dc2626;border-radius:7px;padding:.5rem .75rem;font-size:.8rem;margin-bottom:.9rem}}
+.auth-ok{{background:#f0fdf4;border:1px solid #bbf7d0;
+ color:#16a34a;border-radius:7px;padding:.5rem .75rem;font-size:.8rem;margin-bottom:.9rem}}
 .auth-switch{{margin-top:1.1rem;text-align:center;font-size:.76rem;color:#64748b}}
-.auth-switch a{{color:#4f8ef7;text-decoration:none;font-weight:600}}
+.auth-switch a{{color:#2563eb;text-decoration:none;font-weight:600}}
 .auth-switch a:hover{{text-decoration:underline}}
-.auth-footer{{margin-top:1.25rem;text-align:center;font-size:.7rem;color:#3d4a5c}}
+.auth-footer{{margin-top:1.25rem;text-align:center;font-size:.7rem;color:#94a3b8}}
 </style>
 </head>
 <body>
@@ -15139,24 +15139,24 @@ def _render_change_password_page() -> str:
 <title>Change Password</title>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:"Inter","Segoe UI",sans-serif;background:#0f1117;color:#f1f5f9;
+body{{font-family:"Inter","Segoe UI",sans-serif;background:#eef1f6;color:#0f172a;
 min-height:100vh;display:flex;align-items:center;justify-content:center;
 -webkit-font-smoothing:antialiased}}
 .wrap{{width:100%;max-width:380px;padding:1.5rem}}
-.card{{background:#1a1d27;border:1px solid #2a2d3e;border-top:2px solid #4f8ef7;
-border-radius:12px;padding:1.75rem}}
-h2{{font-size:1rem;font-weight:700;margin-bottom:1.25rem;color:#f1f5f9}}
+.card{{background:#fff;border:1px solid #e2e8f0;border-top:2px solid #2563eb;
+border-radius:12px;padding:1.75rem;box-shadow:0 1px 3px rgba(15,23,42,.08),0 4px 12px rgba(15,23,42,.05)}}
+h2{{font-size:1rem;font-weight:700;margin-bottom:1.25rem;color:#0f172a}}
 .field{{margin-bottom:.85rem}}
-.field label{{display:block;font-size:.7rem;font-weight:700;color:#94a3b8;
+.field label{{display:block;font-size:.7rem;font-weight:700;color:#64748b;
 text-transform:uppercase;letter-spacing:.04em;margin-bottom:.28rem}}
-.field input{{width:100%;padding:.48rem .7rem;border:1px solid #2a2d3e;border-radius:7px;
-font-size:.84rem;background:rgba(255,255,255,.04);color:#f1f5f9;outline:none;
+.field input{{width:100%;padding:.48rem .7rem;border:1px solid #cbd5e1;border-radius:7px;
+font-size:.84rem;background:#fff;color:#0f172a;outline:none;
 transition:border-color .15s}}
-.field input:focus{{border-color:#4f8ef7}}
-.btn{{width:100%;padding:.55rem;border:none;border-radius:7px;background:#4f8ef7;
+.field input:focus{{border-color:#2563eb}}
+.btn{{width:100%;padding:.55rem;border:none;border-radius:7px;background:#2563eb;
 color:#fff;font-weight:700;font-size:.85rem;cursor:pointer;margin-top:.2rem}}
 #msg{{margin-top:.75rem;font-size:.78rem;min-height:1.1rem;text-align:center}}
-a{{color:#4f8ef7;font-size:.76rem;display:block;text-align:center;margin-top:1rem}}
+a{{color:#2563eb;font-size:.76rem;display:block;text-align:center;margin-top:1rem}}
 </style>
 </head>
 <body>
@@ -15178,15 +15178,15 @@ const msg = document.getElementById('msg');
 const old = document.getElementById('old').value;
 const n1  = document.getElementById('new1').value;
 const n2  = document.getElementById('new2').value;
-if (n1 !== n2) {{ msg.style.color='#fca5a5'; msg.textContent='Passwords do not match.'; return; }}
+if (n1 !== n2) {{ msg.style.color='#dc2626'; msg.textContent='Passwords do not match.'; return; }}
 msg.style.color='#64748b'; msg.textContent='Saving...';
 const r = await fetch('/api/auth/change-password', {{
 method:'POST', headers:{{'Content-Type':'application/json'}},
 body: JSON.stringify({{old_password: old, new_password: n1}})
 }});
 const d = await r.json();
-if (d.ok) {{ msg.style.color='#4ade80'; msg.textContent='✅ ' + d.message; setTimeout(()=>location.href='/login',1500); }}
-else      {{ msg.style.color='#fca5a5'; msg.textContent=d.error||'Failed.'; }}
+if (d.ok) {{ msg.style.color='#16a34a'; msg.textContent='✅ ' + d.message; setTimeout(()=>location.href='/login',1500); }}
+else      {{ msg.style.color='#dc2626'; msg.textContent=d.error||'Failed.'; }}
 }}
 </script>
 </body>

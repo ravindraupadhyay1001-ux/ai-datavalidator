@@ -1,35 +1,35 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sign in — Data Validation Agent</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>body{background:#0b1020;color:#e2e8f0}</style>
+  <style>body{background:#eef1f6;color:#0f172a}</style>
 </head>
 <body class="min-h-screen flex items-center justify-center">
-  <div class="w-full max-w-sm bg-[#111827] border border-gray-800 rounded-xl p-8 shadow-xl">
+  <div class="w-full max-w-sm bg-white border border-slate-200 rounded-xl p-8 shadow-lg">
     <div class="text-center mb-6">
       <div class="text-3xl">🛡️</div>
-      <h1 class="text-xl font-semibold text-sky-400 mt-2">Data Validation Agent</h1>
-      <p class="text-sm text-gray-500">Sign in to continue</p>
+      <h1 class="text-xl font-semibold text-blue-600 mt-2">Data Validation Agent</h1>
+      <p class="text-sm text-slate-500">Sign in to continue</p>
     </div>
     {% if error %}
-      <div class="bg-red-900/40 border border-red-700 text-red-300 text-sm rounded px-3 py-2 mb-4">{{ error }}</div>
+      <div class="bg-red-50 border border-red-200 text-red-600 text-sm rounded px-3 py-2 mb-4">{{ error }}</div>
     {% endif %}
     <form method="post" action="/login" class="space-y-4">
       <div>
-        <label class="text-sm text-gray-400">Username</label>
+        <label class="text-sm text-slate-500">Username</label>
         <input name="username" autofocus required
-               class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 mt-1 text-sm">
+               class="w-full bg-white border border-slate-300 rounded px-3 py-2 mt-1 text-sm">
       </div>
       <div>
-        <label class="text-sm text-gray-400">Password</label>
+        <label class="text-sm text-slate-500">Password</label>
         <input name="password" type="password" required
-               class="w-full bg-gray-900 border border-gray-700 rounded px-3 py-2 mt-1 text-sm">
+               class="w-full bg-white border border-slate-300 rounded px-3 py-2 mt-1 text-sm">
       </div>
       <button type="submit"
-              class="w-full bg-sky-600 hover:bg-sky-500 rounded py-2 text-sm font-medium">Sign in</button>
+              class="w-full bg-blue-600 hover:bg-blue-500 text-white rounded py-2 text-sm font-medium">Sign in</button>
     </form>
   </div>
 </body>

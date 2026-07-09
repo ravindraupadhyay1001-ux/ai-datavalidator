@@ -815,8 +815,8 @@ async function runCompare(){
   ], 'summary');
   chart('cmpChart',{type:'bar',data:{labels:['File1 only','File2 only','Modified'],
     datasets:[{data:[c.file1_only||0,c.file2_only||0,c.modified||0],
-      backgroundColor:['#ef4444','#f59e0b','#f59e0b'],borderRadius:6}]},
-    options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#94a3b8'}},y:{ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}}}}});
+      backgroundColor:['#dc2626','#d97706','#d97706'],borderRadius:6}]},
+    options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#64748b'}},y:{ticks:{color:'#64748b'},grid:{color:'#e2e8f0'}}}}});
   loadDatasetControlRules('cmp','compare');
 }
 
@@ -1048,10 +1048,10 @@ async function loadDqHistory(fileName, currentScore){
   if(Array.isArray(hist) && hist.length >= 2){
     chart('qHistChart',{type:'line',data:{
       labels:hist.map(h=>new Date(h.run_at).toLocaleDateString()),
-      datasets:[{data:hist.map(h=>h.score),borderColor:'#38bdf8',backgroundColor:'rgba(56,189,248,.15)',
+      datasets:[{data:hist.map(h=>h.score),borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.12)',
         fill:true,tension:.3,pointRadius:3}]},
       options:{plugins:{legend:{display:false}},
-        scales:{x:{ticks:{color:'#94a3b8'}},y:{min:0,max:100,ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}}}}});
+        scales:{x:{ticks:{color:'#64748b'}},y:{min:0,max:100,ticks:{color:'#64748b'},grid:{color:'#e2e8f0'}}}}});
   }
 }
 function bar(pct){ const c=pct>=90?'#16a34a':pct>=60?'#d97706':'#dc2626';

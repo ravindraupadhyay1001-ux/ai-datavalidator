@@ -1,40 +1,40 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>File Parser — Data Validation Agent</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <style>body{background:#0b1020;color:#e2e8f0}.card{background:#111827;border:1px solid #1f2937}</style>
+  <style>body{background:#eef1f6;color:#0f172a}.card{background:#fff;border:1px solid #e2e8f0}</style>
 </head>
 <body class="min-h-screen p-8">
   <div class="max-w-4xl mx-auto">
     <div class="flex items-center justify-between mb-6">
-      <h1 class="text-2xl font-semibold text-sky-400">📄 Standalone File Parser</h1>
-      <a href="/" class="text-sm text-gray-400 hover:text-sky-400">← Back to app</a>
+      <h1 class="text-2xl font-semibold text-blue-600">📄 Standalone File Parser</h1>
+      <a href="/" class="text-sm text-slate-500 hover:text-blue-600">← Back to app</a>
     </div>
-    <p class="text-gray-400 text-sm mb-4">Upload any file (structured or unstructured). The parser extracts a clean table — using the LLM when the format is irregular.</p>
-    <div class="card rounded-lg p-4 mb-4">
+    <p class="text-slate-500 text-sm mb-4">Upload any file (structured or unstructured). The parser extracts a clean table — using the LLM when the format is irregular.</p>
+    <div class="card rounded-lg p-4 mb-4 shadow-sm">
       <input id="f" type="file" class="block w-full text-sm">
     </div>
-    <button onclick="run()" class="bg-sky-600 hover:bg-sky-500 px-4 py-2 rounded text-sm font-medium">Parse</button>
+    <button onclick="run()" class="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded text-sm font-medium">Parse</button>
     <div id="out" class="mt-6"></div>
   </div>
 <script>
 async function run() {
   const out = document.getElementById('out');
   const f = document.getElementById('f').files[0];
-  if (!f) { out.innerHTML = '<span class="text-amber-400">Choose a file first.</span>'; return; }
-  out.innerHTML = '<span class="text-gray-400">Parsing…</span>';
+  if (!f) { out.innerHTML = '<span class="text-amber-600">Choose a file first.</span>'; return; }
+  out.innerHTML = '<span class="text-slate-500">Parsing…</span>';
   const fd = new FormData(); fd.append('file1', f);
   const r = await fetch('/api/analyze-parse', { method:'POST', body: fd });
   const d = await r.json();
-  if (!r.ok) { out.innerHTML = `<div class="text-red-400">${d.detail||'Error'}</div>`; return; }
-  if (d.error) { out.innerHTML = `<div class="text-red-400">${d.error}</div>`; return; }
-  let html = `<div class="text-sm text-gray-400 mb-2">${d.columns.length} columns · ${d.rows.length} rows</div>`;
-  html += `<div class="card rounded overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400"><tr>${
+  if (!r.ok) { out.innerHTML = `<div class="text-red-600">${d.detail||'Error'}</div>`; return; }
+  if (d.error) { out.innerHTML = `<div class="text-red-600">${d.error}</div>`; return; }
+  let html = `<div class="text-sm text-slate-500 mb-2">${d.columns.length} columns · ${d.rows.length} rows</div>`;
+  html += `<div class="card rounded overflow-auto shadow-sm"><table class="w-full text-xs"><thead class="text-slate-500"><tr>${
     d.columns.map(c=>`<th class="p-2 text-left">${c}</th>`).join('')}</tr></thead><tbody>`;
-  d.rows.slice(0,200).forEach(row=>{ html += `<tr class="border-t border-gray-800">${row.map(v=>`<td class="p-1">${(''+v).replace(/</g,'&lt;')}</td>`).join('')}</tr>`; });
+  d.rows.slice(0,200).forEach(row=>{ html += `<tr class="border-t border-slate-200">${row.map(v=>`<td class="p-1">${(''+v).replace(/</g,'&lt;')}</td>`).join('')}</tr>`; });
   html += '</tbody></table></div>';
   out.innerHTML = html;
 }
