@@ -623,7 +623,7 @@ async function loadConnDropdowns(){
   if(!Array.isArray(rows)) return;
   document.querySelectorAll('select.conn-select').forEach(sel=>{
     const cur = sel.value;
-    sel.innerHTML = '<option value="">&mdash; or pick a saved connection &mdash;</option>' +
+    sel.innerHTML = '<option value="">&mdash; Saved Connector &mdash;</option>' +
       rows.map(c=>`<option value="${c.id}">${esc(c.name)} [${esc(c.source_type)}]</option>`).join('');
     sel.value = cur;
   });
