@@ -12,14 +12,14 @@
     /* Light workspace theme */
     :root{
       --bg:#eef1f6; --surface:#ffffff; --surface-2:#f6f8fb;
-      --line:rgba(15,23,42,.09); --border-soft:rgba(15,23,42,.08);
+      --line:rgba(15,23,42,.13); --border-soft:rgba(15,23,42,.08);
       --primary:#2563eb; --primary-mid:rgba(37,99,235,.16); --primary-dim:rgba(37,99,235,.08);
       --accent:#0284c7; --success:#16a34a; --warning:#d97706; --danger:#dc2626;
       --txt-primary:#0f172a; --txt-secondary:#334155; --txt-muted:#64748b; --txt-dim:#94a3b8;
       --font-ui:'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif;
       --font-mono:'Fira Mono','Consolas','Cascadia Code',monospace;
     }
-    body{ font-family:var(--font-ui); color:var(--txt-primary);
+    body{ font-family:var(--font-ui); color:var(--txt-primary); font-size:15px; line-height:1.55;
       background:
         radial-gradient(1100px 550px at 108% -8%, rgba(37,99,235,.10), transparent 60%),
         radial-gradient(900px 480px at -8% 105%, rgba(124,58,237,.08), transparent 55%),
@@ -27,46 +27,48 @@
         var(--bg);
       background-attachment:fixed; }
     .card{ background:linear-gradient(180deg, var(--surface), var(--surface-2));
-      border:1px solid var(--line); box-shadow:0 1px 3px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.04);
-      border-radius:14px; transition:box-shadow .2s, border-color .2s, transform .2s; }
-    .card:hover{ box-shadow:0 8px 24px -8px rgba(37,99,235,.18), 0 2px 8px rgba(15,23,42,.06); border-color:rgba(37,99,235,.25); }
-    .tab-btn{ transition:all .15s; border:1px solid transparent; color:var(--txt-secondary); }
+      border:1.5px solid var(--line); box-shadow:0 1px 3px rgba(15,23,42,.07), 0 1px 2px rgba(15,23,42,.05);
+      border-radius:16px; transition:box-shadow .2s, border-color .2s, transform .2s; }
+    .card:hover{ box-shadow:0 10px 28px -8px rgba(37,99,235,.2), 0 2px 8px rgba(15,23,42,.07); border-color:rgba(37,99,235,.3); }
+    .tab-btn{ transition:all .15s; border:1.5px solid transparent; color:var(--txt-secondary); font-weight:500;
+      border-left:3px solid transparent; }
     .tab-btn:hover{ background:var(--primary-dim); transform:translateX(2px); }
     .tab-active{ background:linear-gradient(90deg,var(--primary-mid),rgba(124,58,237,.12));
-      border-color:var(--primary); color:var(--primary); font-weight:600; border-top:2px solid var(--primary);
-      box-shadow:0 2px 10px -4px rgba(37,99,235,.35); }
+      border-color:var(--primary); color:var(--primary); font-weight:700; border-top:1.5px solid var(--primary);
+      border-left:3px solid var(--primary); box-shadow:0 2px 10px -4px rgba(37,99,235,.35); }
     .grad-text{ background:linear-gradient(90deg,var(--primary),#7c3aed,#0284c7); background-size:200% auto;
       -webkit-background-clip:text; background-clip:text; color:transparent; }
     .btn{ background:linear-gradient(90deg,var(--primary),#4f46e5); transition:filter .15s, transform .12s, box-shadow .2s;
-      color:#fff; border-radius:9px; box-shadow:0 2px 10px -3px rgba(37,99,235,.5); }
-    .btn:hover{ filter:brightness(1.1); box-shadow:0 4px 16px -3px rgba(37,99,235,.6); transform:translateY(-1px); }
+      color:#fff; border-radius:10px; box-shadow:0 2px 10px -3px rgba(37,99,235,.5); font-weight:600; letter-spacing:.005em; }
+    .btn:hover{ filter:brightness(1.1); box-shadow:0 6px 18px -4px rgba(37,99,235,.65); transform:translateY(-1.5px); }
     .btn:active{ transform:translateY(1px); }
     .btn-emerald{ background:linear-gradient(90deg,#059669,#10b981); box-shadow:0 2px 10px -3px rgba(16,185,129,.5); }
     .btn-indigo{ background:linear-gradient(90deg,#4f46e5,#7c3aed); box-shadow:0 2px 10px -3px rgba(124,58,237,.5); }
-    .btn-ghost{ background:#fff; border:1px solid var(--line); border-radius:9px; color:var(--txt-secondary); transition:all .15s; }
-    .btn-ghost:hover{ border-color:var(--primary); color:var(--primary); background:var(--primary-dim); }
-    .badge{ padding:2px 10px; border-radius:9999px; font-weight:700; font-size:11px; }
-    .inp{ background:#fff; border:1px solid var(--line); border-radius:8px; padding:6px 10px; color:var(--txt-primary); transition:border-color .15s, box-shadow .15s; }
-    .inp:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-dim); }
-    .logo-mark{ width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center;
+    .btn-ghost{ background:#fff; border:1.5px solid var(--line); border-radius:10px; color:var(--txt-secondary); transition:all .15s; font-weight:500; }
+    .btn-ghost:hover{ border-color:var(--primary); color:var(--primary); background:var(--primary-dim); transform:translateY(-1px); }
+    .badge{ padding:3px 11px; border-radius:9999px; font-weight:700; font-size:11px; letter-spacing:.01em; }
+    .inp{ background:#fff; border:1.5px solid var(--line); border-radius:9px; padding:7px 11px; color:var(--txt-primary); transition:border-color .15s, box-shadow .15s; }
+    .inp:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 3.5px var(--primary-dim); }
+    .logo-mark{ width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center;
       background:linear-gradient(135deg,#2563eb,#7c3aed); transform:rotate(45deg); flex-shrink:0;
-      box-shadow:0 3px 14px -2px rgba(37,99,235,.55), 0 0 0 3px rgba(37,99,235,.08); }
+      box-shadow:0 3px 14px -2px rgba(37,99,235,.55), 0 0 0 3px rgba(37,99,235,.1); }
     .logo-mark svg{ transform:rotate(-45deg); }
     pre{ white-space:pre-wrap; word-break:break-word; font-family:var(--font-mono); }
     code, .font-mono{ font-family:var(--font-mono) !important; }
     ::-webkit-scrollbar{width:10px;height:10px} ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:6px}
     table tbody tr{ transition:background .12s; } table tbody tr:hover{ background:var(--primary-dim); }
-    .seg{ display:inline-flex; background:var(--surface-2); border:1px solid var(--line); border-radius:9px; padding:3px; }
-    .seg-btn{ padding:7px 16px; font-size:13px; border-radius:7px; color:var(--txt-muted); cursor:pointer; font-weight:600; transition:all .15s; }
+    table thead th{ font-weight:700; letter-spacing:.03em; }
+    .seg{ display:inline-flex; background:var(--surface-2); border:1.5px solid var(--line); border-radius:10px; padding:3px; }
+    .seg-btn{ padding:8px 18px; font-size:13.5px; border-radius:8px; color:var(--txt-muted); cursor:pointer; font-weight:600; transition:all .15s; }
     .seg-btn.active{ background:linear-gradient(90deg,var(--primary),#4f46e5); color:#fff; box-shadow:0 2px 8px -2px rgba(37,99,235,.5); }
-    .dropzone{ border:2px dashed var(--line); border-radius:12px; padding:16px; text-align:center; cursor:pointer;
-      transition:border-color .18s, background .18s, transform .12s; color:var(--txt-muted); font-size:13px; background:var(--surface-2); }
+    .dropzone{ border:2.5px dashed rgba(37,99,235,.3); border-radius:14px; padding:20px; text-align:center; cursor:pointer;
+      transition:border-color .18s, background .18s, transform .12s; color:var(--txt-muted); font-size:13.5px; font-weight:500; background:var(--surface-2); }
     .dropzone:hover{ border-color:var(--primary); background:var(--primary-dim); transform:translateY(-1px); }
     .dropzone.dragover{ border-color:var(--primary); background:var(--primary-mid); transform:scale(1.01); }
-    .file-chip{ display:inline-flex; align-items:center; gap:6px; background:var(--primary-dim); border:1px solid var(--primary-mid);
-      border-radius:9999px; padding:3px 10px; font-size:12px; color:var(--primary); }
+    .file-chip{ display:inline-flex; align-items:center; gap:6px; background:var(--primary-dim); border:1.5px solid var(--primary-mid);
+      border-radius:9999px; padding:4px 12px; font-size:12px; font-weight:500; color:var(--primary); }
     .file-chip button{ color:#dc2626; font-weight:700; line-height:1; }
-    .result-tab-btn{ padding:8px 14px; font-size:13px; font-weight:600; color:var(--txt-muted); border-bottom:2px solid transparent; cursor:pointer; transition:all .15s; }
+    .result-tab-btn{ padding:9px 16px; font-size:13.5px; font-weight:600; color:var(--txt-muted); border-bottom:2.5px solid transparent; cursor:pointer; transition:all .15s; }
     .result-tab-btn:hover{ color:var(--primary); }
     .result-tab-btn.active{ color:var(--primary); border-bottom-color:var(--primary); }
     .suggest-chip{ background:rgba(2,132,199,.08); border:1px solid rgba(2,132,199,.25); color:#0369a1;
@@ -97,9 +99,9 @@
 <div class="flex h-screen">
   <!-- Sidebar -->
   <aside class="w-60 flex flex-col border-r border-[var(--line)]" style="background:linear-gradient(180deg,#ffffff,#f3f6fb);">
-    <div class="p-5 flex items-center gap-2">
+    <div class="px-5 pt-6 pb-5 flex items-center gap-3">
       <div class="logo-mark">
-        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path d="M12 2.3 4.5 5.4v5.8c0 5.1 3.3 8.9 7.5 10.2 4.2-1.3 7.5-5.1 7.5-10.2V5.4L12 2.3Z"
                 fill="white" fill-opacity=".16" stroke="white" stroke-width="1.3" stroke-linejoin="round"/>
           <path d="M8.6 12.1 11 14.5l4.6-5" stroke="white" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
@@ -108,28 +110,29 @@
           <circle cx="19.5" cy="5.9" r=".7" fill="white" fill-opacity=".7"/>
         </svg>
       </div>
-      <div><div class="text-lg font-bold grad-text leading-none">AI Agent</div>
-        <div class="text-[10px] uppercase tracking-widest text-gray-500 mt-0.5">Data Validation</div></div>
+      <div><div class="text-xl font-bold grad-text leading-none">AI Agent</div>
+        <div class="text-[10px] font-semibold uppercase tracking-widest text-gray-500 mt-1">Data Validation</div></div>
     </div>
-    <nav class="flex flex-col gap-1 px-3 text-sm">
-      <button data-tab="compare" class="tab-btn text-left px-3 py-2 rounded-lg tab-active">&#10005; Reconciliation</button>
-      <button data-tab="quality" class="tab-btn text-left px-3 py-2 rounded-lg">&#9989; Data Quality</button>
-      <button data-tab="profile" class="tab-btn text-left px-3 py-2 rounded-lg">&#128269; Data Profile</button>
-      <button data-tab="governance" class="tab-btn text-left px-3 py-2 rounded-lg">&#128274; Governance</button>
-      <button data-tab="parse" class="tab-btn text-left px-3 py-2 rounded-lg">&#128206; Parse</button>
-      <button data-tab="xref" class="tab-btn text-left px-3 py-2 rounded-lg">&#128279; Cross Reference</button>
-      <button data-tab="workspace" class="tab-btn text-left px-3 py-2 rounded-lg">&#9889; Workspace</button>
-      <button data-tab="settings" class="tab-btn text-left px-3 py-2 rounded-lg">&#9881;&#65039; Settings</button>
-      <button onclick="openHelpModal()" class="tab-btn text-left px-3 py-2 rounded-lg">&#128218; User Guide</button>
+    <nav class="flex flex-col gap-1.5 px-3 text-sm">
+      <button data-tab="compare" class="tab-btn text-left px-3.5 py-2.5 rounded-lg tab-active">&#10005; Reconciliation</button>
+      <button data-tab="quality" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#9989; Data Quality</button>
+      <button data-tab="profile" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#128269; Data Profile</button>
+      <button data-tab="governance" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#128274; Governance</button>
+      <button data-tab="parse" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#128206; Parse</button>
+      <button data-tab="xref" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#128279; Cross Reference</button>
+      <div class="my-2 border-t border-[var(--line)]"></div>
+      <button data-tab="workspace" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#9889; Workspace</button>
+      <button data-tab="settings" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#9881;&#65039; Settings</button>
+      <button onclick="openHelpModal()" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#128218; User Guide</button>
     </nav>
-    <div class="mt-auto p-3 m-3 card rounded-lg text-xs text-gray-400" id="licbar">license&hellip;</div>
+    <div class="mt-auto p-3.5 m-3 card rounded-lg text-xs text-gray-400 font-medium" id="licbar">license&hellip;</div>
   </aside>
 
   <!-- Main -->
   <main class="flex-1 overflow-auto p-6">
     <!-- COMPARE -->
     <section id="tab-compare" class="tab-panel">
-      <h2 class="text-2xl font-bold mb-1 grad-text">Reconciliation</h2>
+      <h2 class="text-3xl font-bold mb-1.5 grad-text">Reconciliation</h2>
       <p class="text-sm text-gray-500 mb-4">Upload two files; keys are inferred automatically.</p>
       <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-6">
         <div>
@@ -197,7 +200,7 @@
 
     <!-- QUALITY -->
     <section id="tab-quality" class="tab-panel hidden">
-      <h2 class="text-2xl font-bold mb-1 grad-text">Data Quality</h2>
+      <h2 class="text-3xl font-bold mb-1.5 grad-text">Data Quality</h2>
       <p class="text-sm text-gray-500 mb-4">7-dimension scoring with rule checks.</p>
       <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-6">
         <div>
@@ -251,7 +254,7 @@
 
     <!-- DATA PROFILE -->
     <section id="tab-profile" class="tab-panel hidden">
-      <h2 class="text-2xl font-bold mb-1 grad-text">Data Profile</h2>
+      <h2 class="text-3xl font-bold mb-1.5 grad-text">Data Profile</h2>
       <p class="text-sm text-gray-500 mb-4">Column stats, correlations, near-key candidates.</p>
       <div class="card rounded-xl p-5 mb-4">
         <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Dataset</div>
@@ -276,7 +279,7 @@
 
     <!-- GOVERNANCE -->
     <section id="tab-governance" class="tab-panel hidden">
-      <h2 class="text-2xl font-bold mb-1 grad-text">Governance &amp; PII</h2>
+      <h2 class="text-3xl font-bold mb-1.5 grad-text">Governance &amp; PII</h2>
       <p class="text-sm text-gray-500 mb-4">PII detection, sensitivity classification, risk.</p>
       <div class="card rounded-xl p-5 mb-4">
         <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Dataset</div>
@@ -301,7 +304,7 @@
 
     <!-- CROSS REFERENCE -->
     <section id="tab-xref" class="tab-panel hidden">
-      <h2 class="text-2xl font-bold mb-1 grad-text">Cross Reference</h2>
+      <h2 class="text-3xl font-bold mb-1.5 grad-text">Cross Reference</h2>
       <p class="text-sm text-gray-500 mb-4">Match an identifier (ISIN/CUSIP/LEI/trade_id) across 2&ndash;4 sources; coverage matrix + conflicts.</p>
       <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-6">
         <div><div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Source 1</div>
@@ -336,7 +339,7 @@
 
     <!-- PARSE -->
     <section id="tab-parse" class="tab-panel hidden">
-      <h2 class="text-2xl font-bold mb-1 grad-text">Unstructured Parser</h2>
+      <h2 class="text-3xl font-bold mb-1.5 grad-text">Unstructured Parser</h2>
       <p class="text-sm text-gray-500 mb-4">Extract a clean table from any file.</p>
       <div class="card rounded-xl p-5 mb-4">
         <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Dataset</div>
@@ -354,7 +357,7 @@
 
     <!-- WORKSPACE -->
     <section id="tab-workspace" class="tab-panel hidden">
-      <h2 class="text-2xl font-bold mb-4 grad-text">Workspace</h2>
+      <h2 class="text-3xl font-bold mb-4 grad-text">Workspace</h2>
       <div class="flex gap-2 mb-4 text-sm">
         <button onclick="wsTab('conn')" class="ws-tab tab-btn tab-active px-3 py-1 rounded-lg">Connections</button>
         <button onclick="wsTab('rules')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Rulesets</button>
@@ -415,7 +418,7 @@
 
     <!-- SETTINGS -->
     <section id="tab-settings" class="tab-panel hidden">
-      <h2 class="text-2xl font-bold mb-4 grad-text">Settings &amp; License</h2>
+      <h2 class="text-3xl font-bold mb-4 grad-text">Settings &amp; License</h2>
       <div class="card rounded-xl p-5 mb-4 max-w-3xl">
         <h3 class="font-semibold mb-2 text-sky-300">License</h3>
         <div id="lic-state" class="text-sm text-gray-300 mb-3"></div>
@@ -570,10 +573,10 @@ document.querySelectorAll('.tab-btn[data-tab]').forEach(b => b.onclick = () => {
 });
 
 function stat(label, val, color){
-  color = color || '#38bdf8';
-  return `<div class="card rounded-xl p-4 stat-card" style="border-top:3px solid ${color}">
-    <div class="text-xs text-gray-400">${label}</div>
-    <div class="text-3xl font-extrabold" style="color:${color}">${val}</div></div>`;
+  color = color || '#2563eb';
+  return `<div class="card rounded-xl p-4 stat-card" style="border-top:3.5px solid ${color}">
+    <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide">${label}</div>
+    <div class="text-4xl font-extrabold mt-0.5" style="color:${color}">${val}</div></div>`;
 }
 
 function actionBar(sessionId, elapsedSec){
