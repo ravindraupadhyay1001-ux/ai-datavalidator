@@ -16896,6 +16896,7 @@ async def analyze(request: Request):
              "changes": mr["changes"]}
             for mr in diff.get("modified_rows", [])
         ]
+        (_f1_name, _f1_df), (_f2_name, _f2_df) = dataframes[0], dataframes[1]
         _resp = {
             "session_id": session_id,
             "counts": {
@@ -16914,6 +16915,15 @@ async def analyze(request: Request):
                 "file2": {"duplicate_rows": diff.get("file2_duplicate_count", 0)},
             },
             "modified": modified,
+            "files": {
+                "file1": {"name": _f1_name, "rows": len(_f1_df), "columns": len(_f1_df.columns),
+                          "format": str(_f1_df.attrs.get("_format", "") or "").upper()},
+                "file2": {"name": _f2_name, "rows": len(_f2_df), "columns": len(_f2_df.columns),
+                          "format": str(_f2_df.attrs.get("_format", "") or "").upper()},
+            },
+            "common_columns": len(set(_f1_df.columns) & set(_f2_df.columns)),
+            "elapsed": total_elapsed,
+            "logs": proc_logs,
         }
         if session_id in _results_store:
             _results_store[session_id]["_digest"] = _resp

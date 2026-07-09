@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,42 +9,69 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Fira+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
-    /* "Midnight Slate" design system */
+    /* Light workspace theme */
     :root{
-      --bg:#0f1117; --surface:#1a1d27; --surface-2:#20243a;
-      --line:rgba(255,255,255,.06); --border-soft:rgba(255,255,255,.06);
-      --primary:#4f8ef7; --primary-mid:rgba(79,142,247,.25); --primary-dim:rgba(79,142,247,.15);
-      --accent:#38bdf8; --success:#22c55e; --warning:#f59e0b; --danger:#ef4444;
-      --txt-primary:#f1f5f9; --txt-secondary:#c8d3e0; --txt-muted:#64748b; --txt-dim:#3d4a5c;
+      --bg:#eef1f6; --surface:#ffffff; --surface-2:#f6f8fb;
+      --line:rgba(15,23,42,.09); --border-soft:rgba(15,23,42,.08);
+      --primary:#2563eb; --primary-mid:rgba(37,99,235,.16); --primary-dim:rgba(37,99,235,.08);
+      --accent:#0284c7; --success:#16a34a; --warning:#d97706; --danger:#dc2626;
+      --txt-primary:#0f172a; --txt-secondary:#334155; --txt-muted:#64748b; --txt-dim:#94a3b8;
       --font-ui:'Inter','Segoe UI','Helvetica Neue',Arial,sans-serif;
       --font-mono:'Fira Mono','Consolas','Cascadia Code',monospace;
     }
-    body{ font-family:var(--font-ui); background:
-        radial-gradient(1200px 600px at 110% -10%, var(--primary-dim), transparent 60%),
-        radial-gradient(900px 500px at -10% 110%, rgba(124,58,237,.12), transparent 55%),
-        var(--bg); color:var(--txt-primary); }
+    body{ font-family:var(--font-ui); background:var(--bg); color:var(--txt-primary); }
     .card{ background:linear-gradient(180deg, var(--surface), var(--surface-2));
-      border:1px solid var(--line); backdrop-filter:blur(6px); box-shadow:0 12px 32px -20px rgba(0,0,0,.85); border-radius:12px; }
-    .tab-btn{ transition:all .15s; border:1px solid transparent; }
+      border:1px solid var(--line); box-shadow:0 1px 3px rgba(15,23,42,.06), 0 1px 2px rgba(15,23,42,.04); border-radius:12px; }
+    .tab-btn{ transition:all .15s; border:1px solid transparent; color:var(--txt-secondary); }
     .tab-btn:hover{ background:var(--primary-dim); }
-    .tab-active{ background:linear-gradient(90deg, var(--primary-mid), rgba(124,58,237,.18));
-      border-color:var(--primary); color:#93c5fd; font-weight:600; border-top:2px solid var(--primary); }
-    .grad-text{ background:linear-gradient(90deg,var(--primary),#7c3aed); -webkit-background-clip:text; background-clip:text; color:transparent; }
-    .btn{ background:linear-gradient(90deg,var(--primary),#6366f1); transition:filter .15s, transform .05s; color:#fff; border-radius:8px; }
-    .btn:hover{ filter:brightness(1.13); } .btn:active{ transform:translateY(1px); }
+    .tab-active{ background:var(--primary-mid);
+      border-color:var(--primary); color:var(--primary); font-weight:600; border-top:2px solid var(--primary); }
+    .grad-text{ background:linear-gradient(90deg,var(--primary),#4f46e5); -webkit-background-clip:text; background-clip:text; color:transparent; }
+    .btn{ background:linear-gradient(90deg,var(--primary),#3b82f6); transition:filter .15s, transform .05s; color:#fff; border-radius:8px; }
+    .btn:hover{ filter:brightness(1.08); } .btn:active{ transform:translateY(1px); }
     .btn-emerald{ background:linear-gradient(90deg,#059669,#10b981); }
-    .btn-indigo{ background:linear-gradient(90deg,#6366f1,#7c3aed); }
-    .btn-ghost{ background:rgba(255,255,255,.06); border:1px solid var(--line); border-radius:8px; }
+    .btn-indigo{ background:linear-gradient(90deg,#4f46e5,#6366f1); }
+    .btn-ghost{ background:#fff; border:1px solid var(--line); border-radius:8px; color:var(--txt-secondary); }
     .badge{ padding:2px 10px; border-radius:9999px; font-weight:700; font-size:11px; }
-    .inp{ background:rgba(8,12,24,.7); border:1px solid var(--line); border-radius:8px; padding:6px 10px; color:var(--txt-primary); }
+    .inp{ background:#fff; border:1px solid var(--line); border-radius:8px; padding:6px 10px; color:var(--txt-primary); }
     .inp:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-dim); }
     .logo-mark{ width:34px; height:34px; border-radius:9px; display:flex; align-items:center; justify-content:center;
-      background:linear-gradient(135deg,#4361ee,#7c3aed); transform:rotate(45deg); flex-shrink:0; }
+      background:linear-gradient(135deg,#2563eb,#4f46e5); transform:rotate(45deg); flex-shrink:0; }
     .logo-mark span{ transform:rotate(-45deg); font-weight:800; color:#fff; font-size:15px; }
     pre{ white-space:pre-wrap; word-break:break-word; font-family:var(--font-mono); }
     code, .font-mono{ font-family:var(--font-mono) !important; }
-    ::-webkit-scrollbar{width:10px;height:10px} ::-webkit-scrollbar-thumb{background:var(--surface-2);border-radius:6px}
+    ::-webkit-scrollbar{width:10px;height:10px} ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:6px}
     table tbody tr:hover{ background:var(--primary-dim); }
+    .seg{ display:inline-flex; background:var(--surface-2); border:1px solid var(--line); border-radius:8px; padding:2px; }
+    .seg-btn{ padding:7px 16px; font-size:13px; border-radius:6px; color:var(--txt-muted); cursor:pointer; font-weight:600; transition:all .15s; }
+    .seg-btn.active{ background:var(--primary); color:#fff; }
+    .dropzone{ border:2px dashed var(--line); border-radius:10px; padding:16px; text-align:center; cursor:pointer;
+      transition:border-color .15s, background .15s; color:var(--txt-muted); font-size:13px; background:var(--surface-2); }
+    .dropzone:hover, .dropzone.dragover{ border-color:var(--primary); background:var(--primary-dim); }
+    .file-chip{ display:inline-flex; align-items:center; gap:6px; background:var(--primary-dim); border:1px solid var(--primary-mid);
+      border-radius:9999px; padding:3px 10px; font-size:12px; color:var(--primary); }
+    .file-chip button{ color:#dc2626; font-weight:700; line-height:1; }
+    .result-tab-btn{ padding:8px 14px; font-size:13px; font-weight:600; color:var(--txt-muted); border-bottom:2px solid transparent; cursor:pointer; }
+    .result-tab-btn.active{ color:var(--primary); border-bottom-color:var(--primary); }
+    .suggest-chip{ background:rgba(2,132,199,.08); border:1px solid rgba(2,132,199,.25); color:#0369a1;
+      border-radius:9999px; padding:5px 12px; font-size:12px; cursor:pointer; transition:all .15s; }
+    .suggest-chip:hover{ background:rgba(2,132,199,.16); }
+    .suggest-chip.special{ background:rgba(219,39,119,.08); border-color:rgba(219,39,119,.25); color:#be185d; }
+    /* Re-tuned text colors: the utility classes below were originally chosen for the
+       dark theme (light text on dark cards) and are hard to read on the new light
+       cards -- override with darker equivalents rather than touch every call site. */
+    .text-gray-300{ color:#1e293b !important; }
+    .text-gray-400{ color:#64748b !important; }
+    .text-gray-500{ color:#64748b !important; }
+    .text-gray-600{ color:#94a3b8 !important; }
+    .text-sky-300{ color:#0369a1 !important; }
+    .text-emerald-300{ color:#059669 !important; }
+    .text-emerald-400{ color:#059669 !important; }
+    .text-amber-300{ color:#b45309 !important; }
+    .text-red-300{ color:#dc2626 !important; }
+    .text-red-400{ color:#dc2626 !important; }
+    .text-purple-300{ color:#7e22ce !important; }
+    .text-indigo-300{ color:#4338ca !important; }
   </style>
 </head>
 <body class="min-h-screen">
@@ -74,19 +101,41 @@
   <main class="flex-1 overflow-auto p-6">
     <!-- COMPARE -->
     <section id="tab-compare" class="tab-panel">
-      <h2 class="text-2xl font-bold mb-1 grad-text">File Comparison</h2>
+      <h2 class="text-2xl font-bold mb-1 grad-text">Reconciliation</h2>
       <p class="text-sm text-gray-500 mb-4">Upload two files; keys are inferred automatically.</p>
-      <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-4 max-w-3xl">
-        <div><label class="text-sm text-gray-400">File 1</label><input id="cmp-f1" type="file" class="block w-full text-sm mt-1">
-          <select id="cmp-conn1" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
-        <div><label class="text-sm text-gray-400">File 2</label><input id="cmp-f2" type="file" class="block w-full text-sm mt-1">
-          <select id="cmp-conn2" class="inp w-full mt-1 text-xs conn-select"><option value="">&mdash; or pick a saved connection &mdash;</option></select></div>
-        <div><label class="text-sm text-gray-400">Key columns (optional)</label><input id="cmp-keys" class="inp w-full mt-1 text-sm"></div>
-        <div><label class="text-sm text-gray-400">Exclude columns (optional)</label><input id="cmp-excl" class="inp w-full mt-1 text-sm"></div>
+      <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-6">
+        <div>
+          <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Dataset A</div>
+          <div class="flex gap-2 items-stretch">
+            <div id="cmp-zone1" class="dropzone flex-1">Drag &amp; drop or click</div>
+            <span class="text-gray-600 text-xs self-center">or</span>
+            <select id="cmp-conn1" class="inp text-xs conn-select" style="width:180px">
+              <option value="">&#128179; Use Saved Connection</option>
+            </select>
+          </div>
+          <input id="cmp-f1" type="file" class="hidden">
+          <div id="cmp-chip1" class="mt-2"></div>
+        </div>
+        <div>
+          <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Dataset B</div>
+          <div class="flex gap-2 items-stretch">
+            <div id="cmp-zone2" class="dropzone flex-1">Drag &amp; drop or click</div>
+            <span class="text-gray-600 text-xs self-center">or</span>
+            <select id="cmp-conn2" class="inp text-xs conn-select" style="width:180px">
+              <option value="">&#128179; Use Saved Connection</option>
+            </select>
+          </div>
+          <input id="cmp-f2" type="file" class="hidden">
+          <div id="cmp-chip2" class="mt-2"></div>
+        </div>
       </div>
-      <details class="card rounded-xl p-4 mb-4 max-w-3xl text-sm">
-        <summary class="cursor-pointer text-gray-400">&#9881;&#65039; Advanced Options &mdash; Reference Docs &amp; DQ Overrides</summary>
+      <details class="card rounded-xl p-4 mb-4 text-sm">
+        <summary class="cursor-pointer text-gray-400">&#9881;&#65039; Adjust columns &amp; advanced options</summary>
         <div class="mt-3 space-y-3">
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="text-xs text-gray-400">Key columns (optional)</label><input id="cmp-keys" class="inp w-full mt-1 text-sm"></div>
+            <div><label class="text-xs text-gray-400">Exclude columns (optional)</label><input id="cmp-excl" class="inp w-full mt-1 text-sm"></div>
+          </div>
           <div><label class="text-xs text-gray-400">Reference Docs (data dictionary, business rules, regulatory ref &mdash; auto-classified)</label>
             <input id="cmp-refdocs" type="file" multiple class="block w-full text-sm mt-1"></div>
           <div><label class="text-xs text-gray-400">Domain / business context (free text for the AI)</label>
@@ -102,15 +151,18 @@
           <div><label class="text-xs text-gray-400">DQ Overrides &mdash; per column</label>
             <div id="cmp-dqgrid" class="mt-1 space-y-1"></div>
             <button type="button" onclick="addDqOverrideRow('cmp')" class="btn-ghost btn rounded px-2 py-1 text-xs mt-1">+ Add column override</button></div>
+          <div><label class="text-xs text-gray-400">Match rows via free-text column (Complex Recon &mdash; extracts buy/sell + quantity)</label>
+            <input id="cmp-textcol" placeholder="free-text column name" class="inp w-full mt-1 text-sm">
+            <button onclick="runComplexRecon()" class="btn-indigo btn px-3 py-1.5 rounded-lg text-xs font-semibold mt-2">&#9889; Run Complex Recon</button></div>
         </div>
       </details>
-      <div class="flex gap-2 items-center flex-wrap">
-        <button onclick="runCompare()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">Compare</button>
-        <span class="text-gray-600 text-xs">or</span>
-        <button onclick="runCompareAI()" class="btn-indigo btn px-4 py-2 rounded-lg text-sm font-semibold" title="Load both files and ask the AI Copilot about reconciling them instead of a fixed compare">&#129302; AI Copilot Mode</button>
-        <span class="text-gray-500 text-xs">or, if there's no clean key column&hellip;</span>
-        <input id="cmp-textcol" placeholder="free-text column name" class="inp text-sm w-48">
-        <button onclick="runComplexRecon()" class="btn-indigo btn px-4 py-2 rounded-lg text-sm font-semibold" title="Match rows by extracting buy/sell side + quantity from a free-text description column">&#9889; Complex Recon</button>
+      <div class="flex gap-3 items-center flex-wrap">
+        <div class="seg" id="cmp-seg">
+          <span class="seg-btn active" data-mode="standard" onclick="setCmpMode('standard')">Standard</span>
+          <span class="seg-btn" data-mode="ai" onclick="setCmpMode('ai')">&#9889; AI Copilot</span>
+        </div>
+        <button onclick="runReconciliation()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">&#10005; Run Reconciliation</button>
+        <span class="text-gray-500 text-xs" id="cmp-mode-help">Standard compare &mdash; match by key columns, show differences.</span>
       </div>
       <div id="cmp-out" class="mt-6"></div>
     </section>
@@ -471,13 +523,15 @@ function stat(label, val, color){
     <div class="text-3xl font-extrabold" style="color:${color}">${val}</div></div>`;
 }
 
-function actionBar(sessionId){
-  return `<div class="mt-4 flex gap-2 flex-wrap">
-    <a href="/download/${sessionId}" class="btn-emerald btn rounded-lg px-4 py-2 text-sm">&#11015; Excel</a>
-    <a href="/download/${sessionId}?fmt=csv" class="btn-ghost btn rounded-lg px-4 py-2 text-sm">&#11015; CSV</a>
-    <a href="/download/${sessionId}?fmt=json" class="btn-ghost btn rounded-lg px-4 py-2 text-sm">&#11015; JSON</a>
-    <button onclick="saveToWorkspace()" class="btn-indigo btn rounded-lg px-4 py-2 text-sm">&#128190; Save to Workspace</button>
-    <button onclick="emailReport('${sessionId}')" class="btn-ghost btn rounded-lg px-4 py-2 text-sm">&#9993; Email Report</button>
+function actionBar(sessionId, elapsedSec){
+  return `<div class="card rounded-xl p-3 mb-4 flex items-center gap-2 flex-wrap">
+    <span class="text-xs font-semibold text-gray-400 mr-1">&#128190; EXPORT / SHARE:</span>
+    <a href="/download/${sessionId}" class="btn-emerald btn rounded-lg px-3 py-1.5 text-xs">&#11015; Download Excel</a>
+    <a href="/download/${sessionId}?fmt=csv" class="btn-ghost btn rounded-lg px-3 py-1.5 text-xs">&#11015; CSV</a>
+    <a href="/download/${sessionId}?fmt=json" class="btn-ghost btn rounded-lg px-3 py-1.5 text-xs">&#11015; JSON</a>
+    <button onclick="emailReport('${sessionId}')" class="btn rounded-lg px-3 py-1.5 text-xs" style="background:linear-gradient(90deg,#c2410c,#ea580c)">&#9993; Email Report</button>
+    <button onclick="saveToWorkspace()" class="btn-indigo btn rounded-lg px-3 py-1.5 text-xs">&#9889; Save to Workspace</button>
+    ${elapsedSec!=null?`<span class="ml-auto text-xs text-gray-500">&#9201; ${elapsedSec}s</span>`:''}
   </div>`;
 }
 
@@ -523,6 +577,81 @@ async function loadConnDropdowns(){
   });
 }
 loadConnDropdowns();
+
+// ---------- Drag-and-drop file zones ----------
+function wireDropzone(zoneId, inputId, chipId){
+  const zone = document.getElementById(zoneId), input = document.getElementById(inputId), chipBox = document.getElementById(chipId);
+  if(!zone || !input || !chipBox) return;
+  const updateChip = () => {
+    const f = input.files[0];
+    chipBox.innerHTML = f ? `<span class="file-chip">&#128196; ${esc(f.name)} <button onclick="event.stopPropagation();document.getElementById('${inputId}').value='';document.getElementById('${chipId}').innerHTML='';">&times;</button></span>` : '';
+  };
+  zone.onclick = () => input.click();
+  input.onchange = updateChip;
+  zone.ondragover = e => { e.preventDefault(); zone.classList.add('dragover'); };
+  zone.ondragleave = () => zone.classList.remove('dragover');
+  zone.ondrop = e => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    if(e.dataTransfer.files.length){ input.files = e.dataTransfer.files; updateChip(); }
+  };
+}
+['cmp-zone1|cmp-f1|cmp-chip1','cmp-zone2|cmp-f2|cmp-chip2'].forEach(spec=>wireDropzone(...spec.split('|')));
+
+// ---------- Reconciliation: Standard vs AI Copilot mode ----------
+let cmpMode = 'standard';
+function setCmpMode(mode){
+  cmpMode = mode;
+  document.querySelectorAll('#cmp-seg .seg-btn').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
+  document.getElementById('cmp-mode-help').textContent = mode==='standard'
+    ? 'Standard compare — match by key columns, show differences.'
+    : 'AI Copilot — load both files and let the AI Copilot investigate and reconcile them for you.';
+}
+function runReconciliation(){ return cmpMode==='standard' ? runCompare() : runCompareAI(); }
+
+// ---------- Result tabs (Summary / Exceptions / AI Copilot / Logs) ----------
+function resultTabsShell(prefix, tabs, activeKey){
+  const nav = tabs.map(t=>`<span class="result-tab-btn${t.key===activeKey?' active':''}" data-rtab="${t.key}" onclick="showResultTab('${prefix}','${t.key}')">${t.label}</span>`).join('');
+  return `<div class="flex gap-1 border-b border-[var(--line)] mb-4" id="${prefix}-restabs">${nav}</div>` +
+    tabs.map(t=>`<div data-rpanel="${t.key}" class="${t.key===activeKey?'':'hidden'}">${t.content}</div>`).join('');
+}
+function showResultTab(prefix, key){
+  const out = document.getElementById(`${prefix}-out`);
+  out.querySelectorAll('.result-tab-btn').forEach(b=>b.classList.toggle('active', b.dataset.rtab===key));
+  out.querySelectorAll('[data-rpanel]').forEach(p=>p.classList.toggle('hidden', p.dataset.rpanel!==key));
+}
+function logsPanelHTML(logs){
+  if(!logs?.length) return '<div class="text-sm text-gray-500">No processing logs for this run.</div>';
+  return `<div class="card rounded-xl p-3 text-xs font-mono space-y-1 max-h-96 overflow-auto">${
+    logs.map(l=>`<div><span class="text-gray-500">${(l.elapsed??0).toFixed?l.elapsed.toFixed(3):l.elapsed}s</span> <span class="${l.level==='WARN'?'text-amber-300':l.level==='ERROR'?'text-red-400':'text-sky-300'}">[${esc(l.level||'INFO')}]</span> ${esc(l.message||'')}</div>`).join('')
+  }</div>`;
+}
+function copilotPanelHTML(prefix, context, chips){
+  return `<div class="grid grid-cols-3 gap-4">
+    <div class="col-span-2">
+      <div class="card rounded-xl p-4 mb-3">
+        <div class="font-semibold text-sky-300 mb-1">&#9889; AI Copilot</div>
+        <div class="text-xs text-gray-400 mb-3">Full context of this analysis &mdash; ask anything in the panel &rarr;, or click a suggestion to send it. Say "remember: ..." to save a rule.</div>
+        <div class="flex flex-wrap gap-2">
+          ${chips.map(c=>`<span class="suggest-chip${c.special?' special':''}" onclick="quickChat(${JSON.stringify(c.q)})">${esc(c.label)}</span>`).join('')}
+        </div>
+      </div>
+      <div class="text-sm text-gray-400">Conversation happens in the <b class="text-sky-300">AI Copilot</b> panel on the right &rarr;</div>
+    </div>
+    <div>
+      <div class="card rounded-xl p-4">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold text-gray-400">&#128161; Dataset Memory</span>
+        </div>
+        <div id="${prefix}-dc-input-box" class="flex gap-1 mb-2">
+          <input id="${prefix}-dc-input" placeholder="e.g. exclude column X" class="inp flex-1 text-xs" onkeydown="if(event.key==='Enter')applyDatasetControl('${prefix}','${context}')">
+          <button onclick="applyDatasetControl('${prefix}','${context}')" class="btn rounded-lg px-2 text-xs">+</button>
+        </div>
+        <div id="${prefix}-dc-feedback" class="text-xs mb-1"></div>
+        <div id="${prefix}-dc-rules" class="text-xs space-y-1"><span class="text-gray-500">No saved rules yet.</span></div>
+      </div>
+    </div>
+  </div>`;
+}
 
 // ---------- Advanced options (Reference Docs + DQ/mapping hints) ----------
 function advancedHints(prefix){
@@ -583,47 +712,94 @@ function dqOverrideHints(prefix){
 // ---------- Compare ----------
 async function runCompare(){
   const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Comparing&hellip;</span>';
+  const t0 = performance.now();
   const {ok,data}=await postForm('compare',
     [['files_a','cmp-f1','conn_a_ids','cmp-conn1'],['files_b','cmp-f2','conn_b_ids','cmp-conn2']],
     {key_columns:document.getElementById('cmp-keys').value, exclude_columns:document.getElementById('cmp-excl').value,
      ...advancedHints('cmp')}, 'cmp-refdocs');
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   setSession(data.session_id); const c=data.counts||{};
-  out.innerHTML=`<div class="grid grid-cols-4 gap-3 mb-4">
-    ${stat('Matched', c.matched??'&mdash;', '#10b981')}
-    ${stat('Only in File 1', c.file1_only??0, '#f59e0b')}
-    ${stat('Only in File 2', c.file2_only??0, '#f59e0b')}
-    ${stat('Modified', c.modified??0, '#38bdf8')}</div>
+  const f1=data.files?.file1||{}, f2=data.files?.file2||{};
+
+  const summaryHTML = `
+    <div class="text-sm text-gray-400 mb-3">${esc(f1.name||'File 1')} &rarr; ${esc(f2.name||'File 2')}</div>
+    <div class="mb-4"><span class="badge" style="background:rgba(245,158,11,.15);color:#fbbf24">&#9889; Key method: ${esc(data.method||'n/a')}</span>
+      ${(data.keys||[]).length?` &mdash; ${esc((data.keys||[]).join(', '))}`:''}</div>
     <div class="grid grid-cols-2 gap-4 mb-4">
-      <div class="card rounded-xl p-4"><div class="text-xs text-gray-400 mb-2">Reconciliation breakdown</div><canvas id="cmpChart" height="160"></canvas></div>
-      <div class="card rounded-xl p-4 text-sm">
-        <div class="mb-2">Keys: <span class="badge" style="background:rgba(56,189,248,.18);color:#7dd3fc">${(data.keys||[]).join(', ')||data.method||'n/a'}</span></div>
-        <div class="text-gray-400 mb-1">Fingerprint: <span class="text-gray-200">${data.fingerprint||''}</span></div>
-        <div class="text-gray-400 mb-1">Type mismatches: <span class="text-amber-300">${(data.type_mismatches||[]).length}</span></div>
-        <div class="text-gray-400 mb-1">Null-column exceptions: <span class="text-amber-300">${(data.null_column_exceptions||[]).length}</span></div>
-        <div class="text-gray-400">Duplicates &mdash; F1: ${data.duplicates?.file1?.duplicate_rows??0} &middot; F2: ${data.duplicates?.file2?.duplicate_rows??0}</div>
-      </div></div>`;
-  if(data.modified?.length){
-    out.innerHTML += `<h3 class="font-semibold mt-2 mb-2">Modified rows (sample)</h3><div class="space-y-2">`+
+      <div class="card rounded-xl p-4"><div class="text-xs font-semibold text-gray-300 mb-1">FILE 1 &mdash; ${esc((f1.name||'').toUpperCase())} ${f1.format?`<span class="badge ml-1" style="background:rgba(56,189,248,.15);color:#7dd3fc">${esc(f1.format)} (AUTO-DETECTED)</span>`:''}</div>
+        <div class="flex gap-6 mt-2"><div><div class="text-2xl font-bold">${f1.rows??'&mdash;'}</div><div class="text-xs text-gray-500">rows</div></div>
+        <div><div class="text-2xl font-bold">${f1.columns??'&mdash;'}</div><div class="text-xs text-gray-500">columns</div></div></div></div>
+      <div class="card rounded-xl p-4"><div class="text-xs font-semibold text-gray-300 mb-1">FILE 2 &mdash; ${esc((f2.name||'').toUpperCase())} ${f2.format?`<span class="badge ml-1" style="background:rgba(56,189,248,.15);color:#7dd3fc">${esc(f2.format)} (AUTO-DETECTED)</span>`:''}</div>
+        <div class="flex gap-6 mt-2"><div><div class="text-2xl font-bold">${f2.rows??'&mdash;'}</div><div class="text-xs text-gray-500">rows</div></div>
+        <div><div class="text-2xl font-bold">${f2.columns??'&mdash;'}</div><div class="text-xs text-gray-500">columns</div></div></div></div>
+    </div>
+    <div class="grid grid-cols-3 gap-3 mb-4">
+      ${stat('Only in '+(f1.name||'File 1'), c.file1_only??0, '#ef4444')}
+      ${stat('Only in '+(f2.name||'File 2'), c.file2_only??0, '#f59e0b')}
+      ${stat('Rows modified', c.modified??0, '#f59e0b')}
+      ${stat('Common columns', data.common_columns??'&mdash;', '#38bdf8')}
+      ${stat('F1 dup rows', data.duplicates?.file1?.duplicate_rows??0, '#a855f7')}
+      ${stat('F2 dup rows', data.duplicates?.file2?.duplicate_rows??0, '#a855f7')}
+    </div>
+    <div class="card rounded-xl p-4 mb-4"><div class="text-xs text-gray-400 mb-2">Reconciliation breakdown</div><canvas id="cmpChart" height="90"></canvas></div>
+    <details class="text-sm"><summary class="cursor-pointer text-sky-300">&rarr; Adjust columns &amp; rerun</summary>
+      <div class="text-xs text-gray-400 mt-2">Use "Adjust columns &amp; advanced options" above the Run button, then run again.</div></details>`;
+
+  const exceptionsHTML = `
+    <div class="mb-4"><span class="text-gray-400 text-sm">Type mismatches:</span> <span class="text-amber-300">${(data.type_mismatches||[]).length}</span></div>
+    ${(data.type_mismatches||[]).length ? `<div class="card rounded-xl p-3 mb-4 text-xs space-y-1">${data.type_mismatches.map(t=>`<div><b class="text-sky-300">${esc(t.column)}</b>: ${esc(t.file1)} vs ${esc(t.file2)}</div>`).join('')}</div>` : ''}
+    <div class="mb-4"><span class="text-gray-400 text-sm">Null-column exceptions:</span> <span class="text-amber-300">${(data.null_column_exceptions||[]).length}</span></div>
+    ${data.modified?.length ? `<h3 class="font-semibold mt-2 mb-2">Modified rows (sample)</h3><div class="space-y-2">`+
       data.modified.slice(0,20).map(m=>`<div class="card rounded-lg p-2 text-xs"><b class="text-sky-300">${esc(m.key)}</b>: `+
-        Object.entries(m.changes).map(([k,v])=>`${esc(k)}: <span class="text-amber-300">${esc(v.file1)}</span>&rarr;<span class="text-emerald-300">${esc(v.file2)}</span>`).join(' &middot; ')+`</div>`).join('')+`</div>`;
-  }
-  out.innerHTML += actionBar(data.session_id);
-  chart('cmpChart',{type:'bar',data:{labels:['Matched','File1 only','File2 only','Modified'],
-    datasets:[{data:[c.matched||0,c.file1_only||0,c.file2_only||0,c.modified||0],
-      backgroundColor:['#10b981','#f59e0b','#f59e0b','#38bdf8'],borderRadius:6}]},
+        Object.entries(m.changes).map(([k,v])=>`${esc(k)}: <span class="text-amber-300">${esc(v.file1)}</span>&rarr;<span class="text-emerald-300">${esc(v.file2)}</span>`).join(' &middot; ')+`</div>`).join('')+`</div>` : '<div class="text-sm text-gray-500">No modified rows.</div>'}`;
+
+  const chips = [
+    {label:'Look at both schemas and suggest which columns should be mapped together', q:'Look at both schemas and suggest which columns should be mapped together.'},
+    {label:`What column should be used as the key to match rows?`, q:'What column should be used as the key to match rows between these two files?'},
+    {label:'Are there value format differences I should transform before comparing?', q:'Are there any value format differences I should transform before comparing (dates, numbers, casing)?'},
+    {label:'Which columns look like metadata or audit fields to exclude?', q:'Which columns look like metadata or audit fields that should be excluded from comparison?'},
+    {label:'Show me the full column mapping with confidence levels', q:'Show me the full column mapping you suggest with confidence levels.'},
+    {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
+  ];
+
+  out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('cmp', [
+    {key:'summary', label:'Summary', content: summaryHTML},
+    {key:'exceptions', label:'Exceptions', content: exceptionsHTML},
+    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('cmp','compare', chips)},
+    {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
+  ], 'summary');
+  chart('cmpChart',{type:'bar',data:{labels:['File1 only','File2 only','Modified'],
+    datasets:[{data:[c.file1_only||0,c.file2_only||0,c.modified||0],
+      backgroundColor:['#ef4444','#f59e0b','#f59e0b'],borderRadius:6}]},
     options:{plugins:{legend:{display:false}},scales:{x:{ticks:{color:'#94a3b8'}},y:{ticks:{color:'#94a3b8'},grid:{color:'#1e2740'}}}}});
+  loadDatasetControlRules('cmp','compare');
 }
 
-// ---------- Complex Recon (AI Copilot chat-driven) ----------
+// ---------- Reconciliation: AI Copilot mode (chat-driven, no fixed compare) ----------
 async function runCompareAI(){
   const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Loading files for the AI Copilot&hellip;</span>';
+  const t0 = performance.now();
   const {ok,data}=await postForm('lineage',[['files_a','cmp-f1'],['files_b','cmp-f2']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
   setSession(data.session_id);
-  out.innerHTML=`<div class="card rounded-xl p-4 text-sm text-gray-300">
-    Files loaded (${(data.file_names||[]).join(' vs ')}). Ask the <b class="text-sky-300">AI Copilot</b> panel &rarr;
-    about reconciling these two files instead of a fixed compare &mdash; a starter question has been filled in for you.</div>`;
+  const lr = (data.lineage_reports||[])[0] || {};
+  const chips = [
+    {label:'Look at both schemas and suggest which columns should be mapped together', q:'Look at both schemas and suggest which columns should be mapped together.'},
+    {label:`What column should be used as the key to match rows between ${lr.src_name||'File 1'} and ${lr.tgt_name||'File 2'}?`, q:`What column should be used as the key to match rows between ${lr.src_name||'File 1'} and ${lr.tgt_name||'File 2'}?`},
+    {label:'Are there value format differences I should transform before comparing?', q:'Are there any value format differences I should transform before comparing (dates, numbers, casing)?'},
+    {label:'Which columns look like metadata or audit fields to exclude?', q:'Which columns look like metadata or audit fields that should be excluded from comparison?'},
+    {label:'Show me the full column mapping with confidence levels', q:'Show me the full column mapping you suggest with confidence levels.'},
+    {label:'Full investigation', q:'Do a full investigation of these two datasets: compare schemas, suggest a join key, flag format differences, and summarize the likely reconciliation breaks.'},
+    {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
+  ];
+  const statsHTML = `<div class="grid grid-cols-3 gap-3 text-center">
+    ${stat('Source rows', lr.src_rows??'&mdash;','#38bdf8')}${stat('Target rows', lr.tgt_rows??'&mdash;','#38bdf8')}${stat('Match rate','&mdash;','#10b981')}
+  </div>`;
+  out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('cmp', [
+    {key:'copilot', label:'&#9889; AI Copilot', content: statsHTML + '<div class="mt-4">' + copilotPanelHTML('cmp','compare', chips) + '</div>'},
+    {key:'logs', label:'Logs', content: logsPanelHTML(data.proc_logs||[])},
+  ], 'copilot');
+  loadDatasetControlRules('cmp','compare');
   const chatInput = document.getElementById('chat-in');
   chatInput.value = `Compare these two files and tell me the key differences, likely join keys, and any rows that look mismatched.`;
   chatInput.focus();
