@@ -15109,34 +15109,54 @@ def _render_login_page(
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>{title} -- AI Agent Data Validation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:"Inter","Segoe UI",sans-serif;background:#eef1f6;color:#0f172a;
+body{{font-family:"Inter","Segoe UI",sans-serif;color:#0f172a;
  min-height:100vh;display:flex;align-items:center;justify-content:center;
- -webkit-font-smoothing:antialiased}}
+ -webkit-font-smoothing:antialiased;
+ background:
+   radial-gradient(1100px 550px at 108% -8%, rgba(37,99,235,.10), transparent 60%),
+   radial-gradient(900px 480px at -8% 105%, rgba(124,58,237,.08), transparent 55%),
+   radial-gradient(700px 400px at 50% -15%, rgba(2,132,199,.06), transparent 60%),
+   #eef1f6;
+ background-attachment:fixed}}
+@keyframes gradShift{{0%{{background-position:0% 50%}}50%{{background-position:100% 50%}}100%{{background-position:0% 50%}}}}
+@keyframes glowPulse{{0%,100%{{box-shadow:0 3px 14px -2px rgba(37,99,235,.55),0 0 0 3px rgba(37,99,235,.1),0 0 22px -4px rgba(124,58,237,.35)}}
+ 50%{{box-shadow:0 3px 18px -1px rgba(37,99,235,.7),0 0 0 5px rgba(37,99,235,.14),0 0 30px -2px rgba(124,58,237,.55)}}}}
 .auth-wrap{{width:100%;max-width:400px;padding:1.5rem}}
-.auth-card{{background:#fff;border:1px solid #e2e8f0;border-top:2px solid #2563eb;
- border-radius:12px;padding:2rem 2rem 1.75rem;box-shadow:0 1px 3px rgba(15,23,42,.08),0 4px 12px rgba(15,23,42,.05)}}
-.auth-logo{{display:flex;align-items:center;gap:.65rem;margin-bottom:1.75rem}}
-.auth-logo-mark{{width:36px;height:36px;background:#2563eb;border-radius:8px;
- display:flex;align-items:center;justify-content:center;font-size:1.1rem;color:#fff;flex-shrink:0}}
-.auth-logo-text h1{{font-size:.95rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#0f172a}}
-.auth-logo-text p{{font-size:.68rem;color:#64748b;margin-top:.1rem;letter-spacing:.06em;text-transform:uppercase}}
-.auth-title{{font-size:1.15rem;font-weight:700;color:#0f172a;margin-bottom:.25rem}}
+.auth-card{{background:linear-gradient(180deg,#ffffff,#f6f8fb);border:1.5px solid rgba(15,23,42,.13);
+ border-radius:16px;padding:2rem 2rem 1.75rem;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 20px 50px -20px rgba(37,99,235,.25),0 2px 8px rgba(15,23,42,.06)}}
+.auth-logo{{display:flex;align-items:center;gap:.75rem;margin-bottom:1.75rem}}
+.auth-logo-mark{{width:42px;height:42px;background:linear-gradient(135deg,#2563eb,#7c3aed);border-radius:11px;
+ display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:#fff;flex-shrink:0;
+ animation:glowPulse 4.5s ease-in-out infinite}}
+.auth-logo-text h1{{font-family:"Sora","Inter",sans-serif;font-size:1rem;font-weight:700;letter-spacing:.03em;
+ background:linear-gradient(90deg,#2563eb,#7c3aed,#0284c7,#2563eb);background-size:300% auto;
+ -webkit-background-clip:text;background-clip:text;color:transparent;animation:gradShift 7s ease infinite}}
+.auth-logo-text p{{font-size:.68rem;color:#64748b;margin-top:.15rem;letter-spacing:.06em;text-transform:uppercase}}
+.auth-title{{font-family:"Sora","Inter",sans-serif;font-size:1.2rem;font-weight:700;color:#0f172a;margin-bottom:.25rem}}
 .auth-subtitle{{font-size:.78rem;color:#64748b;margin-bottom:1.5rem}}
 .auth-field{{margin-bottom:.9rem}}
 .auth-field label{{display:block;font-size:.72rem;font-weight:700;color:#64748b;
  text-transform:uppercase;letter-spacing:.04em;margin-bottom:.3rem}}
 .auth-hint{{font-weight:400;color:#64748b;text-transform:none;letter-spacing:0}}
-.auth-field input{{width:100%;padding:.5rem .75rem;border:1px solid #cbd5e1;border-radius:8px;
+.auth-field input{{width:100%;padding:.5rem .75rem;border:1.5px solid rgba(15,23,42,.13);border-radius:9px;
  font-size:.86rem;background:#fff;color:#0f172a;outline:none;
- transition:border-color .15s;font-family:inherit}}
-.auth-field input:focus{{border-color:#2563eb}}
+ transition:border-color .15s,box-shadow .15s;font-family:inherit}}
+.auth-field input:focus{{border-color:#2563eb;box-shadow:0 0 0 3.5px rgba(37,99,235,.12)}}
 .auth-field input::placeholder{{color:#94a3b8}}
-.auth-btn{{width:100%;padding:.6rem;border:none;border-radius:8px;background:#2563eb;
- color:#fff;font-weight:700;font-size:.88rem;cursor:pointer;margin-top:.25rem;
- transition:filter .15s;letter-spacing:.01em}}
-.auth-btn:hover{{filter:brightness(1.1)}}
+.auth-btn{{position:relative;overflow:hidden;width:100%;padding:.65rem;border:none;border-radius:10px;
+ background:linear-gradient(90deg,#2563eb,#4f46e5);color:#fff;font-weight:700;font-size:.88rem;cursor:pointer;
+ margin-top:.25rem;transition:filter .15s,transform .12s,box-shadow .2s;letter-spacing:.01em;
+ box-shadow:0 2px 10px -3px rgba(37,99,235,.5)}}
+.auth-btn::after{{content:'';position:absolute;inset:0;
+ background:linear-gradient(115deg,transparent 20%,rgba(255,255,255,.35) 40%,transparent 60%);
+ background-size:250% 100%;background-position:150% 0;transition:background-position .55s ease}}
+.auth-btn:hover::after{{background-position:-50% 0}}
+.auth-btn:hover{{filter:brightness(1.1);box-shadow:0 6px 18px -4px rgba(37,99,235,.65);transform:translateY(-1.5px)}}
 .auth-error{{background:#fef2f2;border:1px solid #fecaca;
  color:#dc2626;border-radius:7px;padding:.5rem .75rem;font-size:.8rem;margin-bottom:.9rem}}
 .auth-ok{{background:#f0fdf4;border:1px solid #bbf7d0;
@@ -15153,8 +15173,8 @@ body{{font-family:"Inter","Segoe UI",sans-serif;background:#eef1f6;color:#0f172a
     <div class="auth-logo">
       <div class="auth-logo-mark">&#9670;</div>
       <div class="auth-logo-text">
-        <h1>Data Validation</h1>
-        <p>AI Agent</p>
+        <h1>AI Agent</h1>
+        <p>Data Validation</p>
       </div>
     </div>
     <div class="auth-title">{title}</div>
@@ -15173,24 +15193,39 @@ def _render_change_password_page() -> str:
 <head>
 <meta charset="UTF-8"/>
 <title>Change Password</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet"/>
 <style>
 *{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:"Inter","Segoe UI",sans-serif;background:#eef1f6;color:#0f172a;
+body{{font-family:"Inter","Segoe UI",sans-serif;color:#0f172a;
 min-height:100vh;display:flex;align-items:center;justify-content:center;
--webkit-font-smoothing:antialiased}}
+-webkit-font-smoothing:antialiased;
+background:
+  radial-gradient(1100px 550px at 108% -8%, rgba(37,99,235,.10), transparent 60%),
+  radial-gradient(900px 480px at -8% 105%, rgba(124,58,237,.08), transparent 55%),
+  #eef1f6;
+background-attachment:fixed}}
 .wrap{{width:100%;max-width:380px;padding:1.5rem}}
-.card{{background:#fff;border:1px solid #e2e8f0;border-top:2px solid #2563eb;
-border-radius:12px;padding:1.75rem;box-shadow:0 1px 3px rgba(15,23,42,.08),0 4px 12px rgba(15,23,42,.05)}}
-h2{{font-size:1rem;font-weight:700;margin-bottom:1.25rem;color:#0f172a}}
+.card{{background:linear-gradient(180deg,#ffffff,#f6f8fb);border:1.5px solid rgba(15,23,42,.13);
+border-radius:16px;padding:1.75rem;
+box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 20px 50px -20px rgba(37,99,235,.25),0 2px 8px rgba(15,23,42,.06)}}
+h2{{font-family:"Sora","Inter",sans-serif;font-size:1.05rem;font-weight:700;margin-bottom:1.25rem;color:#0f172a}}
 .field{{margin-bottom:.85rem}}
 .field label{{display:block;font-size:.7rem;font-weight:700;color:#64748b;
 text-transform:uppercase;letter-spacing:.04em;margin-bottom:.28rem}}
-.field input{{width:100%;padding:.48rem .7rem;border:1px solid #cbd5e1;border-radius:7px;
+.field input{{width:100%;padding:.48rem .7rem;border:1.5px solid rgba(15,23,42,.13);border-radius:8px;
 font-size:.84rem;background:#fff;color:#0f172a;outline:none;
-transition:border-color .15s}}
-.field input:focus{{border-color:#2563eb}}
-.btn{{width:100%;padding:.55rem;border:none;border-radius:7px;background:#2563eb;
-color:#fff;font-weight:700;font-size:.85rem;cursor:pointer;margin-top:.2rem}}
+transition:border-color .15s,box-shadow .15s}}
+.field input:focus{{border-color:#2563eb;box-shadow:0 0 0 3.5px rgba(37,99,235,.12)}}
+.btn{{position:relative;overflow:hidden;width:100%;padding:.6rem;border:none;border-radius:9px;
+background:linear-gradient(90deg,#2563eb,#4f46e5);
+color:#fff;font-weight:700;font-size:.85rem;cursor:pointer;margin-top:.2rem;
+transition:filter .15s,transform .12s,box-shadow .2s;box-shadow:0 2px 10px -3px rgba(37,99,235,.5)}}
+.btn::after{{content:'';position:absolute;inset:0;
+background:linear-gradient(115deg,transparent 20%,rgba(255,255,255,.35) 40%,transparent 60%);
+background-size:250% 100%;background-position:150% 0;transition:background-position .55s ease}}
+.btn:hover::after{{background-position:-50% 0}}
+.btn:hover{{filter:brightness(1.1);box-shadow:0 6px 18px -4px rgba(37,99,235,.65);transform:translateY(-1.5px)}}
 #msg{{margin-top:.75rem;font-size:.78rem;min-height:1.1rem;text-align:center}}
 a{{color:#2563eb;font-size:.76rem;display:block;text-align:center;margin-top:1rem}}
 </style>
