@@ -819,6 +819,19 @@ function dqOverrideHints(prefix){
 }
 
 // ---------- Compare ----------
+function classifyBreakCol(col){
+  if(/date|time|_dt$|^dt\b/i.test(col)) return 'TIMING';
+  if(/amount|amt|price|qty|quantity|value|balance|notional|^net|^gross/i.test(col)) return 'AMOUNT';
+  return 'VALUE';
+}
+function breakTypeColor(col){
+  return {TIMING:'#0284c7', AMOUNT:'#7c3aed', VALUE:'#b45309'}[classifyBreakCol(col)];
+}
+function numericDiff(a,b){
+  const na = parseFloat(a), nb = parseFloat(b);
+  if(isNaN(na)||isNaN(nb)) return null;
+  return +(nb-na).toFixed(6);
+}
 function topBrokenColumns(modified){
   const tally = {};
   (modified||[]).forEach(m => { Object.keys(m.changes||{}).forEach(col => { tally[col] = (tally[col]||0) + 1; }); });
@@ -872,10 +885,19 @@ function renderCompareResult(data, t0, initialTab){
   setSession(data.session_id); const c=data.counts||{};
   const f1=data.files?.file1||{}, f2=data.files?.file2||{};
   const allCols = data.common_columns_list || [];
+  const _maxRows = Math.max(f1.rows||0, f2.rows||0);
+  const _breaks = (c.file1_only||0)+(c.file2_only||0)+(c.modified||0);
+  const _breakRate = _maxRows ? _breaks/_maxRows : 0;
+  const _status = _breaks===0 ? 'PASS' : (_breakRate < 0.05 ? 'WARN' : 'FAIL');
+  const _statusColor = {PASS:'#059669', WARN:'#b45309', FAIL:'#dc2626'}[_status];
+  const _matchRate = _maxRows ? (((c.matched||0)/_maxRows)*100).toFixed(1) : '0.0';
 
   const summaryHTML = `
     <div class="text-sm text-gray-400 mb-3">${esc(f1.name||'File 1')} &rarr; ${esc(f2.name||'File 2')}</div>
-    <div class="mb-4"><span class="badge" style="background:rgba(217,119,6,.12);color:#b45309">&#9889; Key method: ${esc(data.method||'n/a')}</span>
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+      <span class="badge" style="background:${_statusColor}22;color:${_statusColor}">${_status==='PASS'?'&#10003;':'&#9888;'} ${_status}</span>
+      <span class="badge" style="background:rgba(56,189,248,.12);color:#0369a1">Match rate: ${_matchRate}%</span>
+      <span class="badge" style="background:rgba(217,119,6,.12);color:#b45309">&#9889; Key method: ${esc(data.method||'n/a')}</span>
       ${(data.keys||[]).length?` &mdash; ${esc((data.keys||[]).join(', '))}`:''}</div>
     <div class="grid grid-cols-2 gap-4 mb-4">
       <div class="card rounded-xl p-4"><div class="text-xs font-semibold text-gray-300 mb-1">FILE 1 &mdash; ${esc((f1.name||'').toUpperCase())} ${f1.format?`<span class="badge ml-1" style="background:rgba(2,132,199,.12);color:#0369a1">${esc(f1.format)} (AUTO-DETECTED)</span>`:''}</div>
@@ -948,8 +970,19 @@ function renderCompareResult(data, t0, initialTab){
     </details>
     <details class="mb-4" ${(c.modified||0)>0?'open':''}>
       <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(217,119,6,.08)">&equals; Rows in both files with changed values (${c.modified??0})</summary>
-      <div class="mt-2 space-y-2 text-xs">${(data.modified||[]).length ? data.modified.slice(0,50).map(m=>`<div class="card rounded-lg p-2"><b class="text-sky-300">${esc(m.key)}</b>: `+
-        Object.entries(m.changes).map(([k,v])=>`${esc(k)}: <span class="text-amber-300">${esc(v.file1)}</span>&rarr;<span class="text-emerald-300">${esc(v.file2)}</span>`).join(' &middot; ')+`</div>`).join('') : '<span class="text-gray-500">No modified rows.</span>'}</div>
+      <div class="mt-2 text-xs">${(data.modified||[]).length ? `<div class="card rounded-xl overflow-auto"><table class="w-full text-xs">
+        <thead class="text-gray-400"><tr><th class="p-2 text-left">Key</th><th class="p-2 text-left">Type</th><th class="p-2 text-left">Column</th><th class="p-2 text-left">Source Value</th><th class="p-2 text-left">Target Value</th><th class="p-2 text-left">Diff</th></tr></thead>
+        <tbody>${data.modified.slice(0,50).flatMap(m=>Object.entries(m.changes).map(([col,v])=>{
+          const d = numericDiff(v.file1, v.file2);
+          const diffColor = d==null ? '#94a3b8' : (d>=0 ? '#059669' : '#dc2626');
+          return `<tr class="border-t border-[var(--line)]"><td class="p-2 font-mono">${esc(m.key)}</td>
+            <td class="p-2"><span class="badge" style="background:${breakTypeColor(col)}22;color:${breakTypeColor(col)}">${classifyBreakCol(col)}</span></td>
+            <td class="p-2 font-medium">${esc(col)}</td>
+            <td class="p-2">${esc(v.file1)}</td>
+            <td class="p-2">${esc(v.file2)}</td>
+            <td class="p-2" style="color:${diffColor}">${d==null?'&mdash;':d}</td></tr>`;
+        })).join('')}</tbody>
+      </table></div>` : '<span class="text-gray-500">No modified rows.</span>'}</div>
     </details>
     ${(data.null_column_exceptions||[]).length ? `<details class="mb-4" open>
       <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(37,99,235,.08)">&#9632; Null column exceptions &mdash; column populated on one side, entirely null on the other (${data.null_column_exceptions.length} columns)</summary>

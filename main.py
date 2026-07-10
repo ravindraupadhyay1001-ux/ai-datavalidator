@@ -19006,6 +19006,7 @@ def _run_llm_recon_full(session_id: str) -> dict | None:
         base_df.copy(), cmp_df.copy(), params
     )
     diff = compare_dataframes(src_df, tgt_df, manual_keys, True, exclude, force_data_cols=force_data_cols)
+    mapping = analyze_mapping(src_df, tgt_df, base_name, cmp_name, None)
 
     new_session_id = str(uuid.uuid4())
     _chat_contexts[new_session_id] = {
@@ -19020,7 +19021,13 @@ def _run_llm_recon_full(session_id: str) -> dict | None:
     }
     _results_store[new_session_id] = {
         **stored,
-        "dataframes": stored["dataframes"],
+        "dataframes": stored["dataframes"],  # preserve original (pre-transform) files for chained runs
+        "pairs": [{
+            "file1_name": base_name, "file2_name": cmp_name,
+            "file1_format": base_df.attrs.get("_format", ""), "file2_format": cmp_df.attrs.get("_format", ""),
+            "file1_delimiter": base_df.attrs.get("_delimiter", ""), "file2_delimiter": cmp_df.attrs.get("_delimiter", ""),
+            "diff": diff, "mapping": mapping,
+        }],
         "dataset_fingerprint": fingerprint,
         "recon_params_applied": params,
         "recon_key_warning": key_warning,
