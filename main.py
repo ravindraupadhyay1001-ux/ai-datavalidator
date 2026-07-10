@@ -16793,24 +16793,27 @@ async def analyze(request: Request):
 
     # -- Session storage --
     _recon_ctx: dict = {}
-    if action == "lineage":
+    if action in ("lineage", "compare"):
       # Always set mode=recon so /recon/run/ can serve the session even when
-      # lineage_reports is empty (e.g. first upload with no rules yet saved).
+      # lineage_reports is empty (e.g. first upload with no rules yet saved), and
+      # so the reconciliation chat/"remember:" rule capture works whether the
+      # session came from Standard mode's compare or AI Copilot's compare.
       _lr = lineage_reports[0] if lineage_reports else {}
-      src_name_ctx, tgt_name_ctx = (dataframes[0][0], dataframes[1][0]) if len(dataframes) >= 2 else ("", "")  # OCR-UNCERTAIN: line-wrap reconstructed from photo
+      src_name_ctx, tgt_name_ctx = (dataframes[0][0], dataframes[1][0]) if len(dataframes) >= 2 else ("", "")
+
+      def _chat_schema_summary(df: pd.DataFrame) -> list[dict]:
+        return [{"column": col, "dtype": str(df[col].dtype),
+                  "sample": df[col].dropna().astype(str).head(5).tolist()}
+                for col in df.columns]
+
       _recon_ctx = {
         "mode": "recon",
-
-
-
-    # ==== SOURCE PAGE 0762 ====
-
         "src_name":  _lr.get("src_name", src_name_ctx),
         "tgt_name":  _lr.get("tgt_name", tgt_name_ctx),
         "src_rows":  _lr.get("src_rows",  len(dataframes[0][1]) if dataframes else 0),
         "tgt_rows":  _lr.get("tgt_rows",  len(dataframes[1][1]) if len(dataframes) > 1 else 0),
-        "src_schema": _lr.get("src_schema", []),
-        "tgt_schema": _lr.get("tgt_schema", []),
+        "src_schema": _lr.get("src_schema") or (_chat_schema_summary(dataframes[0][1]) if dataframes else []),
+        "tgt_schema": _lr.get("tgt_schema") or (_chat_schema_summary(dataframes[1][1]) if len(dataframes) > 1 else []),
         "saved_rules": _fp_get_rules(_dataset_fingerprint, cols1=_cols1, cols2=_cols2,
                       file_names=_file_names, module="recon"),
         "dataset_fingerprint": _dataset_fingerprint,
@@ -18403,6 +18406,16 @@ async def chat(request: Request):
                 if r.get("category") != "recon_hints"
             )
 
+        comparisons = context.get("comparisons") or []
+        results_text = ""
+        if comparisons:
+            lines = []
+            for cmp_r in comparisons:
+                lines.append(
+                    f"  {cmp_r.get('pair','')}: {cmp_r.get('added',0)} rows only in target, "
+                    f"{cmp_r.get('removed',0)} rows only in source, {cmp_r.get('modified',0)} rows with changed values")
+            results_text = "\n\nCOMPARISON RESULTS (already computed by the deterministic recon engine -- these are the real, final numbers, not estimates):\n" + "\n".join(lines)
+
         system = (
             "You are an AI Copilot for data reconciliation. "
             "The user has uploaded two datasets and wants to compare them. "
@@ -18415,14 +18428,13 @@ async def chat(request: Request):
             f"SOURCE FILE: {context.get('src_name')} ({context.get('src_rows')} rows)\n"
             f"{_fmt_schema(src_schema)}\n\n"
             f"TARGET FILE: {context.get('tgt_name')} ({context.get('tgt_rows')} rows)\n"
-
-
-# ==== SOURCE PAGE 0825 ====
-
             f"{_fmt_schema(tgt_schema)}\n"
+            f"{results_text}\n"
             f"{saved_rule_text}\n\n"
             "When the user defines a rule (mapping, transform, key, exclusion), "
             "confirm it and tell them to type: remember: <the rule> -- to save it for future runs.\n"
+            "If comparison results are given above, ground your answer in those exact numbers -- "
+            "do not guess or invent counts.\n"
             "Be concise. Use bullet points. Always refer to actual column names from the schemas above."
         )
 
