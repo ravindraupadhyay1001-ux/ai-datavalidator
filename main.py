@@ -19084,6 +19084,17 @@ def _run_llm_recon_full(session_id: str) -> dict | None:
     return resp
 
 
+@app.post("/recon/run-llm/{session_id}")
+async def recon_run_llm(session_id: str):
+    """Direct entry point for AI Copilot mode's "Run Reconciliation" button --
+    same LLM-driven rule pipeline as typing "run recon" in chat, but triggered
+    immediately on run instead of requiring a follow-up chat message."""
+    result = _run_llm_recon_full(session_id)
+    if result is None:
+        raise HTTPException(404, "Session not found or missing stored files -- please re-upload.")
+    return JSONResponse(_sanitize_json(result))
+
+
 @app.post("/recon/run/{session_id}")
 async def recon_run(session_id: str, request: Request):
 

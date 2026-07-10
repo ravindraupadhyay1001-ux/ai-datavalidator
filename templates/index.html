@@ -695,8 +695,8 @@ function setCmpMode(mode){
   cmpMode = mode;
   document.querySelectorAll('#cmp-seg .seg-btn').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
   document.getElementById('cmp-mode-help').textContent = mode==='standard'
-    ? 'Standard compare — match by key columns, show differences.'
-    : 'AI Copilot — load both files and let the AI Copilot investigate and reconcile them for you.';
+    ? 'Standard compare — auto-inferred key columns, show differences.'
+    : 'AI Copilot — the LLM reads any saved rules for this schema, derives keys/exclusions/transforms, then reconciles and opens the chat for follow-up.';
 }
 function runReconciliation(){ return cmpMode==='standard' ? runCompare() : runCompareAI(); }
 
@@ -1005,16 +1005,24 @@ async function runCompare(){
   renderCompareResult(data, t0);
 }
 
-// ---------- Reconciliation: AI Copilot mode -- runs the same real comparison as
-// Standard mode (so you get a full report, not just bare stats), but opens
-// straight on the Copilot chat tab so you can immediately refine keys/rules or
-// ask questions about the results that are already on screen. ----------
+// ---------- Reconciliation: AI Copilot mode -- loads the files, then runs the
+// LLM-driven rule pipeline (same as typing "run recon" in chat): saved rules for
+// this schema are read, the LLM converts them into execution parameters
+// (key/exclude/transforms/aggregation), they're applied to both files, and the
+// same deterministic compare engine runs -- so this is genuinely LLM-parameterised,
+// not just Standard mode's auto-inferred-key compare shown on a different tab. ----------
 async function runCompareAI(){
-  const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Running AI Copilot reconciliation&hellip;</span>';
+  const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Loading files for the AI Copilot&hellip;</span>';
   const t0 = performance.now();
   const {ok,data}=await postForm('compare',[['files_a','cmp-f1'],['files_b','cmp-f2']], {}, null);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
-  await renderCompareResult(data, t0, 'copilot');
+  out.innerHTML='<span class="text-gray-400">Applying saved rules and running the AI-driven reconciliation&hellip;</span>';
+  let finalData = data;
+  try{
+    const r = await fetch(`/recon/run-llm/${data.session_id}`, {method:'POST'});
+    if(r.ok) finalData = await r.json();
+  }catch(e){ /* fall back to the plain compare result below */ }
+  await renderCompareResult(finalData, t0, 'copilot');
   const chatInput = document.getElementById('chat-in');
   if(chatInput){
     chatInput.value = `Look at these reconciliation results and tell me what's driving the breaks, and whether the key/exclusions should change.`;
