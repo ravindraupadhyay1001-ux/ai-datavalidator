@@ -866,7 +866,8 @@ async function rerunCompare(prefix){
   renderCompareResult(data, t0);
   out.scrollTop = priorScroll;
 }
-function renderCompareResult(data, t0){
+function renderCompareResult(data, t0, initialTab){
+  initialTab = initialTab || 'summary';
   const out=document.getElementById('cmp-out');
   setSession(data.session_id); const c=data.counts||{};
   const f1=data.files?.file1||{}, f2=data.files?.file2||{};
@@ -975,7 +976,8 @@ function renderCompareResult(data, t0){
     {key:'exceptions', label:`Exceptions (${(c.modified||0)+(c.file1_only||0)+(c.file2_only||0)})`, content: exceptionsHTML},
     {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('cmp','compare', chips)},
     {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
-  ], 'summary');
+  ], initialTab);
+  if(initialTab==='copilot') mountCopilotChat('cmp');
   loadDatasetControlRules('cmp','compare');
 }
 async function runCompare(){
@@ -988,35 +990,21 @@ async function runCompare(){
   renderCompareResult(data, t0);
 }
 
-// ---------- Reconciliation: AI Copilot mode (chat-driven, no fixed compare) ----------
+// ---------- Reconciliation: AI Copilot mode -- runs the same real comparison as
+// Standard mode (so you get a full report, not just bare stats), but opens
+// straight on the Copilot chat tab so you can immediately refine keys/rules or
+// ask questions about the results that are already on screen. ----------
 async function runCompareAI(){
-  const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Loading files for the AI Copilot&hellip;</span>';
+  const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Running AI Copilot reconciliation&hellip;</span>';
   const t0 = performance.now();
-  const {ok,data}=await postForm('lineage',[['files_a','cmp-f1'],['files_b','cmp-f2']]);
+  const {ok,data}=await postForm('compare',[['files_a','cmp-f1'],['files_b','cmp-f2']], {}, null);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
-  setSession(data.session_id);
-  const lr = (data.lineage_reports||[])[0] || {};
-  const chips = [
-    {label:'Look at both schemas and suggest which columns should be mapped together', q:'Look at both schemas and suggest which columns should be mapped together.'},
-    {label:`What column should be used as the key to match rows between ${lr.src_name||'File 1'} and ${lr.tgt_name||'File 2'}?`, q:`What column should be used as the key to match rows between ${lr.src_name||'File 1'} and ${lr.tgt_name||'File 2'}?`},
-    {label:'Are there value format differences I should transform before comparing?', q:'Are there any value format differences I should transform before comparing (dates, numbers, casing)?'},
-    {label:'Which columns look like metadata or audit fields to exclude?', q:'Which columns look like metadata or audit fields that should be excluded from comparison?'},
-    {label:'Show me the full column mapping with confidence levels', q:'Show me the full column mapping you suggest with confidence levels.'},
-    {label:'Full investigation', q:'Do a full investigation of these two datasets: compare schemas, suggest a join key, flag format differences, and summarize the likely reconciliation breaks.'},
-    {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
-  ];
-  const statsHTML = `<div class="grid grid-cols-3 gap-3 text-center">
-    ${stat('Source rows', lr.src_rows??'&mdash;','#38bdf8')}${stat('Target rows', lr.tgt_rows??'&mdash;','#38bdf8')}${stat('Match rate','&mdash;','#10b981')}
-  </div>`;
-  out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('cmp', [
-    {key:'copilot', label:'&#9889; AI Copilot', content: statsHTML + '<div class="mt-4">' + copilotPanelHTML('cmp','compare', chips) + '</div>'},
-    {key:'logs', label:'Logs', content: logsPanelHTML(data.proc_logs||[])},
-  ], 'copilot');
-  mountCopilotChat('cmp');
-  loadDatasetControlRules('cmp','compare');
+  await renderCompareResult(data, t0, 'copilot');
   const chatInput = document.getElementById('chat-in');
-  chatInput.value = `Compare these two files and tell me the key differences, likely join keys, and any rows that look mismatched.`;
-  chatInput.focus();
+  if(chatInput){
+    chatInput.value = `Look at these reconciliation results and tell me what's driving the breaks, and whether the key/exclusions should change.`;
+    chatInput.focus();
+  }
 }
 // ---------- Quality / Profile / Governance -- AI Copilot mode ----------
 async function _runAICopilotMode(action, fileId, prefix, context, label, connId){
