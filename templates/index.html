@@ -739,7 +739,7 @@ function copilotPanelHTML(prefix, context, chips){
     <div class="col-span-2">
       <div class="card rounded-xl p-4 mb-3">
         <div class="font-semibold text-sky-300 mb-1">&#9889; AI Copilot</div>
-        <div class="text-xs text-gray-400 mb-3">Full context of this analysis &mdash; ask anything below, or click a suggestion to send it. Say "remember: ..." to save a rule.</div>
+        <div class="text-xs text-gray-400 mb-3">Full context of this analysis &mdash; ask anything below, or click a suggestion to send it. Say "remember: ..." to save a rule${context==='compare'?', then "run recon" to re-apply all saved rules and refresh the report':''}.</div>
         <div class="flex flex-wrap gap-2">
           ${chips.map(c=>`<span class="suggest-chip${c.special?' special':''}" onclick="quickChat(${JSON.stringify(c.q)})">${esc(c.label)}</span>`).join('')}
         </div>
@@ -1441,7 +1441,23 @@ const HELP_CONTENT = {
     <p>Compares two files (or two saved Workspace connections) and reports matched rows, rows only in one side,
     and modified rows with per-field diffs. Keys are auto-inferred if left blank.</p>
     <p class="mt-2 text-gray-400">After a run, open <b>Adjust columns &amp; rerun</b> in the Summary tab to pick
-    the join key or exclude columns and rerun in place.</p>`,
+    the join key or exclude columns and rerun in place.</p>
+    <p class="mt-3 font-semibold text-sky-300">&#9889; AI Copilot &mdash; LLM-driven reconciliation</p>
+    <p class="mt-1 text-gray-400">Switch to <b>AI Copilot</b> mode and click Run: the LLM reads any rules you've
+    saved for this file schema and turns them into real join keys, column renames, value transforms, and
+    aggregation &mdash; then runs the same comparison engine as Standard mode.</p>
+    <p class="mt-2 text-gray-400">Teach it a rule anytime by typing in the chat, e.g.:</p>
+    <ul class="mt-1 ml-4 list-disc text-gray-400 space-y-0.5">
+      <li><code>remember: use trade_id and leg_id as the key</code></li>
+      <li><code>remember: exclude the load_date and etl_id columns</code></li>
+      <li><code>remember: strip commas from the notional column on both sides</code></li>
+      <li><code>remember: parse Side from the Description column using regex (buy|sell)</code></li>
+      <li><code>remember: sum qty by trade_id on the target before comparing</code></li>
+    </ul>
+    <p class="mt-2 text-gray-400">Rules are saved against this file pair's schema and reload automatically next
+    time you upload matching files &mdash; even in a new session. Type <code>run recon</code> in the chat anytime
+    to re-apply all saved rules and refresh the report. Audit/ETL metadata columns (e.g. <code>created_at</code>,
+    <code>load_date</code>) and surrogate integer keys are auto-excluded with no rule needed.</p>`,
   quality: `<h3 class="font-semibold text-sky-300 mb-2">Data Quality</h3>
     <p>Scores a file across Completeness, Uniqueness, Validity, Consistency, Conformity and Precision, with a
     letter grade and per-rule PASS/FAIL results. Pick a BFSI Rule Pack (Trade, Position, Payments, MiFID II,
