@@ -894,6 +894,11 @@ function renderCompareResult(data, t0, initialTab){
 
   const summaryHTML = `
     <div class="text-sm text-gray-400 mb-3">${esc(f1.name||'File 1')} &rarr; ${esc(f2.name||'File 2')}</div>
+    ${data.llm_error ? `<div class="card rounded-xl p-3 mb-4 text-xs" style="background:rgba(220,38,38,.06);border-color:rgba(220,38,38,.3)">
+      &#9888;&#65039; <b>${data.rules_applied||0} saved rule(s) for this schema were NOT applied</b> &mdash; the LLM call to convert
+      them into parameters failed: <code>${esc(data.llm_error)}</code>. This run used a plain auto-detected key with no
+      transforms. Configure an LLM provider under <b>Settings &rarr; LLM Provider</b> and try again.
+    </div>` : ''}
     <div class="mb-4 flex flex-wrap items-center gap-2">
       <span class="badge" style="background:${_statusColor}22;color:${_statusColor}">${_status==='PASS'?'&#10003;':'&#9888;'} ${_status}</span>
       <span class="badge" style="background:rgba(56,189,248,.12);color:#0369a1">Match rate: ${_matchRate}%</span>

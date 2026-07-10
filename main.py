@@ -18394,7 +18394,14 @@ async def chat(request: Request):
             return JSONResponse({"reply": "I couldn't find both files for this session anymore -- please re-upload and try again."})
         c = result["counts"]
         n_rules = result.get("rules_applied", 0)
-        rule_note = f"Applied {n_rules} saved rule(s). " if n_rules else "No saved rules for this schema yet -- used auto-detected key and no transforms. "
+        if result.get("llm_error"):
+            rule_note = (f"⚠️ You have {n_rules} saved rule(s) for this schema, but the LLM call to convert "
+                         f"them into parameters failed ({result['llm_error']}) -- ran with plain auto-detected "
+                         f"key and NO rules applied. Check Settings → LLM Provider for a valid API key. ")
+        elif n_rules:
+            rule_note = f"Applied {n_rules} saved rule(s). "
+        else:
+            rule_note = "No saved rules for this schema yet -- used auto-detected key and no transforms. "
         reply = (
             f"✅ Ran reconciliation. {rule_note}"
             f"Key: {result.get('method','n/a')}. "
@@ -18600,8 +18607,10 @@ Key rules:
 
         # ==== SOURCE PAGE 0833 ====
         return result
-    except Exception:
-        return {}
+    except Exception as exc:
+        # Surface the failure instead of silently running a plain compare --
+        # otherwise saved rules look like they're being ignored with no explanation.
+        return {"_llm_error": str(exc)}
 
 
 def _apply_recon_params(
@@ -19001,6 +19010,7 @@ def _run_llm_recon_full(session_id: str) -> dict | None:
                                  file_names=[base_name, cmp_name])
     recon_rules = [r for r in saved_rules if r.get("category") not in ("recon_hints",)]
     params = _parse_recon_rules_to_params(recon_rules, list(base_df.columns), list(cmp_df.columns))
+    llm_error = params.pop("_llm_error", None)
 
     src_df, tgt_df, manual_keys, exclude, key_warning, force_data_cols = _prepare_recon(
         base_df.copy(), cmp_df.copy(), params
@@ -19086,6 +19096,7 @@ def _run_llm_recon_full(session_id: str) -> dict | None:
         "rules_applied": len(recon_rules),
         "params_applied": params,
         "key_warning": key_warning,
+        "llm_error": llm_error,
     }
     _results_store[new_session_id]["_digest"] = resp
     return resp
