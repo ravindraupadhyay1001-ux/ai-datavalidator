@@ -898,17 +898,32 @@ function renderCompareResult(data, t0, initialTab){
       <div class="mt-4">${allCols.length ? keyExcludeCheckboxes('cmp', allCols, data.keys||[]) : '<div class="text-xs text-gray-500">Rerun requires the original session (re-run the compare above first).</div>'}</div>
     </details>`;
 
-  const topBroken = topBrokenColumns(data.modified);
+  const wf = data.waterfall || {};
+  const topBroken = (wf.top_broken_cols && wf.top_broken_cols.length) ? wf.top_broken_cols.map(t=>[t.col,t.count]) : topBrokenColumns(data.modified);
   const maxBroken = topBroken.length ? topBroken[0][1] : 1;
+  const wfBuckets = [
+    ['Missing target', wf.missing_target, '#dc2626'],
+    ['Missing source', wf.missing_source, '#b45309'],
+    ['Timing breaks', wf.timing_breaks, '#0284c7'],
+    ['Amount breaks', wf.amount_breaks, '#7c3aed'],
+    ['Other breaks', wf.other_breaks, '#059669'],
+  ].filter(b=>b[1]);
   const exceptionsHTML = `
     <div class="flex flex-wrap gap-2 mb-4 text-xs">
       <span class="badge" style="background:rgba(220,38,38,.1);color:#dc2626">${c.file1_only??0} only in ${esc(f1.name||'File 1')}</span>
       <span class="badge" style="background:rgba(217,119,6,.1);color:#b45309">${c.file2_only??0} only in ${esc(f2.name||'File 2')}</span>
       <span class="badge" style="background:rgba(217,119,6,.1);color:#b45309">${c.modified??0} modified</span>
       <span class="badge" style="background:rgba(37,99,235,.1);color:#2563eb">${(data.null_column_exceptions||[]).length} null-col</span>
+      ${data.gross_break_total?`<span class="badge" style="background:rgba(124,58,237,.1);color:#7c3aed">Gross break total: ${data.gross_break_total}</span>`:''}
+      ${data.net_break_total?`<span class="badge" style="background:rgba(124,58,237,.1);color:#7c3aed">Net break total: ${data.net_break_total}</span>`:''}
     </div>
+    ${wfBuckets.length ? `<div class="card rounded-xl p-4 mb-4">
+      <div class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">Break waterfall</div>
+      <div class="grid grid-cols-5 gap-2">${wfBuckets.map(([label,n,color])=>`
+        <div class="text-center"><div class="text-2xl font-bold" style="color:${color}">${n}</div><div class="text-[11px] text-gray-500 mt-1">${label}</div></div>`).join('')}</div>
+    </div>` : ''}
     ${topBroken.length ? `<div class="card rounded-xl p-4 mb-4">
-      <div class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">Top broken columns <span class="text-gray-400 normal-case">(from sampled modified rows)</span></div>
+      <div class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">Top broken columns</div>
       <div class="space-y-2">${topBroken.slice(0,10).map(([col,n])=>`
         <div class="flex items-center gap-2 text-xs">
           <span class="w-32 truncate font-medium">${esc(col)}</span>
@@ -1493,6 +1508,13 @@ async function sendChat(){
   document.getElementById('chat-pending')?.remove();
   log.innerHTML+=`<div><span class="inline-block px-3 py-1.5 rounded-2xl card">${esc(d.reply||d.error||'')}</span></div>`;
   log.scrollTop=log.scrollHeight;
+  if(d.recon_result){
+    // "run recon" -- the AI Copilot re-ran the actual comparison using saved rules;
+    // refresh the Summary/Exceptions tabs with the real results, same UI as Standard mode.
+    await renderCompareResult(d.recon_result, null, 'copilot');
+    const newLog=document.getElementById('chat-log');
+    if(newLog) newLog.scrollTop=newLog.scrollHeight;
+  }
 }
 
 // ---------- Workspace ----------

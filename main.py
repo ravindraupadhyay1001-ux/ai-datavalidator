@@ -17006,6 +17006,9 @@ async def analyze(request: Request):
             "schema_added_columns": diff.get("schema_added_columns", []),
             "schema_removed_columns": diff.get("schema_removed_columns", []),
             "excluded_meta_cols": diff.get("excluded_meta_cols", []),
+            "waterfall": diff.get("waterfall", {}),
+            "gross_break_total": diff.get("gross_break_total", 0),
+            "net_break_total": diff.get("net_break_total", 0),
             "files": {
                 "file1": {"name": _f1_name, "rows": len(_f1_df), "columns": len(_f1_df.columns),
                           "format": str(_f1_df.attrs.get("_format", "") or "").upper(),
@@ -17318,6 +17321,9 @@ async def rerun(session_id: str, request: Request):
         "schema_added_columns": diff.get("schema_added_columns", []),
         "schema_removed_columns": diff.get("schema_removed_columns", []),
         "excluded_meta_cols": diff.get("excluded_meta_cols", []),
+        "waterfall": diff.get("waterfall", {}),
+        "gross_break_total": diff.get("gross_break_total", 0),
+        "net_break_total": diff.get("net_break_total", 0),
         "files": {
             "file1": {"name": _f1_name, "rows": len(_f1_df), "columns": len(_f1_df.columns),
                       "format": str(_f1_df.attrs.get("_format", "") or "").upper(),
@@ -18381,6 +18387,25 @@ async def chat(request: Request):
         return JSONResponse({"error": "Empty question"}, status_code=400)
 
     context = _chat_contexts.get(session_id, {})
+
+    if context.get("mode") == "recon" and re.match(r"^(please\s+)?run\s*recon(ciliation)?[.!]?$", question, re.IGNORECASE):
+        result = _run_llm_recon_full(session_id)
+        if result is None:
+            return JSONResponse({"reply": "I couldn't find both files for this session anymore -- please re-upload and try again."})
+        c = result["counts"]
+        n_rules = result.get("rules_applied", 0)
+        rule_note = f"Applied {n_rules} saved rule(s). " if n_rules else "No saved rules for this schema yet -- used auto-detected key and no transforms. "
+        reply = (
+            f"✅ Ran reconciliation. {rule_note}"
+            f"Key: {result.get('method','n/a')}. "
+            f"Matched {c['matched']}, {c['file1_only']} only in {result['files']['file1']['name']}, "
+            f"{c['file2_only']} only in {result['files']['file2']['name']}, {c['modified']} modified. "
+            f"Full detail is in the Summary/Exceptions tabs above."
+        )
+        if result.get("key_warning"):
+            reply += f"\n⚠️ {result['key_warning']}"
+        return JSONResponse({"reply": reply, "recon_result": result})
+
     saved_rule_text = ""
     new_rule = None
 
@@ -18950,6 +18975,113 @@ def _prepare_recon(src_df: pd.DataFrame, tgt_df: pd.DataFrame, params: dict):
 
     force_data_cols = list(explicit_value_cols) if explicit_value_cols else None
     return src_df, tgt_df, manual_keys or None, exclude, key_warning, force_data_cols
+
+
+def _run_llm_recon_full(session_id: str) -> dict | None:
+    """"run recon" -- the AI Copilot's fully automated reconciliation: reads the
+    saved rules for this schema, has the LLM turn them into structured execution
+    parameters (key_cols, col_map, parse_cols, transforms, aggregation, exclude),
+    applies them to both DataFrames, runs the same deterministic compare_dataframes()
+    engine as Standard mode, and returns the same rich response shape /analyze and
+    /rerun use so the frontend can render it with the identical report UI.
+    Returns None if the session has no stored DataFrames to rerun against."""
+    stored = _results_store.get(session_id)
+    if not stored or "dataframes" not in stored or len(stored["dataframes"]) < 2:
+        return None
+
+    context = _chat_contexts.get(session_id, {})
+    dataframes: list[tuple[str, object]] = [
+        (item["name"], item["df"]) for item in stored["dataframes"]
+    ]
+    base_name, base_df = dataframes[0]
+    cmp_name, cmp_df = dataframes[1]
+
+    fingerprint = stored.get("dataset_fingerprint") or context.get("dataset_fingerprint", "")
+    saved_rules = _fp_get_rules(fingerprint, cols1=list(base_df.columns), cols2=list(cmp_df.columns),
+                                 file_names=[base_name, cmp_name])
+    recon_rules = [r for r in saved_rules if r.get("category") not in ("recon_hints",)]
+    params = _parse_recon_rules_to_params(recon_rules, list(base_df.columns), list(cmp_df.columns))
+
+    src_df, tgt_df, manual_keys, exclude, key_warning, force_data_cols = _prepare_recon(
+        base_df.copy(), cmp_df.copy(), params
+    )
+    diff = compare_dataframes(src_df, tgt_df, manual_keys, True, exclude, force_data_cols=force_data_cols)
+
+    new_session_id = str(uuid.uuid4())
+    _chat_contexts[new_session_id] = {
+        **context,
+        "action": "compare",
+        "mode": "recon",
+        "dataset_fingerprint": fingerprint,
+        "comparisons": [{"pair": f"{base_name}→{cmp_name}",
+                          "added": diff.get("added_count", 0),
+                          "removed": diff.get("removed_count", 0),
+                          "modified": diff.get("modified_count", 0)}],
+    }
+    _results_store[new_session_id] = {
+        **stored,
+        "dataframes": stored["dataframes"],
+        "dataset_fingerprint": fingerprint,
+        "recon_params_applied": params,
+        "recon_key_warning": key_warning,
+    }
+
+    modified = [
+        {"key": ", ".join(f"{k}={v}" for k, v in mr["key_values"].items()), "changes": mr["changes"]}
+        for mr in diff.get("modified_rows", [])
+    ]
+    only1 = [
+        {"key": ", ".join(f"{k}={v}" for k, v in r["key_values"].items()), "row": r.get("row_data", {})}
+        for r in diff.get("file1_only", [])
+    ]
+    only2 = [
+        {"key": ", ".join(f"{k}={v}" for k, v in r["key_values"].items()), "row": r.get("row_data", {})}
+        for r in diff.get("file2_only", [])
+    ]
+    resp = {
+        "session_id": new_session_id,
+        "counts": {
+            "matched": diff.get("file1_rows", 0) - diff.get("removed_count", 0),
+            "file1_only": diff.get("file1_only_count", 0),
+            "file2_only": diff.get("file2_only_count", 0),
+            "modified": diff.get("modified_count", 0),
+        },
+        "keys": diff.get("key_columns", []),
+        "method": diff.get("key_method", ""),
+        "fingerprint": fingerprint,
+        "type_mismatches": [{"column": k, **v} for k, v in diff.get("type_mismatches", {}).items()],
+        "null_column_exceptions": diff.get("null_column_exceptions", []),
+        "duplicates": {
+            "file1": {"duplicate_rows": diff.get("file1_duplicate_count", 0), "rows": diff.get("file1_duplicate_rows", [])},
+            "file2": {"duplicate_rows": diff.get("file2_duplicate_count", 0), "rows": diff.get("file2_duplicate_rows", [])},
+        },
+        "modified": modified,
+        "only_in_file1": only1,
+        "only_in_file2": only2,
+        "schema_added_columns": diff.get("schema_added_columns", []),
+        "schema_removed_columns": diff.get("schema_removed_columns", []),
+        "excluded_meta_cols": diff.get("excluded_meta_cols", []),
+        "waterfall": diff.get("waterfall", {}),
+        "gross_break_total": diff.get("gross_break_total", 0),
+        "net_break_total": diff.get("net_break_total", 0),
+        "files": {
+            "file1": {"name": base_name, "rows": len(src_df), "columns": len(src_df.columns),
+                      "format": str(base_df.attrs.get("_format", "") or "").upper(),
+                      "all_columns": list(src_df.columns)},
+            "file2": {"name": cmp_name, "rows": len(tgt_df), "columns": len(tgt_df.columns),
+                      "format": str(cmp_df.attrs.get("_format", "") or "").upper(),
+                      "all_columns": list(tgt_df.columns)},
+        },
+        "common_columns": len(set(src_df.columns) & set(tgt_df.columns)),
+        "common_columns_list": diff.get("common_columns", sorted(set(src_df.columns) & set(tgt_df.columns))),
+        "elapsed": 0,
+        "logs": [],
+        "rules_applied": len(recon_rules),
+        "params_applied": params,
+        "key_warning": key_warning,
+    }
+    _results_store[new_session_id]["_digest"] = resp
+    return resp
 
 
 @app.post("/recon/run/{session_id}")
