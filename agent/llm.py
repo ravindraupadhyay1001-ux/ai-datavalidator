@@ -20,8 +20,10 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL_ID", "claude-opus-4-8")
 
-AI_CONFIGURED = bool(MODEL_ID or GROQ_API_KEY or GOOGLE_API_KEY or OPENAI_API_KEY)
+AI_CONFIGURED = bool(MODEL_ID or GROQ_API_KEY or GOOGLE_API_KEY or OPENAI_API_KEY or ANTHROPIC_API_KEY)
 TOOL_CALLING_CONFIGURED = bool(GROQ_API_KEY or OPENAI_API_KEY)
 
 
@@ -100,13 +102,27 @@ def _ask_openai(messages, system=None):
     return resp.choices[0].message.content
 
 
+def _ask_anthropic(messages, system=None):
+    if not ANTHROPIC_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY not configured.")
+    from anthropic import Anthropic
+    client = Anthropic(api_key=ANTHROPIC_API_KEY)
+    resp = client.messages.create(
+        model=ANTHROPIC_MODEL, max_tokens=2000, temperature=0.2,
+        system=system or "",
+        messages=[{"role": m["role"], "content": m["content"]} for m in messages],
+    )
+    return resp.content[0].text
+
+
 _PROVIDERS = {
     "bedrock": _ask_bedrock,
     "groq": _ask_groq,
     "gemini": _ask_gemini,
     "openai": _ask_openai,
+    "anthropic": _ask_anthropic,
 }
-_FALLBACK_ORDER = ["groq", "gemini", "bedrock", "openai"]
+_FALLBACK_ORDER = ["groq", "gemini", "bedrock", "openai", "anthropic"]
 
 
 def ask(messages, system=None):

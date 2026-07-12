@@ -324,7 +324,7 @@ async def get_settings():
             # OpenAI
             "openai_model_id": os.getenv("OPENAI_MODEL_ID", "gpt-4o-mini"),
             # Anthropic direct
-            "anthropic_model_id": os.getenv("ANTHROPIC_MODEL_ID", "claude-haiku-4-5-20251001"),  # OCR-UNCERTAIN: model id string hard to read precisely
+            "anthropic_model_id": os.getenv("ANTHROPIC_MODEL_ID", "claude-opus-4-8"),
         },
         "storage": {
             "backend":    os.getenv("WORKSPACE_DB", "sqlite"),
@@ -580,7 +580,7 @@ def _ask_llm(messages: list[dict], system: str = "",
     # wrong profile, etc.) doesn't take down every AI feature in the app.
     # Bedrock's native message format ({"content": [{"text": ...}]}) is used
     # by every caller of _ask_llm; the other providers want plain strings.
-    from agent.llm import LLM_PROVIDER, _ask_groq, _ask_gemini, _ask_openai
+    from agent.llm import LLM_PROVIDER, _ask_groq, _ask_gemini, _ask_openai, _ask_anthropic
 
     plain_messages = [
         {
@@ -589,7 +589,7 @@ def _ask_llm(messages: list[dict], system: str = "",
         }
         for m in messages
     ]
-    providers = [LLM_PROVIDER] + [p for p in ("groq", "gemini", "bedrock", "openai") if p != LLM_PROVIDER]
+    providers = [LLM_PROVIDER] + [p for p in ("groq", "gemini", "bedrock", "openai", "anthropic") if p != LLM_PROVIDER]
 
     last_err: Exception = RuntimeError("No LLM provider configured.")
     for provider in providers:
@@ -602,6 +602,8 @@ def _ask_llm(messages: list[dict], system: str = "",
                 return _ask_gemini(plain_messages, system)
             elif provider == "openai":
                 return _ask_openai(plain_messages, system)
+            elif provider == "anthropic":
+                return _ask_anthropic(plain_messages, system)
         except Exception as exc:
             last_err = exc
             continue

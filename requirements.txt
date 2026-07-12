@@ -21,6 +21,7 @@ langchain-aws>=1.4.1
 # Multi-provider LLM fallback (Groq uses the OpenAI-compatible client too)
 openai>=1.30
 google-generativeai>=0.7
+anthropic>=0.40
 
 pdfplumber
 fastavro
