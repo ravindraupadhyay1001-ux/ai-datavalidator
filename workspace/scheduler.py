@@ -129,6 +129,36 @@ def _run_quality(df, job):
         return {"error": str(e), "rows": len(df), "columns": len(df.columns)}
 
 
+def _run_fan_out(pairs, job, username):
+    """Run the same compare logic across every {conn_a_id, conn_b_id, label}
+    pair in `pairs`. A single pair failing (bad connection, fetch error, etc.)
+    is recorded and skipped rather than aborting the rest of the batch -- one
+    branch's feed being down shouldn't hide results for every other branch."""
+    per_pair = []
+    agg = {"matched": 0, "file1_only": 0, "file2_only": 0, "modified": 0}
+    errors = []
+    for pair in pairs:
+        label = pair.get("label") or f"{pair.get('conn_a_id')} vs {pair.get('conn_b_id')}"
+        try:
+            df_a = _fetch(pair["conn_a_id"], username)
+            df_b = _fetch(pair["conn_b_id"], username)
+            result = _run_compare(df_a, df_b, job)
+            counts = result.get("counts") or {}
+            for k in agg:
+                agg[k] += int(counts.get(k, 0) or 0)
+            per_pair.append({"label": label, "counts": counts})
+        except Exception as e:
+            errors.append({"label": label, "error": str(e)})
+            per_pair.append({"label": label, "error": str(e)})
+    return {
+        "fan_out": True,
+        "pair_count": len(pairs),
+        "error_count": len(errors),
+        "counts": agg,
+        "per_pair": per_pair,
+    }
+
+
 def _execute_job(job_id, username):
     run_id = db.create_run(job_id, username)
     try:
@@ -136,7 +166,9 @@ def _execute_job(job_id, username):
         if not job:
             raise ValueError("Job not found.")
         action = job["action"]
-        if action == "compare":
+        if action == "compare" and job.get("fan_out_pairs"):
+            result = _run_fan_out(job["fan_out_pairs"], job, username)
+        elif action == "compare":
             df_a = _fetch(job["conn_a_id"], username)
             df_b = _fetch(job["conn_b_id"], username)
             result = _run_compare(df_a, df_b, job)

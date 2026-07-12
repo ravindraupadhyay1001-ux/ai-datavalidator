@@ -448,6 +448,15 @@
           <input id="jb-connb" placeholder="conn_b id (compare)" class="inp">
           <input id="jb-cron" placeholder="cron e.g. 0 6 * * *" class="inp">
           <input id="jb-email" placeholder="notify email" class="inp">
+          <label class="col-span-2 flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
+            <input type="checkbox" id="jb-bulk-enable" class="accent-sky-500" onchange="document.getElementById('jb-bulk-panel').classList.toggle('hidden', !this.checked)">
+            &#128230; Bulk (fan-out) &mdash; run this compare across many connection pairs at once, e.g. one per branch
+          </label>
+          <div id="jb-bulk-panel" class="hidden col-span-2">
+            <label class="text-xs text-gray-400">One pair per line: <code>conn_a_id,conn_b_id,label</code></label>
+            <textarea id="jb-bulk-pairs" rows="4" placeholder="1,2,Branch NYC&#10;3,4,Branch LDN" class="inp w-full mt-1 font-mono text-xs"></textarea>
+            <p class="text-[11px] text-gray-500 mt-1">When set, conn_a/conn_b above are ignored and every pair listed here runs on the same schedule; results are aggregated into one run with a per-pair breakdown.</p>
+          </div>
           <button onclick="saveJob()" class="btn rounded-lg px-3 py-1 w-32 font-medium">Save</button>
         </div>
         <div id="jb-list"></div>
@@ -2000,7 +2009,8 @@ async function saveRuleset(){ const rs_rules=document.getElementById('rs-rules')
   await J('POST','/api/ws/rulesets',{name:rs_name.value,description:rs_desc.value,rules}); rs_name.value='';rs_rules.value=''; loadRulesets(); }
 async function delRuleset(id){ if(confirm('Delete ruleset?')){await fetch(`/api/ws/rulesets/${id}`,{method:'DELETE'});loadRulesets();} }
 async function loadJobs(){ const rows=await fetch('/api/ws/jobs').then(r=>r.json());
-  document.getElementById('jb-list').innerHTML=rows.length?rows.map(j=>row(`<span><b>${esc(j.name)}</b> <span class="text-gray-500">[${j.action}] #${j.id} ${j.schedule_cron||'manual'} &middot; ${j.status||''}</span></span>
+  document.getElementById('jb-list').innerHTML=rows.length?rows.map(j=>row(`<span><b>${esc(j.name)}</b> <span class="text-gray-500">[${j.action}] #${j.id} ${j.schedule_cron||'manual'} &middot; ${j.status||''}</span>
+    ${j.fan_out_pairs?'<span class="badge ml-1" style="background:rgba(31,111,107,.12);color:#1f6f6b">&#128230; bulk</span>':''}</span>
     <span class="flex gap-2"><button onclick="runJob(${j.id})" class="btn rounded px-2 py-0.5 text-xs">Run</button>
     <button onclick="jobRuns(${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">History</button>
     <button onclick="delJob(${j.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join(''):'<div class="text-gray-500 text-sm">No jobs.</div>'; }
@@ -2009,7 +2019,16 @@ async function saveJob(){
         jb_email=document.getElementById('jb-email'), jb_conna=document.getElementById('jb-conna'), jb_connb=document.getElementById('jb-connb');
   const action=jb_action.value; const body={name:jb_name.value,action,schedule_cron:jb_cron.value||null,notify_email:jb_email.value||null};
   if(action==='compare'){body.conn_a_id=+jb_conna.value||null;body.conn_b_id=+jb_connb.value||null;}else{body.source_conn_id=+jb_conna.value||null;}
-  await J('POST','/api/ws/jobs',body); ['jb-name','jb-conna','jb-connb','jb-cron','jb-email'].forEach(i=>document.getElementById(i).value=''); loadJobs(); }
+  if(action==='compare' && document.getElementById('jb-bulk-enable')?.checked){
+    const lines = (document.getElementById('jb-bulk-pairs').value||'').split('\n').map(l=>l.trim()).filter(Boolean);
+    const pairs = lines.map(l=>{ const [a,b,...labelParts]=l.split(','); return {conn_a_id:+((a||'').trim())||null, conn_b_id:+((b||'').trim())||null, label:(labelParts.join(',')||'').trim()||undefined}; })
+      .filter(p=>p.conn_a_id && p.conn_b_id);
+    if(pairs.length) body.fan_out_pairs = pairs;
+  }
+  await J('POST','/api/ws/jobs',body);
+  ['jb-name','jb-conna','jb-connb','jb-cron','jb-email','jb-bulk-pairs'].forEach(i=>document.getElementById(i).value='');
+  if(document.getElementById('jb-bulk-enable')){ document.getElementById('jb-bulk-enable').checked=false; document.getElementById('jb-bulk-panel').classList.add('hidden'); }
+  loadJobs(); }
 async function runJob(id){ const r=await J('POST',`/api/ws/jobs/${id}/run`); alert('Run started: '+JSON.stringify(r)); loadJobs(); }
 async function jobRuns(id){ const r=await fetch(`/api/ws/jobs/${id}/runs`).then(x=>x.json()); alert(r.map(x=>`${x.started_at} &middot; ${x.status} ${x.error_msg||''}`).join('\n')||'No runs yet'); }
 async function delJob(id){ if(confirm('Delete job?')){await fetch(`/api/ws/jobs/${id}`,{method:'DELETE'});loadJobs();} }

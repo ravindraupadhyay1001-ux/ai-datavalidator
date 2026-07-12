@@ -21678,11 +21678,11 @@ async def ws_save_job(request: Request):
     ai_hints_json = json.dumps(ai_hints) if ai_hints else None
 
 
+    fan_out_pairs = body.get("fan_out_pairs") or None
+
     saved_id = _ws_db.save_job(
 
-        username, name, source_conn_id, ruleset_id, schedule_cron, notify_email, job_id,
-
-        action=action,
+        username=username, name=name, action=action, source_conn_id=source_conn_id,
 
         conn_a_id=conn_a_id,
 
@@ -21692,7 +21692,17 @@ async def ws_save_job(request: Request):
 
         exclude_columns=exclude_columns,
 
+        ruleset_id=ruleset_id,
+
+        schedule_cron=schedule_cron,
+
         from_email=from_email,
+
+        notify_email=notify_email,
+
+        job_id=job_id,
+
+        fan_out_pairs=fan_out_pairs,
 
         sla_json=sla_json,
 

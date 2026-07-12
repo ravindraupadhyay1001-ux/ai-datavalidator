@@ -207,6 +207,14 @@ _DDL = [
     )""",
     "CREATE INDEX IF NOT EXISTS idx_recon_fp ON ws_recon_history(schema_fingerprint)",
     "CREATE INDEX IF NOT EXISTS idx_recon_user ON ws_recon_history(username)",
+    # Bulk/fan-out jobs: run the same compare logic across many connection
+    # pairs at once (e.g. one per branch/region) instead of a single pair.
+    # NULL/empty means "ordinary single-pair job" -- fully backward compatible.
+    "ALTER TABLE ws_jobs ADD COLUMN fan_out_pairs TEXT",
+    # SLA thresholds and AI-suggested-schedule hints -- the /api/ws/jobs route
+    # already parsed these from the request body but had nowhere to put them.
+    "ALTER TABLE ws_jobs ADD COLUMN sla_json TEXT",
+    "ALTER TABLE ws_jobs ADD COLUMN ai_hints_json TEXT",
 ]
 
 
@@ -447,37 +455,53 @@ def get_job(job_id, username):
         (job_id, username),
     )
     rows = _rows(cur)
-    return rows[0] if rows else None
+    if not rows:
+        return None
+    row = rows[0]
+    row["fan_out_pairs"] = _unb64(row.get("fan_out_pairs")) or []
+    row["sla"] = json.loads(row["sla_json"]) if row.get("sla_json") else {}
+    row["ai_hints"] = json.loads(row["ai_hints_json"]) if row.get("ai_hints_json") else {}
+    return row
 
 
 def save_job(username, name, action, source_conn_id=None, conn_a_id=None,
              conn_b_id=None, key_columns=None, exclude_columns=None,
              ruleset_id=None, schedule_cron=None, from_email=None,
-             notify_email=None, job_id=None):
+             notify_email=None, job_id=None, fan_out_pairs=None,
+             sla_json=None, ai_hints_json=None):
+    """fan_out_pairs: optional list of {"conn_a_id":..,"conn_b_id":..,"label":..}
+    dicts -- when non-empty, the scheduler runs the same compare logic across
+    every pair instead of just conn_a_id/conn_b_id (which stay as a fallback
+    single pair for callers/UI that don't know about fan-out). sla_json/
+    ai_hints_json are pre-serialised JSON strings (or None), passed straight
+    through -- the caller already has dicts and is responsible for the dumps."""
     conn = _conn()
     cur = conn.cursor()
+    fan_out_json = _b64(fan_out_pairs) if fan_out_pairs else None
     if job_id:
         cur.execute(
             f"UPDATE ws_jobs SET name={_ph()}, action={_ph()}, source_conn_id={_ph()}, "
             f"conn_a_id={_ph()}, conn_b_id={_ph()}, key_columns={_ph()}, "
             f"exclude_columns={_ph()}, ruleset_id={_ph()}, schedule_cron={_ph()}, "
-            f"from_email={_ph()}, notify_email={_ph()}, updated_at={_ph()} "
+            f"from_email={_ph()}, notify_email={_ph()}, fan_out_pairs={_ph()}, "
+            f"sla_json={_ph()}, ai_hints_json={_ph()}, updated_at={_ph()} "
             f"WHERE id={_ph()} AND username={_ph()}",
             (name, action, source_conn_id, conn_a_id, conn_b_id, key_columns,
              exclude_columns, ruleset_id, schedule_cron, from_email,
-             notify_email, _now(), job_id, username),
+             notify_email, fan_out_json, sla_json, ai_hints_json, _now(), job_id, username),
         )
         conn.commit()
         return job_id
     cur.execute(
         f"INSERT INTO ws_jobs (username, name, action, source_conn_id, conn_a_id, "
         f"conn_b_id, key_columns, exclude_columns, ruleset_id, schedule_cron, "
-        f"from_email, notify_email, status, created_at, updated_at) "
+        f"from_email, notify_email, fan_out_pairs, sla_json, ai_hints_json, "
+        f"status, created_at, updated_at) "
         f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},"
-        f"{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
+        f"{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
         (username, name, action, source_conn_id, conn_a_id, conn_b_id,
          key_columns, exclude_columns, ruleset_id, schedule_cron, from_email,
-         notify_email, "active", _now(), _now()),
+         notify_email, fan_out_json, sla_json, ai_hints_json, "active", _now(), _now()),
     )
     conn.commit()
     return cur.lastrowid
