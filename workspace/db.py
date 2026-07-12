@@ -189,6 +189,24 @@ _DDL = [
     "ALTER TABLE ws_saved_runs ADD COLUMN conn_a_id INTEGER",
     "ALTER TABLE ws_saved_runs ADD COLUMN conn_b_id INTEGER",
     "ALTER TABLE ws_saved_runs ADD COLUMN source_conn_id INTEGER",
+    """CREATE TABLE IF NOT EXISTS ws_recon_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dataset_label TEXT,
+        username TEXT,
+        schema_fingerprint TEXT,
+        session_id TEXT,
+        matched_count INTEGER,
+        file1_only_count INTEGER,
+        file2_only_count INTEGER,
+        modified_count INTEGER,
+        total_rows INTEGER,
+        break_rate REAL,
+        status TEXT,
+        method TEXT,
+        run_at TEXT
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_recon_fp ON ws_recon_history(schema_fingerprint)",
+    "CREATE INDEX IF NOT EXISTS idx_recon_user ON ws_recon_history(username)",
 ]
 
 
@@ -655,6 +673,60 @@ def get_dq_baseline(file_name, username):
         f"SELECT file_name, score, grade, run_at FROM ws_dq_history "
         f"WHERE file_name={_ph()} AND username={_ph()} ORDER BY run_at ASC LIMIT 1",
         (file_name, username),
+    )
+    rows = _rows(cur)
+    return rows[0] if rows else None
+
+
+# --------------------------------------------------------------------------
+# Reconciliation run history (trend tracking) -- mirrors DQ history above
+# --------------------------------------------------------------------------
+def save_recon_history(username, dataset_label, schema_fingerprint, session_id,
+                        matched_count, file1_only_count, file2_only_count,
+                        modified_count, method=None):
+    conn = _conn()
+    cur = conn.cursor()
+    total_rows = (matched_count or 0) + (file1_only_count or 0) + (file2_only_count or 0) + (modified_count or 0)
+    breaks = (file1_only_count or 0) + (file2_only_count or 0) + (modified_count or 0)
+    break_rate = round(breaks / total_rows, 4) if total_rows else 0.0
+    status = "PASS" if breaks == 0 else ("WARN" if break_rate < 0.05 else "FAIL")
+    cur.execute(
+        f"INSERT INTO ws_recon_history "
+        f"(dataset_label, username, schema_fingerprint, session_id, matched_count, "
+        f"file1_only_count, file2_only_count, modified_count, total_rows, break_rate, "
+        f"status, method, run_at) "
+        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},"
+        f"{_ph()},{_ph()},{_ph()},{_ph()})",
+        (dataset_label, username, schema_fingerprint, session_id, matched_count,
+         file1_only_count, file2_only_count, modified_count, total_rows, break_rate,
+         status, method, _now()),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def get_recon_history(schema_fingerprint, username, days=30):
+    """Reconciliation break-rate trend for a schema, most recent `days` days, oldest first."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cur = _conn().cursor()
+    cur.execute(
+        f"SELECT dataset_label, matched_count, file1_only_count, file2_only_count, "
+        f"modified_count, total_rows, break_rate, status, method, run_at "
+        f"FROM ws_recon_history "
+        f"WHERE schema_fingerprint={_ph()} AND username={_ph()} AND run_at >= {_ph()} "
+        f"ORDER BY run_at ASC",
+        (schema_fingerprint, username, cutoff),
+    )
+    return _rows(cur)
+
+
+def get_recon_baseline(schema_fingerprint, username):
+    """Earliest recorded run for a schema -- used as the comparison baseline."""
+    cur = _conn().cursor()
+    cur.execute(
+        f"SELECT dataset_label, break_rate, status, run_at FROM ws_recon_history "
+        f"WHERE schema_fingerprint={_ph()} AND username={_ph()} ORDER BY run_at ASC LIMIT 1",
+        (schema_fingerprint, username),
     )
     rows = _rows(cur)
     return rows[0] if rows else None

@@ -14993,6 +14993,34 @@ async def get_dq_baseline_endpoint(file_name: str, request: Request):
         return JSONResponse(None)
 
 
+@app.get("/api/recon/history/{fingerprint}")
+async def get_recon_history_endpoint(fingerprint: str, request: Request):
+    """Break-rate trend for this schema's reconciliations (for the trend chart)."""
+    try:
+        username = _ws_resolve_username(request) or "default"
+    except Exception:
+        username = "default"
+    try:
+        rows = _ws_db.get_recon_history(fingerprint, username, days=30)
+        return JSONResponse(rows)
+    except Exception:
+        return JSONResponse([], status_code=200)
+
+
+@app.get("/api/recon/baseline/{fingerprint}")
+async def get_recon_baseline_endpoint(fingerprint: str, request: Request):
+    """Earliest recorded reconciliation run for this schema (for the vs-baseline banner)."""
+    try:
+        username = _ws_resolve_username(request) or "default"
+    except Exception:
+        username = "default"
+    try:
+        baseline = _ws_db.get_recon_baseline(fingerprint, username)
+        return JSONResponse(baseline)
+    except Exception:
+        return JSONResponse(None)
+
+
 
 
 # ==== SOURCE PAGE 0666 ====
@@ -17548,6 +17576,15 @@ async def analyze(request: Request):
         }
         if session_id in _results_store:
             _results_store[session_id]["_digest"] = _resp
+        if _WS_ENABLED:
+            try:
+                _ws_db.save_recon_history(
+                    _ws_username or "default", f"{_f1_name} vs {_f2_name}", _resolved_fingerprint,
+                    session_id, _resp["counts"]["matched"], _resp["counts"]["file1_only"],
+                    _resp["counts"]["file2_only"], _resp["counts"]["modified"], method=_resp["method"],
+                )
+            except Exception as _e_hist:
+                _log(f"Reconciliation history save failed: {_e_hist}")
         return JSONResponse(_sanitize_json(_resp))
 
     if action in ("quality", "profile"):

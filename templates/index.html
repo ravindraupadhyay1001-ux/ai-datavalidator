@@ -1078,6 +1078,7 @@ function renderCompareResult(data, t0, mode){
       ${stat('F1 dup rows', data.duplicates?.file1?.duplicate_rows??0, '#a855f7')}
       ${stat('F2 dup rows', data.duplicates?.file2?.duplicate_rows??0, '#a855f7')}
     </div>
+    <div id="cmp-history" class="mb-4"></div>
     <details class="card rounded-xl p-4 text-sm">
       <summary class="cursor-pointer text-sky-700 font-semibold">&rarr; Adjust columns &amp; rerun</summary>
       <div class="mt-4">${allCols.length ? keyExcludeCheckboxes('cmp', allCols, data.keys||[]) : '<div class="text-xs text-gray-500">Rerun requires the original session (re-run the compare above first).</div>'}</div>
@@ -1234,6 +1235,7 @@ function renderCompareResult(data, t0, mode){
   out.innerHTML = actionBar(data.session_id, t0!=null?((performance.now()-t0)/1000).toFixed(3):data.elapsed) + resultTabsShell('cmp', cmpTabs, initialTab);
   if(initialTab==='copilot') mountCopilotChat('cmp');
   loadDatasetControlRules('cmp','compare');
+  if(mode!=='ai' && data.fingerprint) loadReconHistory(data.fingerprint, _breakRate);
 }
 async function runCompare(){
   const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Comparing&hellip;</span>';
@@ -1606,6 +1608,38 @@ async function loadDqHistory(fileName, currentScore){
         fill:true,tension:.3,pointRadius:3}]},
       options:{plugins:{legend:{display:false}},
         scales:{x:{ticks:{color:'#64748b'}},y:{min:0,max:100,ticks:{color:'#64748b'},grid:{color:'#e2e8f0'}}}}});
+  }
+}
+async function loadReconHistory(fingerprint, currentBreakRate){
+  const box=document.getElementById('cmp-history'); if(!box) return; box.innerHTML='';
+  if(!fingerprint) return;
+  let hist, baseline;
+  try{ hist = await J('GET', `/api/recon/history/${encodeURIComponent(fingerprint)}?days=30`); }
+  catch(e){ hist = null; }
+  try{ baseline = await J('GET', `/api/recon/baseline/${encodeURIComponent(fingerprint)}`); }
+  catch(e){ baseline = null; }
+
+  let html = '';
+  if(baseline && typeof currentBreakRate === 'number' && Math.abs(baseline.break_rate - currentBreakRate) > 0.0001){
+    const deltaPts = Math.round((currentBreakRate - baseline.break_rate) * 1000) / 10;
+    const better = deltaPts <= 0; // lower break rate = better
+    html += `<div class="card rounded-xl p-4 mb-3 text-sm flex items-center justify-between">
+      <span class="text-gray-400">vs. baseline run (${baseline.run_at.slice(0,10)}, break rate ${(baseline.break_rate*100).toFixed(1)}%)</span>
+      <span class="font-bold ${better?'text-emerald-600':'text-red-600'}">${better?'&#9660;':'&#9650;'} ${Math.abs(deltaPts)} pts break rate</span></div>`;
+  }
+  if(Array.isArray(hist) && hist.length >= 2){
+    html += `<div class="card rounded-xl p-4">
+      <div class="text-xs text-gray-400 mb-2">Break rate trend &mdash; last 30 days (${hist.length} runs)</div>
+      <canvas id="cmpHistChart" height="70"></canvas></div>`;
+  }
+  box.innerHTML = html;
+  if(Array.isArray(hist) && hist.length >= 2){
+    chart('cmpHistChart',{type:'line',data:{
+      labels:hist.map(h=>new Date(h.run_at).toLocaleDateString()),
+      datasets:[{data:hist.map(h=>Math.round(h.break_rate*1000)/10),borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,.1)',
+        fill:true,tension:.3,pointRadius:3}]},
+      options:{plugins:{legend:{display:false}},
+        scales:{x:{ticks:{color:'#64748b'}},y:{min:0,ticks:{color:'#64748b',callback:v=>v+'%'},grid:{color:'#e2e8f0'}}}}});
   }
 }
 function bar(pct){ const c=pct>=90?'#16a34a':pct>=60?'#d97706':'#dc2626';
