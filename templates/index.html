@@ -2143,7 +2143,10 @@ const CN_FIELD_SPECS = {
   mssql: [
     {k:'host', label:'Host', type:'text', required:true}, {k:'port', label:'Port', type:'number', default:1433},
     {k:'database', label:'Database', type:'text', required:true},
-    {k:'username', label:'Username', type:'text'}, {k:'password', label:'Password', type:'password'},
+    {k:'auth_type', label:'Authentication', type:'select', default:'sql',
+      options:[['sql','SQL Login (username/password)'],['windows','Windows Authentication (integrated)']]},
+    {k:'username', label:'Username', type:'text', showIf:{key:'auth_type', equals:'sql'}},
+    {k:'password', label:'Password', type:'password', showIf:{key:'auth_type', equals:'sql'}},
     ..._TABLE_OR_QUERY,
   ],
   postgres: [
@@ -2209,8 +2212,14 @@ const CN_FIELD_SPECS = {
   azure_sql: [
     {k:'server', label:'Server', type:'text', required:true, wide:true, placeholder:'myserver.database.windows.net'},
     {k:'port', label:'Port', type:'number', default:1433}, {k:'database', label:'Database', type:'text', required:true},
-    {k:'auth_type', label:'Auth type', type:'select', options:['sql','aad_password','aad_msi','aad_default'], default:'sql'},
-    {k:'username', label:'Username', type:'text'}, {k:'password', label:'Password', type:'password'},
+    {k:'auth_type', label:'Authentication', type:'select', default:'sql', options:[
+      ['sql','SQL Login (username/password)'],
+      ['aad_password','Azure AD (username/password)'],
+      ['aad_msi','Azure AD Managed Identity (no credentials)'],
+      ['aad_default','Azure AD Default (SSO chain: env/CLI/managed identity)'],
+    ]},
+    {k:'username', label:'Username', type:'text', showIf:{key:'auth_type', in:['sql','aad_password']}},
+    {k:'password', label:'Password', type:'password', showIf:{key:'auth_type', in:['sql','aad_password']}},
     ..._TABLE_OR_QUERY,
   ],
   db2: [
@@ -2245,22 +2254,40 @@ const CN_FIELD_SPECS = {
     {k:'password', label:'Password (if not using API key)', type:'password'},
   ],
 };
+function _cnFieldVisible(f, snapshot, specs){
+  if(!f.showIf) return true;
+  const ctrlSpec = specs.find(s=>s.k===f.showIf.key);
+  const val = (snapshot[f.showIf.key] !== undefined && snapshot[f.showIf.key] !== '')
+    ? snapshot[f.showIf.key] : (ctrlSpec ? ctrlSpec.default : undefined);
+  if(f.showIf.in) return f.showIf.in.includes(val);
+  return val === f.showIf.equals;
+}
 function renderCnFields(){
   const sel = document.getElementById('cn-type');
   const box = document.getElementById('cn-fields');
   if(!sel || !box) return;
   const specs = CN_FIELD_SPECS[sel.value] || [];
-  box.innerHTML = specs.map(f=>{
+  // Snapshot current values before rebuilding -- so toggling a dependent
+  // field (e.g. an auth-type selector) doesn't wipe out values already
+  // typed into other fields, and switching connector type carries over
+  // any same-named fields (host/port/username/... are shared by name).
+  const snapshot = {};
+  specs.forEach(f=>{ const el = document.getElementById(`cn-f-${f.k}`); if(el) snapshot[f.k] = el.value; });
+  box.innerHTML = specs.filter(f=>_cnFieldVisible(f, snapshot, specs)).map(f=>{
     const id = `cn-f-${f.k}`;
     const wideCls = f.wide ? ' col-span-2' : '';
     const reqMark = f.required ? ' <span class="text-red-400">*</span>' : '';
+    const dependants = specs.some(s=>s.showIf && s.showIf.key===f.k);
+    const onChangeAttr = (f.type==='select' && dependants) ? ' onchange="renderCnFields()"' : '';
+    const curVal = (snapshot[f.k] !== undefined && snapshot[f.k] !== '') ? snapshot[f.k] : f.default;
     let control;
     if(f.type === 'select'){
-      control = `<select id="${id}" class="inp text-sm" data-key="${f.k}">${(f.options||[]).map(o=>`<option value="${esc(o)}" ${o===f.default?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+      const opts = (f.options||[]).map(o=>Array.isArray(o) ? o : [o,o]);
+      control = `<select id="${id}" class="inp text-sm" data-key="${f.k}"${onChangeAttr}>${opts.map(([v,label])=>`<option value="${esc(v)}" ${v===curVal?'selected':''}>${esc(label)}</option>`).join('')}</select>`;
     } else if(f.type === 'textarea'){
-      control = `<textarea id="${id}" class="inp text-sm font-mono" data-key="${f.k}" rows="2" placeholder="${esc(f.placeholder||'')}"></textarea>`;
+      control = `<textarea id="${id}" class="inp text-sm font-mono" data-key="${f.k}" rows="2" placeholder="${esc(f.placeholder||'')}">${curVal!=null?esc(String(curVal)):''}</textarea>`;
     } else {
-      control = `<input id="${id}" class="inp text-sm" type="${f.type==='password'?'password':f.type==='number'?'number':'text'}" data-key="${f.k}" placeholder="${esc(f.placeholder||'')}" value="${f.default!=null?esc(String(f.default)):''}">`;
+      control = `<input id="${id}" class="inp text-sm" type="${f.type==='password'?'password':f.type==='number'?'number':'text'}" data-key="${f.k}" placeholder="${esc(f.placeholder||'')}" value="${curVal!=null?esc(String(curVal)):''}">`;
     }
     return `<label class="flex flex-col gap-1 text-xs text-gray-400${wideCls}"><span>${esc(f.label)}${reqMark}</span>${control}</label>`;
   }).join('');
