@@ -809,18 +809,26 @@ function onFuzzyThresholdSlide(v){
 // ---------- Reconciliation: extra sources (N-way, 3+ files) ----------
 const _cmpExtraLabels = ['C','D','E','F']; // maps to files_c..files_f on the backend
 const _cmpExtraColors = ['#7c3aed','#0284c7','#059669','#dc2626'];
-let _cmpExtraCount = 0;
+// Which of the 4 extra slots (0=C,1=D,2=E,3=F) are currently occupied. A Set,
+// not a count -- removing a source from the middle (e.g. D out of C/D/E) must
+// not disturb C or E, and re-adding must reuse the lowest free slot rather
+// than recompute a slot from a shrinking counter (which previously caused
+// mid-list removal to silently drop every source after the removed one, and
+// could even reuse an id still in use by a surviving row).
+let _cmpUsedSlots = new Set();
 function _cmpSourceCountLabel(){
-  const n = _cmpExtraCount + 2;
+  const n = _cmpUsedSlots.size + 2;
   return `${n} of ${_cmpExtraLabels.length+2} sources`;
 }
 function addCmpSource(){
-  if(_cmpExtraCount >= _cmpExtraLabels.length) return;
-  const idx = _cmpExtraCount;
+  if(_cmpUsedSlots.size >= _cmpExtraLabels.length) return;
+  let idx = -1;
+  for(let i=0;i<_cmpExtraLabels.length;i++){ if(!_cmpUsedSlots.has(i)){ idx = i; break; } }
+  if(idx === -1) return;
+  _cmpUsedSlots.add(idx);
   const label = _cmpExtraLabels[idx];
   const color = _cmpExtraColors[idx];
   const n = idx + 3; // Dataset A=1, B=2, so extras start at 3
-  _cmpExtraCount++;
   const box = document.getElementById('cmp-extra-sources');
   const row = document.createElement('div');
   row.id = `cmp-source-row-${n}`;
@@ -846,7 +854,7 @@ function addCmpSource(){
   requestAnimationFrame(()=>{ row.style.opacity='1'; row.style.transform='translateY(0)'; });
   document.getElementById('cmp-source-count').textContent = _cmpSourceCountLabel();
   document.getElementById('cmp-source-count').classList.remove('hidden');
-  if(_cmpExtraCount >= _cmpExtraLabels.length){
+  if(_cmpUsedSlots.size >= _cmpExtraLabels.length){
     document.getElementById('cmp-add-source-btn').classList.add('hidden');
   }
 }
@@ -856,19 +864,21 @@ function removeCmpSource(n){
     row.style.opacity='0'; row.style.transform='translateY(-6px)';
     setTimeout(()=>row.remove(), 200);
   }
-  _cmpExtraCount--;
+  _cmpUsedSlots.delete(n-3);
   document.getElementById('cmp-add-source-btn').classList.remove('hidden');
   const countEl = document.getElementById('cmp-source-count');
-  if(_cmpExtraCount > 0){ countEl.textContent = _cmpSourceCountLabel(); } else { countEl.classList.add('hidden'); }
+  if(_cmpUsedSlots.size > 0){ countEl.textContent = _cmpSourceCountLabel(); } else { countEl.classList.add('hidden'); }
 }
 function cmpExtraFileInputs(){
   // [field, fileInputId, connField, connSelectId] entries for every currently-added
-  // extra source, in the same shape postForm() expects for files_a/files_b.
+  // extra source, in the same shape postForm() expects for files_a/files_b --
+  // driven by which rows actually exist, not a count, so a removed middle
+  // source can never make a surviving one vanish from the submission.
   const specs = [];
-  for(let i=0;i<_cmpExtraCount;i++){
-    const n = i+3, label = _cmpExtraLabels[i].toLowerCase();
-    if(document.getElementById(`cmp-source-row-${n}`)) specs.push([`files_${label}`, `cmp-f${n}`]);
-  }
+  _cmpUsedSlots.forEach(idx=>{
+    const n = idx + 3, label = _cmpExtraLabels[idx].toLowerCase();
+    if(document.getElementById(`cmp-source-row-${n}`)) specs.push([`files_${label}`, `cmp-f${n}`, `conn_${label}_ids`, `cmp-conn${n}`]);
+  });
   return specs;
 }
 

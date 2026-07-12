@@ -16429,6 +16429,12 @@ async def analyze(request: Request):
     _conn_a_ids = _parse_conn_ids("conn_a_ids")  # Dataset A connections (compare)
     _conn_b_ids = _parse_conn_ids("conn_b_ids")  # Dataset B connections (compare)
     _conn_ids  = _parse_conn_ids("conn_ids")   # Single-side connections (quality/parse/etc.)
+    # Extra N-way source connections (files_c..files_f's "Saved Connector" pick) --
+    # mirrors conn_a_ids/conn_b_ids so a source can be a live connection instead
+    # of (or in addition to) an upload, same as Dataset A/B already support.
+    _nway_extra_conn_ids: dict[str, list[str]] = {
+        label: _parse_conn_ids(f"conn_{label}_ids") for label in ("c", "d", "e", "f")
+    }
 
     # -- Knowledge Base: local uploads + workspace connections ----------------
     ref_uploads = [
@@ -16618,11 +16624,13 @@ async def analyze(request: Request):
       dataframes = [(a_name, a_df), (b_name, b_df)]
       if action == "compare":
         # Each additional source (files_c..files_f) is its own separate dataset for
-        # N-way reconciliation, not concatenated with anything else.
+        # N-way reconciliation, not concatenated with anything else. A source can
+        # be an upload, a saved connection, or both (combined like Dataset A/B).
         for _label, _uploads in _nway_extra_uploads:
-          if not _uploads:
+          _extra_conn_ids = _nway_extra_conn_ids.get(_label, [])
+          if not _uploads and not _extra_conn_ids:
             continue
-          _extra_tuples = _load_upload_list(_uploads)
+          _extra_tuples = _load_upload_list(_uploads) + _load_conn_list(_extra_conn_ids, _label.upper())
           if _extra_tuples:
             _extra_name, _extra_df = _concat_group(_extra_tuples, _label.upper())
             dataframes.append((_extra_name, _extra_df))
