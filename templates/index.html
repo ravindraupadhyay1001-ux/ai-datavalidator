@@ -459,28 +459,41 @@
           <div class="settings-icon" style="background:linear-gradient(135deg,#7c3aed,#a855f7)">&#129302;</div>
           <h3 class="settings-h">LLM Provider</h3>
         </div>
-        <div class="grid grid-cols-2 gap-3 text-sm">
-          <div><label class="text-xs text-gray-400">Provider</label>
-            <select id="cfg-llm-provider" class="inp w-full mt-1 text-sm">
-              <option value="bedrock">AWS Bedrock (Claude)</option>
-              <option value="groq">Groq</option>
-              <option value="gemini">Google Gemini</option>
-              <option value="openai">OpenAI</option>
-              <option value="anthropic">Anthropic Direct</option>
-            </select></div>
-          <div></div>
-          <div><label class="text-xs text-gray-400">Bedrock Model ID</label><input id="cfg-llm-model" class="inp w-full mt-1 text-sm" placeholder="arn:aws:bedrock:..."></div>
+        <div class="text-sm mb-3">
+          <label class="text-xs text-gray-400">Provider</label>
+          <select id="cfg-llm-provider" class="inp w-full mt-1 text-sm" onchange="showLlmProviderFields(this.value)">
+            <option value="groq">Groq &mdash; free tier, no card required</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic Direct</option>
+            <option value="bedrock">AWS Bedrock (Claude)</option>
+          </select>
+        </div>
+        <div id="llm-fields-groq" class="grid grid-cols-2 gap-3 text-sm">
+          <div class="col-span-2 text-xs text-gray-500">Get a free key at <a href="https://console.groq.com/keys" target="_blank" class="text-sky-600 underline">console.groq.com/keys</a> &mdash; no credit card needed.</div>
+          <div><label class="text-xs text-gray-400">Model ID</label><input id="cfg-llm-groqmodel" placeholder="llama-3.3-70b-versatile" class="inp w-full mt-1 text-sm"></div>
+          <div><label class="text-xs text-gray-400">API Key</label><input id="cfg-llm-groqkey" type="password" class="inp w-full mt-1 text-sm"></div>
+        </div>
+        <div id="llm-fields-gemini" class="hidden grid grid-cols-2 gap-3 text-sm">
+          <div class="col-span-2 text-xs text-gray-500">Get a key at <a href="https://aistudio.google.com/apikey" target="_blank" class="text-sky-600 underline">aistudio.google.com/apikey</a>.</div>
+          <div><label class="text-xs text-gray-400">Model ID</label><input id="cfg-llm-geminimodel" placeholder="gemini-1.5-flash" class="inp w-full mt-1 text-sm"></div>
+          <div><label class="text-xs text-gray-400">API Key</label><input id="cfg-llm-geminikey" type="password" class="inp w-full mt-1 text-sm"></div>
+        </div>
+        <div id="llm-fields-openai" class="hidden grid grid-cols-2 gap-3 text-sm">
+          <div class="col-span-2 text-xs text-gray-500">Get a key at <a href="https://platform.openai.com/api-keys" target="_blank" class="text-sky-600 underline">platform.openai.com/api-keys</a>.</div>
+          <div><label class="text-xs text-gray-400">Model ID</label><input id="cfg-llm-openaimodel" placeholder="gpt-4o-mini" class="inp w-full mt-1 text-sm"></div>
+          <div><label class="text-xs text-gray-400">API Key</label><input id="cfg-llm-openaikey" type="password" class="inp w-full mt-1 text-sm"></div>
+        </div>
+        <div id="llm-fields-anthropic" class="hidden grid grid-cols-2 gap-3 text-sm">
+          <div class="col-span-2 text-xs text-gray-500">Get a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" class="text-sky-600 underline">console.anthropic.com/settings/keys</a>.</div>
+          <div><label class="text-xs text-gray-400">Model ID</label><input id="cfg-llm-anthropicmodel" placeholder="claude-opus-4-8" class="inp w-full mt-1 text-sm"></div>
+          <div><label class="text-xs text-gray-400">API Key</label><input id="cfg-llm-anthropickey" type="password" class="inp w-full mt-1 text-sm"></div>
+        </div>
+        <div id="llm-fields-bedrock" class="hidden grid grid-cols-2 gap-3 text-sm">
+          <div class="col-span-2 text-xs text-gray-500">Uses your AWS account's own Bedrock access &mdash; no separate API key, needs an AWS CLI profile configured on this server.</div>
+          <div class="col-span-2"><label class="text-xs text-gray-400">Model ID</label><input id="cfg-llm-model" class="inp w-full mt-1 text-sm" placeholder="arn:aws:bedrock:..."></div>
           <div><label class="text-xs text-gray-400">AWS Region</label><input id="cfg-llm-region" class="inp w-full mt-1 text-sm" placeholder="us-east-1"></div>
           <div><label class="text-xs text-gray-400">AWS Profile</label><input id="cfg-llm-profile" class="inp w-full mt-1 text-sm"></div>
-          <div></div>
-          <div><label class="text-xs text-gray-400">Groq Model ID</label><input id="cfg-llm-groqmodel" class="inp w-full mt-1 text-sm"></div>
-          <div><label class="text-xs text-gray-400">Groq API Key</label><input id="cfg-llm-groqkey" type="password" class="inp w-full mt-1 text-sm"></div>
-          <div><label class="text-xs text-gray-400">Gemini Model ID</label><input id="cfg-llm-geminimodel" class="inp w-full mt-1 text-sm"></div>
-          <div><label class="text-xs text-gray-400">Gemini API Key</label><input id="cfg-llm-geminikey" type="password" class="inp w-full mt-1 text-sm"></div>
-          <div><label class="text-xs text-gray-400">OpenAI Model ID</label><input id="cfg-llm-openaimodel" class="inp w-full mt-1 text-sm"></div>
-          <div><label class="text-xs text-gray-400">OpenAI API Key</label><input id="cfg-llm-openaikey" type="password" class="inp w-full mt-1 text-sm"></div>
-          <div><label class="text-xs text-gray-400">Anthropic Model ID</label><input id="cfg-llm-anthropicmodel" class="inp w-full mt-1 text-sm"></div>
-          <div><label class="text-xs text-gray-400">Anthropic API Key</label><input id="cfg-llm-anthropickey" type="password" class="inp w-full mt-1 text-sm"></div>
         </div>
       </div>
 
@@ -1632,6 +1645,14 @@ async function saveToWorkspace(){ if(!SESSION){alert('Run an analysis first.');r
   await J('POST','/api/ws/saved-runs',{session_id:SESSION,name}); alert('Saved to workspace.'); }
 
 // ---------- Settings ----------
+function showLlmProviderFields(provider){
+  const sel = document.getElementById('cfg-llm-provider');
+  if(sel) sel.value = provider;
+  ['groq','gemini','openai','anthropic','bedrock'].forEach(p=>{
+    const el = document.getElementById(`llm-fields-${p}`);
+    if(el) el.classList.toggle('hidden', p!==provider);
+  });
+}
 async function loadSettings(){ const d=await fetch('/api/license/status').then(r=>r.json());
   document.getElementById('lic-state').innerHTML=`Tier: <b>${d.dev_mode?'DEV (all unlocked)':d.tier}</b> &middot; Status: <b class="${d.valid?'text-emerald-400':'text-red-400'}">${d.valid?'valid':'inactive'}</b>`+
     (d.expires_at?` &middot; expires ${d.expires_at.slice(0,10)}`:'')+`<br><span class="text-gray-500">${esc(d.message||'')}</span>`;
@@ -1647,6 +1668,7 @@ async function loadSettings(){ const d=await fetch('/api/license/status').then(r
     set('cfg-llm-geminimodel', s.llm?.gemini_model_id);
     set('cfg-llm-openaimodel', s.llm?.openai_model_id);
     set('cfg-llm-anthropicmodel', s.llm?.anthropic_model_id);
+    showLlmProviderFields(s.llm?.provider || 'groq');
     set('cfg-db-backend', s.storage?.backend);
     set('cfg-db-sqlite', s.storage?.sqlite_path);
     set('cfg-db-mssqlserver', s.storage?.mssql_server);
