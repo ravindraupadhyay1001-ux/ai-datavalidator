@@ -729,6 +729,7 @@ function showResultTab(prefix, key){
 // whichever module's "AI Copilot" tab is currently visible so it never duplicates IDs
 // and never takes fixed screen space of its own.
 let _copilotWidgetNode = null;
+let _pendingChatPrefill = '';
 function mountCopilotChat(prefix){
   const slot = document.getElementById(`${prefix}-chat-mount`);
   if(!slot) return;
@@ -739,6 +740,11 @@ function mountCopilotChat(prefix){
   if(_copilotWidgetNode.parentElement !== slot){
     slot.innerHTML = '';
     slot.appendChild(_copilotWidgetNode);
+  }
+  if(_pendingChatPrefill){
+    const inp = document.getElementById('chat-in');
+    if(inp && !inp.value) inp.value = _pendingChatPrefill;
+    _pendingChatPrefill = '';
   }
 }
 function logsPanelHTML(logs){
@@ -1073,12 +1079,11 @@ async function runCompareAI(){
     const r = await fetch(`/recon/run-llm/${data.session_id}`, {method:'POST'});
     if(r.ok) finalData = await r.json();
   }catch(e){ /* fall back to the plain compare result below */ }
-  await renderCompareResult(finalData, t0, 'copilot');
-  const chatInput = document.getElementById('chat-in');
-  if(chatInput){
-    chatInput.value = `Look at these reconciliation results and tell me what's driving the breaks, and whether the key/exclusions should change.`;
-    chatInput.focus();
-  }
+  // Land on Summary, same as Standard mode, so the full report is immediately visible
+  // instead of hidden behind the Copilot chat tab. The chat widget only mounts when its
+  // tab is opened, so queue the starter question for whenever that happens.
+  _pendingChatPrefill = `Look at these reconciliation results and tell me what's driving the breaks, and whether the key/exclusions should change.`;
+  await renderCompareResult(finalData, t0, 'summary');
 }
 // ---------- Quality / Profile / Governance -- AI Copilot mode ----------
 async function _runAICopilotMode(action, fileId, prefix, context, label, connId){
@@ -1584,11 +1589,11 @@ async function sendChat(){
   log.innerHTML+=`<div><span class="inline-block px-3 py-1.5 rounded-2xl card">${esc(d.reply||d.error||'')}</span></div>`;
   log.scrollTop=log.scrollHeight;
   if(d.recon_result){
-    // "run recon" -- the AI Copilot re-ran the actual comparison using saved rules;
-    // refresh the Summary/Exceptions tabs with the real results, same UI as Standard mode.
-    await renderCompareResult(d.recon_result, null, 'copilot');
-    const newLog=document.getElementById('chat-log');
-    if(newLog) newLog.scrollTop=newLog.scrollHeight;
+    // "run recon" -- the AI Copilot re-ran the actual comparison using saved rules.
+    // Jump straight to the Summary tab (same as Standard mode does after a run) so the
+    // full structured report is immediately visible, not hidden behind the chat panel
+    // with only the plain-text confirmation message showing.
+    await renderCompareResult(d.recon_result, null, 'summary');
   }
 }
 
