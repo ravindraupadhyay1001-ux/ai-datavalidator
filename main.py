@@ -612,6 +612,17 @@ def _ask_llm(messages: list[dict], system: str = "",
     raise RuntimeError("All LLM providers failed -- " + "; ".join(errors) if errors else "No LLM provider configured.")
 
 
+def _llm_error_message(e: Exception) -> str:
+    """Short, user-facing message for an _ask_llm() failure -- collapses the
+    raw multi-provider error dump (which can include internal API details)
+    into a clear "no LLM connection" signal for the UI, per-provider errors
+    otherwise kept but trimmed."""
+    msg = str(e)
+    if "All LLM providers failed" in msg or "No LLM provider configured" in msg:
+        return "No LLM connection configured."
+    return f"AI summary unavailable ({msg[:160]})."
+
+
 # ---------------------------------------------------------------------
 # File loading
 # ---------------------------------------------------------------------
@@ -18486,6 +18497,7 @@ async def rerun_quality_json(session_id: str, request: Request):
 
             # -- LLM Executive Summary
             _exec_summary = ""
+            _exec_summary_error = ""
 
 
     # ==== SOURCE PAGE 0790 ====
@@ -18530,13 +18542,14 @@ async def rerun_quality_json(session_id: str, request: Request):
 
     # ==== SOURCE PAGE 0792 ====
 
-            except Exception:
+            except Exception as _e_sum:
                 _exec_summary = (
                     f"Dataset '{fname}' scored {dq['score']}/100 (Grade {dq['grade']}). "
                     f"{len(fails)} rule failure(s) detected. "
                     + ("Immediate attention required." if dq['grade'] in ('D','F') else
                        "Minor issues to review." if dq['grade'] == 'C' else "Data quality is acceptable.")
                 )
+                _exec_summary_error = _llm_error_message(_e_sum) + " Showing a rule-based summary instead."
 
             # Store summary with session for Excel download
             _results_store[new_sid]["ai_summary"] = _exec_summary
@@ -18591,6 +18604,7 @@ async def rerun_quality_json(session_id: str, request: Request):
                 "ai_hints_used": list(_hints.keys()),
                 "ai_rules":     ai_rules,
                 "ai_summary":   _exec_summary,
+                "ai_summary_error": _exec_summary_error,
             }))
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -18874,6 +18888,7 @@ async def rerun_profile_json(session_id: str, request: Request):
         # configured, etc.) must not take down the whole report, same as the
         # quality endpoint's ai_summary is already protected.
         _profile_ai_summary = ""
+        _profile_ai_summary_error = ""
         try:
             _profile_ai_summary = (await _asyncio.to_thread(_ask_llm,
                 [{"role":"user","content":[{"text":
@@ -18884,8 +18899,8 @@ async def rerun_profile_json(session_id: str, request: Request):
                     f"Duplicate rows: {q.get('duplicate_rows',0)}. Be concise and business-focused."
                 }]}], "", "profile", "ai_summary",
                     getattr(request.state, "username", None) or "")).strip()
-        except Exception:
-            pass
+        except Exception as _e_sum:
+            _profile_ai_summary_error = _llm_error_message(_e_sum)
 
         return JSONResponse(_sanitize_json({
             "session_id":  new_sid,
@@ -18903,6 +18918,7 @@ async def rerun_profile_json(session_id: str, request: Request):
             "columns":        col_summary,
             "ai_hints_used": list(_hints.keys()),
             "ai_summary":    _profile_ai_summary,
+            "ai_summary_error": _profile_ai_summary_error,
         }))
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -18968,6 +18984,7 @@ async def rerun_governance_json(session_id: str, request: Request):
         # nice-to-have on top of the already-computed governance audit, so an
         # LLM hiccup must not take down the whole report.
         _gov_ai_summary = ""
+        _gov_ai_summary_error = ""
         try:
             _gov_ai_summary = (await _asyncio.to_thread(_ask_llm,[{"role":"user","content":[{"text":
                 f"Write a 2-3 sentence executive summary of this governance audit for {fname}. "
@@ -18977,8 +18994,8 @@ async def rerun_governance_json(session_id: str, request: Request):
                 f"Be direct about data sensitivity and compliance risk."
             }]}], "", "governance", "ai_summary",
                 getattr(request.state, "username", None) or "")).strip()
-        except Exception:
-            pass
+        except Exception as _e_sum:
+            _gov_ai_summary_error = _llm_error_message(_e_sum)
 
         return JSONResponse(_sanitize_json({
             "session_id":   new_sid,
@@ -19001,6 +19018,7 @@ async def rerun_governance_json(session_id: str, request: Request):
             "undocumented": g.get("undocumented_columns",[])[:10],
             "ai_hints_used": list(_hints.keys()),
             "ai_summary": _gov_ai_summary,
+            "ai_summary_error": _gov_ai_summary_error,
         }))
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
