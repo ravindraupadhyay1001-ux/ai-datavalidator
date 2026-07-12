@@ -199,6 +199,10 @@
           <div id="cmp-chip2" class="mt-2"></div>
         </div>
       </div>
+      <div id="cmp-extra-sources" class="space-y-3 mb-3"></div>
+      <div class="mb-4">
+        <button type="button" onclick="addCmpSource()" id="cmp-add-source-btn" class="btn-ghost btn rounded-lg px-3 py-1.5 text-xs">&#10011; Add source (for 3+ way reconciliation)</button>
+      </div>
       <div class="flex gap-3 items-center flex-wrap">
         <div class="seg" id="cmp-seg">
           <span class="seg-btn active" data-mode="standard" onclick="setCmpMode('standard')">Standard</span>
@@ -702,6 +706,52 @@ function wireDropzone(zoneId, inputId, chipId){
  'xref-zone1|xref-f1|xref-chip1','xref-zone2|xref-f2|xref-chip2','xref-zone3|xref-f3|xref-chip3','xref-zone4|xref-f4|xref-chip4'
 ].forEach(spec=>wireDropzone(...spec.split('|')));
 
+// ---------- Reconciliation: extra sources (N-way, 3+ files) ----------
+const _cmpExtraLabels = ['C','D','E','F']; // maps to files_c..files_f on the backend
+let _cmpExtraCount = 0;
+function addCmpSource(){
+  if(_cmpExtraCount >= _cmpExtraLabels.length) return;
+  const label = _cmpExtraLabels[_cmpExtraCount];
+  const n = _cmpExtraCount + 3; // Dataset A=1, B=2, so extras start at 3
+  _cmpExtraCount++;
+  const box = document.getElementById('cmp-extra-sources');
+  const row = document.createElement('div');
+  row.id = `cmp-source-row-${n}`;
+  row.innerHTML = `
+    <div class="text-xs text-gray-400 uppercase tracking-wide mb-2 flex items-center justify-between">
+      <span>Dataset ${label}</span>
+      <button type="button" onclick="removeCmpSource(${n})" class="text-red-400 hover:text-red-300 normal-case font-normal">&times; remove</button>
+    </div>
+    <div class="flex gap-2 items-stretch">
+      <div id="cmp-zone${n}" class="dropzone flex-1">Drag &amp; drop or click</div>
+      <span class="upload-or">or</span>
+      <select id="cmp-conn${n}" class="inp text-xs conn-select" style="width:180px"><option value="">&#128268; Saved Connector</option></select>
+    </div>
+    <input id="cmp-f${n}" type="file" class="hidden">
+    <div id="cmp-chip${n}" class="mt-2"></div>`;
+  box.appendChild(row);
+  wireDropzone(`cmp-zone${n}`, `cmp-f${n}`, `cmp-chip${n}`);
+  loadConnDropdowns();
+  if(_cmpExtraCount >= _cmpExtraLabels.length){
+    document.getElementById('cmp-add-source-btn').classList.add('hidden');
+  }
+}
+function removeCmpSource(n){
+  document.getElementById(`cmp-source-row-${n}`)?.remove();
+  _cmpExtraCount--;
+  document.getElementById('cmp-add-source-btn').classList.remove('hidden');
+}
+function cmpExtraFileInputs(){
+  // [field, fileInputId, connField, connSelectId] entries for every currently-added
+  // extra source, in the same shape postForm() expects for files_a/files_b.
+  const specs = [];
+  for(let i=0;i<_cmpExtraCount;i++){
+    const n = i+3, label = _cmpExtraLabels[i].toLowerCase();
+    if(document.getElementById(`cmp-source-row-${n}`)) specs.push([`files_${label}`, `cmp-f${n}`]);
+  }
+  return specs;
+}
+
 // ---------- Reconciliation: Standard vs AI Copilot mode ----------
 let cmpMode = 'standard';
 function setCmpMode(mode){
@@ -1100,10 +1150,91 @@ async function runCompare(){
   const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Comparing&hellip;</span>';
   const t0 = performance.now();
   const {ok,data}=await postForm('compare',
-    [['files_a','cmp-f1','conn_a_ids','cmp-conn1'],['files_b','cmp-f2','conn_b_ids','cmp-conn2']],
+    [['files_a','cmp-f1','conn_a_ids','cmp-conn1'],['files_b','cmp-f2','conn_b_ids','cmp-conn2'],...cmpExtraFileInputs()],
     {}, null);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
+  if(data.nway){ renderNwayResult(data, t0); return; }
   renderCompareResult(data, t0);
+}
+
+// ---------- Reconciliation: N-way (3+ files) result ----------
+function renderNwayResult(data, t0){
+  const out=document.getElementById('cmp-out');
+  setSession(data.session_id);
+  const c = data.counts||{};
+  const sources = data.sources||[];
+  const singleton = data.singleton_counts||{};
+
+  const summaryHTML = `
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+      <span class="badge" style="background:rgba(31,111,107,.12);color:#1f6f6b">&#128279; ${sources.length}-way reconciliation</span>
+      <span class="badge" style="background:rgba(217,119,6,.12);color:#b45309">&#9889; Key: ${esc((data.keys||[]).join(', ')||'n/a')} &mdash; ${esc(data.method||'')}</span>
+    </div>
+    <div class="grid gap-3 mb-4" style="grid-template-columns:repeat(${Math.min(sources.length,4)},1fr)">
+      ${sources.map(s=>`<div class="card rounded-xl p-4"><div class="text-xs font-semibold text-gray-300 mb-1 truncate">${esc(s.name)}</div>
+        <div class="flex gap-4 mt-1"><div><div class="text-xl font-bold">${s.rows}</div><div class="text-[11px] text-gray-500">rows</div></div>
+        <div><div class="text-xl font-bold">${s.columns}</div><div class="text-[11px] text-gray-500">cols</div></div></div></div>`).join('')}
+    </div>
+    <div class="grid grid-cols-4 gap-3 mb-4">
+      ${stat('Fully matched (all '+sources.length+')', c.fully_matched??0, '#059669')}
+      ${stat('Partial match', c.partial??0, '#b45309')}
+      ${stat('Value breaks', c.value_breaks??0, '#dc2626')}
+      ${stat('Total unique keys', c.total_keys??0, '#38bdf8')}
+    </div>
+    <div class="card rounded-xl p-4 mb-4">
+      <div class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">Present in only one source</div>
+      <div class="grid gap-2" style="grid-template-columns:repeat(${Math.min(sources.length,4)},1fr)">
+        ${sources.map(s=>`<div class="text-center"><div class="text-lg font-bold" style="color:${(singleton[s.name]||0)>0?'#dc2626':'#94a3b8'}">${singleton[s.name]||0}</div><div class="text-[11px] text-gray-500 truncate">${esc(s.name)}</div></div>`).join('')}
+      </div>
+    </div>
+    ${(data.excluded_meta_cols||[]).length ? `<div class="card rounded-xl p-3 mb-4 text-xs" style="background:rgba(37,99,235,.05)">
+      &#8505;&#65039; Auto-excluded metadata columns: ${data.excluded_meta_cols.map(esc).join(', ')}
+    </div>` : ''}`;
+
+  const topBroken = data.top_broken_columns||[];
+  const maxBroken = topBroken.length ? topBroken[0].count : 1;
+  const exceptionsHTML = `
+    ${topBroken.length ? `<div class="card rounded-xl p-4 mb-4">
+      <div class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">Top broken columns</div>
+      <div class="space-y-2">${topBroken.map(t=>`
+        <div class="flex items-center gap-2 text-xs">
+          <span class="w-32 truncate font-medium">${esc(t.col)}</span>
+          <div class="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden"><div class="h-full rounded-full" style="width:${Math.max(4,t.count/maxBroken*100)}%;background:linear-gradient(90deg,#dc2626,#f87171)"></div></div>
+          <span class="w-8 text-right text-gray-500">${t.count}</span>
+        </div>`).join('')}</div>
+    </div>` : ''}
+    <details class="mb-4" ${(data.partial_rows||[]).length?'open':''}>
+      <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(217,119,6,.08)">&#9680; Present in some but not all sources (${(data.partial_rows||[]).length})</summary>
+      <div class="mt-2 space-y-2 text-xs">${(data.partial_rows||[]).length ? data.partial_rows.map(r=>`
+        <div class="card rounded-lg p-2"><b class="text-sky-700">${esc(r.key)}</b>
+          <div class="mt-1"><span class="text-emerald-600">present in: ${r.present_in.map(esc).join(', ')}</span> &middot;
+          <span class="text-red-600">missing from: ${r.missing_from.map(esc).join(', ')}</span></div>
+        </div>`).join('') : '<span class="text-gray-500">None &mdash; every key is either in all sources or exactly one.</span>'}</div>
+    </details>
+    <details class="mb-4" ${(data.value_breaks||[]).length?'open':''}>
+      <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(220,38,38,.08)">&equals; Value breaks across sources (${(data.value_breaks||[]).length})</summary>
+      <div class="mt-2 space-y-2 text-xs">${(data.value_breaks||[]).length ? data.value_breaks.map(vb=>`
+        <div class="card rounded-lg p-2"><b class="text-sky-700">${vb.key?esc(vb.key):''}</b>
+          ${Object.entries(vb.changes).map(([col,vals])=>`
+            <div class="mt-1"><span class="font-medium">${esc(col)}:</span> ${Object.entries(vals).map(([src,v],i)=>
+              `<span class="ml-1">${esc(src)}=<b class="${i===0?'text-amber-600':'text-red-600'}">${esc(v)}</b></span>`).join('')}</div>
+          `).join('')}
+        </div>`).join('') : '<span class="text-gray-500">No value breaks.</span>'}</div>
+    </details>`;
+
+  const chips = [
+    {label:'Which of these sources should I treat as the source of truth?', q:'Which of these sources should I treat as the source of truth when they disagree?'},
+    {label:'Summarize the biggest discrepancies across all sources', q:'Summarize the biggest discrepancies across all the sources in this N-way reconciliation.'},
+    {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
+  ];
+
+  out.innerHTML = actionBar(data.session_id, t0!=null?((performance.now()-t0)/1000).toFixed(3):data.elapsed) + resultTabsShell('cmp', [
+    {key:'summary', label:'Summary', content: summaryHTML},
+    {key:'exceptions', label:`Exceptions (${(c.partial||0)+(c.value_breaks||0)})`, content: exceptionsHTML},
+    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('cmp','compare', chips)},
+    {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
+  ], 'summary');
+  loadDatasetControlRules('cmp','compare');
 }
 
 // ---------- Reconciliation: AI Copilot mode -- loads the files, then runs the
