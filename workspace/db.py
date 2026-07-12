@@ -215,6 +215,12 @@ _DDL = [
     # already parsed these from the request body but had nowhere to put them.
     "ALTER TABLE ws_jobs ADD COLUMN sla_json TEXT",
     "ALTER TABLE ws_jobs ADD COLUMN ai_hints_json TEXT",
+    # Governance metadata for connections -- /api/ws/connections already parsed
+    # these from the request body but had nowhere to put them.
+    "ALTER TABLE ws_connections ADD COLUMN owner TEXT",
+    "ALTER TABLE ws_connections ADD COLUMN business_domain TEXT",
+    "ALTER TABLE ws_connections ADD COLUMN sensitivity TEXT",
+    "ALTER TABLE ws_connections ADD COLUMN description TEXT",
 ]
 
 
@@ -327,7 +333,8 @@ def set_user_password_hash(username, password_hash):
 def list_connections(username):
     cur = _conn().cursor()
     cur.execute(
-        f"SELECT id, name, source_type, created_at, updated_at "
+        f"SELECT id, name, source_type, owner, business_domain, sensitivity, "
+        f"description, created_at, updated_at "
         f"FROM ws_connections WHERE username={_ph()} ORDER BY name",
         (username,),
     )
@@ -348,23 +355,28 @@ def get_connection(conn_id, username):
     return row
 
 
-def save_connection(username, name, source_type, config, conn_id=None):
+def save_connection(username, name, source_type, config, conn_id=None,
+                     owner=None, business_domain=None, sensitivity=None, description=None):
     conn = _conn()
     cur = conn.cursor()
     if conn_id:
         cur.execute(
             f"UPDATE ws_connections SET name={_ph()}, source_type={_ph()}, "
-            f"config_json={_ph()}, updated_at={_ph()} "
+            f"config_json={_ph()}, owner={_ph()}, business_domain={_ph()}, "
+            f"sensitivity={_ph()}, description={_ph()}, updated_at={_ph()} "
             f"WHERE id={_ph()} AND username={_ph()}",
-            (name, source_type, _b64(config), _now(), conn_id, username),
+            (name, source_type, _b64(config), owner, business_domain,
+             sensitivity, description, _now(), conn_id, username),
         )
         conn.commit()
         return conn_id
     cur.execute(
         f"INSERT INTO ws_connections "
-        f"(username, name, source_type, config_json, created_at, updated_at) "
-        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
-        (username, name, source_type, _b64(config), _now(), _now()),
+        f"(username, name, source_type, config_json, owner, business_domain, "
+        f"sensitivity, description, created_at, updated_at) "
+        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
+        (username, name, source_type, _b64(config), owner, business_domain,
+         sensitivity, description, _now(), _now()),
     )
     conn.commit()
     return cur.lastrowid
