@@ -4522,6 +4522,169 @@ def compare_dataframes(
     return diff
 
 
+def _values_differ_scalar(a: str, b: str) -> bool:
+    # Scalar counterpart to _series_differs -- numeric- and date-aware equality
+    # for two already-stringified cell values, used by the N-way engine's
+    # per-key Python loop (compare_dataframes' vectorised path doesn't apply
+    # once there are more than two sources to line up per key).
+    if a == b:
+        return False
+    try:
+        if abs(float(a) - float(b)) < 1e-9:
+            return False
+    except (ValueError, TypeError):
+        pass
+    try:
+        da, db = pd.to_datetime(a, errors="raise"), pd.to_datetime(b, errors="raise")
+        if da == db:
+            return False
+    except Exception:
+        pass
+    return True
+
+
+def compare_dataframes_nway(
+    dataframes: list[tuple[str, pd.DataFrame]],
+    manual_keys: list[str] | None = None,
+    exclude_cols: list[str] | None = None,
+) -> dict:
+    # N-way reconciliation across 2+ (meaningfully, 3+) sources. Reuses the
+    # same key normalisation and numeric/date-aware value comparison as the
+    # 2-file engine (_key_based_diff / _series_differs), but instead of a
+    # single file1-vs-file2 diff, builds:
+    #   - a presence matrix: which sources contain each key (fully matched /
+    #     partial / present in only one source)
+    #   - a value-break table: for keys present in 2+ sources, every column
+    #     where the sources disagree, showing ALL sources' values side by
+    #     side (not just a pair)
+    #
+    # Key is inferred from the first two sources (infer_keys is inherently a
+    # pairwise algorithm) and then applied across every source -- a
+    # deliberate simplification rather than a new N-way key-inference
+    # algorithm, which would be a much larger and riskier undertaking for
+    # comparatively little benefit (the same business key almost always
+    # applies uniformly across every source in real reconciliation work).
+    if len(dataframes) < 2:
+        raise HTTPException(400, "N-way reconciliation requires at least 2 files.")
+
+    names = [n for n, _ in dataframes]
+    dfs = [_normalise(df) for _, df in dataframes]
+
+    all_excludes = set(exclude_cols or [])
+    common_cols = set(dfs[0].columns)
+    for df in dfs[1:]:
+        common_cols &= set(df.columns)
+    common_cols = [c for c in dfs[0].columns if c in common_cols and c not in all_excludes]
+    if not common_cols:
+        raise HTTPException(400, f"The {len(dfs)} uploaded files have no common columns to reconcile on.")
+
+    if manual_keys:
+        keys = [k for k in manual_keys if k in common_cols]
+        method = f"manual ({', '.join(keys)})" if keys else "content-based (manual keys not found in common columns)"
+    else:
+        keys, method = infer_keys(dataframes[0][1], dataframes[1][1], common_cols)
+    if not keys:
+        raise HTTPException(400, f"No usable join key found across these {len(dfs)} files ({method}). "
+                                  f"Specify key column(s) manually and rerun.")
+
+    excluded_meta_cols = [c for c in common_cols if c not in keys
+                           and _is_metadata_col(c, dfs[0][c].dtype if c in dfs[0].columns else None)]
+    value_cols = [c for c in common_cols if c not in keys and c not in excluded_meta_cols][:_MAX_DATA_COLS]
+
+    def _norm_key_col(s: pd.Series) -> pd.Series:
+        s = s.fillna("").astype(str).str.strip()
+        return s.where(~s.str.lower().isin(_NULL_SENTINELS), "")
+
+    indexed: list[pd.DataFrame | None] = []
+    duplicate_counts: list[int] = []
+    for df in dfs:
+        missing_keys = [k for k in keys if k not in df.columns]
+        if missing_keys:
+            indexed.append(None)
+            duplicate_counts.append(0)
+            continue
+        df = df.copy()
+        for k in keys:
+            df[k] = _norm_key_col(df[k])
+        duplicate_counts.append(int(df.duplicated(subset=keys).sum()))
+        df_idx = df.set_index(keys)
+        indexed.append(df_idx[~df_idx.index.duplicated(keep="first")])
+
+    key_sets = [set(d.index.tolist()) if d is not None else set() for d in indexed]
+    all_keys: set = set()
+    for ks in key_sets:
+        all_keys |= ks
+
+    def _safe_sort_key(k):
+        if isinstance(k, tuple):
+            return tuple("" if (isinstance(v, float) and pd.isna(v)) else str(v) for v in k)
+        return "" if (isinstance(k, float) and pd.isna(k)) else str(k)
+
+    def make_kv(key):
+        return dict(zip(keys, key)) if isinstance(key, tuple) else {keys[0]: key}
+
+    fully_matched = 0
+    partial_rows: list[dict] = []
+    singleton_counts = {n: 0 for n in names}
+    value_break_rows: list[dict] = []
+    col_break_counts: dict[str, int] = {}
+
+    for key in sorted(all_keys, key=_safe_sort_key):
+        presence = [i for i, ks in enumerate(key_sets) if key in ks]
+        if len(presence) == len(names):
+            fully_matched += 1
+        elif len(presence) == 1:
+            singleton_counts[names[presence[0]]] += 1
+        elif len(partial_rows) < _MAX_DIFF_ROWS:
+            partial_rows.append({
+                "key_values": make_kv(key),
+                "present_in": [names[i] for i in presence],
+                "missing_from": [names[i] for i in range(len(names)) if i not in presence],
+            })
+
+        if len(presence) < 2:
+            continue  # nothing to value-compare with only one (or zero) source holding this key
+
+        row_changes: dict[str, dict[str, str]] = {}
+        for col in value_cols:
+            values: dict[str, str] = {}
+            for i in presence:
+                try:
+                    v = indexed[i].loc[key, col] if col in indexed[i].columns else ""
+                except Exception:
+                    v = ""
+                values[names[i]] = _safe_str(v)
+            distinct_vals = list(values.values())
+            ref = distinct_vals[0]
+            if any(_values_differ_scalar(ref, v) for v in distinct_vals[1:]):
+                row_changes[col] = values
+                col_break_counts[col] = col_break_counts.get(col, 0) + 1
+        if row_changes and len(value_break_rows) < _MAX_DIFF_ROWS:
+            value_break_rows.append({"key_values": make_kv(key), "changes": row_changes})
+
+    top_broken_columns = [{"col": c, "count": n} for c, n in
+                           sorted(col_break_counts.items(), key=lambda x: x[1], reverse=True)[:10]]
+
+    return {
+        "sources": [{"name": n, "rows": len(df), "columns": len(df.columns)} for n, df in zip(names, dfs)],
+        "keys": keys,
+        "method": method,
+        "common_columns": common_cols,
+        "excluded_meta_cols": excluded_meta_cols,
+        "duplicate_counts": dict(zip(names, duplicate_counts)),
+        "counts": {
+            "fully_matched": fully_matched,
+            "partial": len(partial_rows),
+            "value_breaks": len(value_break_rows),
+            "total_keys": len(all_keys),
+        },
+        "singleton_counts": singleton_counts,
+        "partial_rows": partial_rows,
+        "value_breaks": value_break_rows,
+        "top_broken_columns": top_broken_columns,
+    }
+
+
 # ----------------------------------------------------------------------
 # Data Quality - enhanced with business rules & data dictionary
 # ----------------------------------------------------------------------
@@ -15820,6 +15983,13 @@ async def analyze(request: Request):
         v for v in form.getlist("files_b")
         if hasattr(v, "filename") and v.filename
     ]
+    # Optional additional sources (files_c..files_f) for N-way reconciliation --
+    # each is its own separate source, unlike files_a/files_b's row-concatenation.
+    # Empty/absent for the ordinary 2-file case, so behaviour there is unchanged.
+    _nway_extra_uploads: list[tuple[str, list[UploadFile]]] = [
+        (label, [v for v in form.getlist(f"files_{label}") if hasattr(v, "filename") and v.filename])
+        for label in ("c", "d", "e", "f")
+    ]
     files: list[UploadFile] = [
         v for v in form.getlist("files")
         if hasattr(v, "filename") and v.filename
@@ -16031,6 +16201,16 @@ async def analyze(request: Request):
       a_name, a_df = _apply_preprocess(a_name, a_df, preprocess_a)
       b_name, b_df = _apply_preprocess(b_name, b_df, preprocess_b)
       dataframes = [(a_name, a_df), (b_name, b_df)]
+      if action == "compare":
+        # Each additional source (files_c..files_f) is its own separate dataset for
+        # N-way reconciliation, not concatenated with anything else.
+        for _label, _uploads in _nway_extra_uploads:
+          if not _uploads:
+            continue
+          _extra_tuples = _load_upload_list(_uploads)
+          if _extra_tuples:
+            _extra_name, _extra_df = _concat_group(_extra_tuples, _label.upper())
+            dataframes.append((_extra_name, _extra_df))
     else:
       # Upload files first
       for f in files:
@@ -16133,6 +16313,7 @@ async def analyze(request: Request):
 
 
     pairs      = []
+    nway_result = None
     quality_reports  = []
     governance_reports = []
 
@@ -16153,7 +16334,15 @@ async def analyze(request: Request):
     session_id = str(uuid.uuid4())
 
     # -- Per-action logic --
-    if action == "compare":
+    if action == "compare" and len(dataframes) > 2:
+      # 3+ files uploaded -- N-way reconciliation instead of a pairwise diff.
+      # nway_result is picked up by the response-building block below; pairs/
+      # mappings stay empty for this action so the 2-file code path (and its
+      # response shape) is completely untouched for the len==2 case.
+      nway_result = await asyncio.to_thread(
+        compare_dataframes_nway, dataframes, manual_keys, excluded_cols)
+
+    elif action == "compare":
       # dataframes is always [(a_name, a_df), (b_name, b_df)] for compare/lineage
       (a_name, a_df), (b_name, b_df) = dataframes[0], dataframes[1]
       diff, mapping = await asyncio.gather(
@@ -17093,6 +17282,38 @@ async def analyze(request: Request):
     # -- Build the JSON payload the frontend's fetch()-based UI expects for
     # each action. (The full session data above is still kept in
     # _results_store/_chat_contexts for downloads, chat, and reruns.)
+    if action == "compare" and nway_result is not None:
+        r = nway_result
+        _resp = {
+            "session_id": session_id,
+            "nway": True,
+            "sources": r["sources"],
+            "counts": r["counts"],
+            "keys": r["keys"],
+            "method": r["method"],
+            "fingerprint": _resolved_fingerprint,
+            "common_columns_list": r["common_columns"],
+            "excluded_meta_cols": r["excluded_meta_cols"],
+            "duplicate_counts": r["duplicate_counts"],
+            "singleton_counts": r["singleton_counts"],
+            "partial_rows": [
+                {"key": ", ".join(f"{k}={v}" for k, v in pr["key_values"].items()),
+                 "present_in": pr["present_in"], "missing_from": pr["missing_from"]}
+                for pr in r["partial_rows"]
+            ],
+            "value_breaks": [
+                {"key": ", ".join(f"{k}={v}" for k, v in vb["key_values"].items()),
+                 "changes": vb["changes"]}
+                for vb in r["value_breaks"]
+            ],
+            "top_broken_columns": r["top_broken_columns"],
+            "elapsed": total_elapsed,
+            "logs": proc_logs,
+        }
+        if session_id in _results_store:
+            _results_store[session_id]["_digest"] = _resp
+        return JSONResponse(_sanitize_json(_resp))
+
     if action == "compare":
         diff = pairs[0]["diff"]
         modified = [
