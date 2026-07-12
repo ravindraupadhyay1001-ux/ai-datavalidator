@@ -17,9 +17,49 @@ detecting the format from magic bytes when the extension is unknown.
 
 import io
 import json
+import re as _re
 from abc import ABC, abstractmethod
+from datetime import date as _date, timedelta as _timedelta
 
 import pandas as pd
+
+
+# ==========================================================================
+# Dynamic date-token substitution
+# ==========================================================================
+# Lets a connection config reference "today's file" without hardcoding a date
+# -- e.g. an SFTP remote_path of "/feeds/trades_{YYYYMMDD}.csv" resolves to
+# today's date on every fetch, so a daily EOD job never needs manual editing.
+# Applied once to every string config value in BaseConnector.__init__, so
+# every connector type supports it automatically with no per-class code.
+_DATE_TOKEN_RE = _re.compile(
+    r"\{(YYYYMMDD|YYYY|D)([+-]\d+)?\}|\{strftime:([^{}]+?)([+-]\d+)?\}"
+)
+
+
+def _resolve_date_tokens(value: str) -> str:
+    if not isinstance(value, str) or "{" not in value:
+        return value
+
+    def _sub(m: "_re.Match") -> str:
+        base, offset, fmt, fmt_offset = m.groups()
+        if fmt is not None:
+            off = int(fmt_offset) if fmt_offset else 0
+            return (_date.today() + _timedelta(days=off)).strftime(fmt)
+        off = int(offset) if offset else 0
+        target = _date.today() + _timedelta(days=off)
+        if base in ("YYYYMMDD", "D"):
+            return target.strftime("%Y%m%d")
+        if base == "YYYY":
+            return target.strftime("%Y")
+        return m.group(0)
+
+    return _DATE_TOKEN_RE.sub(_sub, value)
+
+
+def _resolve_config_date_tokens(config: dict) -> dict:
+    return {k: (_resolve_date_tokens(v) if isinstance(v, str) else v)
+            for k, v in (config or {}).items()}
 
 
 # ==========================================================================
@@ -90,7 +130,7 @@ def _parse_bytes(raw: bytes, hint: str = "", delimiter: str = None) -> pd.DataFr
 # ==========================================================================
 class BaseConnector(ABC):
     def __init__(self, config: dict):
-        self.config = config or {}
+        self.config = _resolve_config_date_tokens(config or {})
 
     @abstractmethod
     def fetch(self) -> pd.DataFrame:
@@ -113,6 +153,10 @@ class BaseConnector(ABC):
             "gcs": GCSConnector, "kafka": KafkaConnector,
             "salesforce": SalesforceConnector, "sharepoint": SharePointConnector,
             "databricks": DatabricksConnector,
+            "azure_sql": AzureSQLConnector, "azuresql": AzureSQLConnector,
+            "db2": DB2Connector,
+            "bloomberg": BloombergConnector, "refinitiv": RefinitivConnector,
+            "murex": MurexConnector, "calypso": CalypsoConnector,
         }
         if st not in registry:
             raise ValueError(f"Unknown source type '{source_type}'.")
@@ -505,6 +549,224 @@ class DatabricksConnector(_SQLConnector):
             server_hostname=c["server_hostname"], http_path=c["http_path"],
             access_token=c["access_token"],
         )
+
+
+class AzureSQLConnector(_SQLConnector):
+    """config: server ('myserver.database.windows.net'), database, username,
+    password, port (default 1433), auth_type ('sql' default |
+    'aad_password' | 'aad_msi' | 'aad_default'), plus 'query' or 'table'
+    like the other SQL connectors. Same TDS/pyodbc protocol as
+    MSSQLConnector, but Azure SQL always requires Encrypt=yes and supports
+    Azure AD auth modes on top of plain SQL login."""
+    _DRIVERS = MSSQLConnector._DRIVERS
+
+    def _connect(self):
+        import pyodbc
+        c = self.config
+        auth_type = (c.get("auth_type") or "sql").lower()
+        last = None
+        for drv in self._DRIVERS:
+            try:
+                base = (f"DRIVER={{{drv}}};SERVER=tcp:{c['server']},{c.get('port', 1433)};"
+                        f"DATABASE={c['database']};Encrypt=yes;TrustServerCertificate=no;"
+                        f"Connection Timeout=10;")
+                if auth_type == "sql":
+                    cs = base + f"UID={c.get('username')};PWD={c.get('password')};"
+                elif auth_type == "aad_password":
+                    cs = base + (f"Authentication=ActiveDirectoryPassword;"
+                                 f"UID={c.get('username')};PWD={c.get('password')};")
+                elif auth_type == "aad_msi":
+                    cs = base + "Authentication=ActiveDirectoryMsi;"
+                else:
+                    cs = base + "Authentication=ActiveDirectoryDefault;"
+                return pyodbc.connect(cs, timeout=10)
+            except Exception as e:
+                last = e
+        raise RuntimeError(f"Could not connect with any ODBC driver: {last}")
+
+
+class DB2Connector(_SQLConnector):
+    """config: host, port (default 50000), database, username, password,
+    plus 'query' or 'table' like the other SQL connectors. Uses IBM's
+    ibm_db_dbi DB-API wrapper (pip install ibm_db) for DB2 for LUW/i/z-OS."""
+    def _connect(self):
+        import ibm_db
+        import ibm_db_dbi
+        c = self.config
+        conn_str = (f"DATABASE={c['database']};HOSTNAME={c['host']};"
+                    f"PORT={c.get('port', 50000)};PROTOCOL=TCPIP;"
+                    f"UID={c.get('username')};PWD={c.get('password')};")
+        raw = ibm_db.connect(conn_str, "", "")
+        return ibm_db_dbi.Connection(raw)
+
+
+# ==========================================================================
+# Market-data / trading-system connectors
+#
+# Bloomberg and Refinitiv follow their respective vendor SDK/API contracts
+# exactly (blpapi's Session/Request model; Refinitiv Data Platform's OAuth2
+# REST API). Murex and Calypso have no single universal API across bank
+# deployments -- most integrations go through either a REST connectivity
+# layer (assumed here) or the platform's own reporting database (in which
+# case, use the 'mssql'/'oracle'/'postgres' connector type against that
+# database directly instead of these). None of the four are verifiable in
+# this environment without a live licensed connection.
+# ==========================================================================
+class BloombergConnector(BaseConnector):
+    """config: host (default 'localhost'), port (default 8194 -- Bloomberg
+    Desktop API via a running Bloomberg Terminal, or a B-PIPE server
+    endpoint), securities (list of Bloomberg tickers), fields (list of field
+    mnemonics, e.g. ['PX_LAST','SECURITY_NAME']), request_type
+    ('ReferenceData' default or 'HistoricalData'), start_date/end_date
+    (YYYYMMDD, HistoricalData only). Requires the 'blpapi' package."""
+    def _session(self):
+        import blpapi
+        c = self.config
+        opts = blpapi.SessionOptions()
+        opts.setServerHost(c.get("host", "localhost"))
+        opts.setServerPort(int(c.get("port", 8194)))
+        session = blpapi.Session(opts)
+        if not session.start():
+            raise RuntimeError("Could not start Bloomberg API session.")
+        if not session.openService("//blp/refdata"):
+            raise RuntimeError("Could not open //blp/refdata service.")
+        return session
+
+    def fetch(self) -> pd.DataFrame:
+        import blpapi
+        c = self.config
+        session = self._session()
+        try:
+            service = session.getService("//blp/refdata")
+            req_type = c.get("request_type", "ReferenceData")
+            request = service.createRequest(f"{req_type}Request")
+            for sec in c.get("securities", []):
+                request.getElement("securities").appendValue(sec)
+            for f in c.get("fields", []):
+                request.getElement("fields").appendValue(f)
+            if req_type == "HistoricalData":
+                request.set("startDate", c.get("start_date", ""))
+                request.set("endDate", c.get("end_date", ""))
+            session.sendRequest(request)
+            rows = []
+            while True:
+                event = session.nextEvent(500)
+                for msg in event:
+                    if msg.hasElement("securityData"):
+                        sec_data = msg.getElement("securityData")
+                        sec_name = sec_data.getElementAsString("security")
+                        field_data = sec_data.getElement("fieldData")
+                        if req_type == "HistoricalData":
+                            for i in range(field_data.numValues()):
+                                row = {"security": sec_name}
+                                point = field_data.getValueAsElement(i)
+                                for j in range(point.numElements()):
+                                    el = point.getElement(j)
+                                    row[str(el.name())] = str(el.getValueAsString())
+                                rows.append(row)
+                        else:
+                            row = {"security": sec_name}
+                            for j in range(field_data.numElements()):
+                                el = field_data.getElement(j)
+                                row[str(el.name())] = str(el.getValueAsString())
+                            rows.append(row)
+                if event.eventType() == blpapi.Event.RESPONSE:
+                    break
+            return pd.DataFrame(rows).astype(str)
+        finally:
+            session.stop()
+
+    def test_connection(self) -> bool:
+        session = self._session()
+        session.stop()
+        return True
+
+
+class RefinitivConnector(BaseConnector):
+    """config: client_id, client_secret (OAuth2 client-credentials grant),
+    universe (list of RICs), fields (list of field names), base_url
+    (default 'https://api.refinitiv.com'). Uses the Refinitiv Data Platform
+    (RDP) REST API -- no Eikon/Workspace desktop app required, unlike the
+    older 'eikon' package."""
+    def _token(self, httpx):
+        c = self.config
+        url = f"{c.get('base_url', 'https://api.refinitiv.com')}/auth/oauth2/v1/token"
+        data = {
+            "grant_type": "client_credentials",
+            "client_id": c["client_id"], "client_secret": c["client_secret"],
+            "scope": c.get("scope", "trapi"),
+        }
+        r = httpx.post(url, data=data, timeout=30)
+        r.raise_for_status()
+        return r.json()["access_token"]
+
+    def fetch(self) -> pd.DataFrame:
+        import httpx
+        c = self.config
+        with httpx.Client(timeout=30) as client:
+            token = self._token(client)
+            url = f"{c.get('base_url', 'https://api.refinitiv.com')}/data/pricing/snapshots/v1/"
+            r = client.get(url, headers={"Authorization": f"Bearer {token}"},
+                           params={"universe": ",".join(c.get("universe", [])),
+                                   "fields": ",".join(c.get("fields", []))})
+            r.raise_for_status()
+            payload = r.json()
+            records = payload.get("data", payload) if isinstance(payload, dict) else payload
+            return pd.json_normalize(records).astype(str)
+
+    def test_connection(self) -> bool:
+        import httpx
+        with httpx.Client(timeout=15) as client:
+            self._token(client)
+        return True
+
+
+class _TradingSystemRESTConnector(BaseConnector):
+    """Shared fetch logic for trading/risk platforms that expose a
+    resource-oriented REST API (bearer token or basic auth). config:
+    base_url, resource, api_key (bearer) or username+password (basic),
+    params (dict, optional)."""
+    def _client_kwargs(self):
+        c = self.config
+        headers = {"Authorization": f"Bearer {c['api_key']}"} if c.get("api_key") else {}
+        auth = (c["username"], c["password"]) if c.get("username") and not c.get("api_key") else None
+        return {"headers": headers, "auth": auth}
+
+    def fetch(self) -> pd.DataFrame:
+        import httpx
+        c = self.config
+        with httpx.Client(timeout=30, **self._client_kwargs()) as client:
+            r = client.get(f"{c['base_url'].rstrip('/')}/{c['resource'].lstrip('/')}",
+                           params=c.get("params") or {})
+            r.raise_for_status()
+            payload = r.json()
+            records = payload.get("data", payload) if isinstance(payload, dict) else payload
+            return pd.json_normalize(records).astype(str)
+
+    def test_connection(self) -> bool:
+        import httpx
+        c = self.config
+        with httpx.Client(timeout=15, **self._client_kwargs()) as client:
+            r = client.get(f"{c['base_url'].rstrip('/')}/{c.get('resource', '').lstrip('/')}",
+                           params=c.get("params") or {})
+            return r.status_code < 400
+
+
+class MurexConnector(_TradingSystemRESTConnector):
+    """config: base_url (Murex MX.3 REST Connectivity endpoint), resource
+    (e.g. 'trades', 'positions'), api_key or username+password, params
+    (dict, optional query filters). Murex MX.3 has no single universal API
+    across deployments -- most banks expose it either via the MX.3 REST
+    Connectivity layer (assumed here) or a Datamart reporting database (use
+    the 'mssql'/'oracle' connector against the Datamart's tables instead, if
+    that's how your deployment is configured)."""
+
+
+class CalypsoConnector(_TradingSystemRESTConnector):
+    """config: base_url (Calypso REST API endpoint), resource (e.g.
+    'trades', 'positions', 'cashflows'), api_key or username+password,
+    params (dict, optional query filters). Follows Calypso's documented
+    REST Web Services resource model."""
 
 
 # ==========================================================================

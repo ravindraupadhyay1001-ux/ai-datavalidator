@@ -417,8 +417,12 @@
             <option value="mysql">MySQL</option><option value="oracle">Oracle</option><option value="snowflake">Snowflake</option>
             <option value="azure_blob">Azure Blob</option><option value="gcs">GCS</option><option value="kafka">Kafka</option>
             <option value="salesforce">Salesforce</option><option value="sharepoint">SharePoint</option><option value="databricks">Databricks</option>
+            <option value="azure_sql">Azure SQL</option><option value="db2">DB2</option>
+            <option value="bloomberg">Bloomberg</option><option value="refinitiv">Refinitiv</option>
+            <option value="murex">Murex (MX.3)</option><option value="calypso">Calypso</option>
           </select>
           <textarea id="cn-config" rows="3" placeholder='{"url":"https://...","data_path":"items"}' class="inp col-span-2 font-mono"></textarea>
+          <p class="col-span-2 text-[11px] text-gray-500 -mt-1">&#128197; Any path/query field supports date tokens for daily feeds: <code>{YYYYMMDD}</code>, <code>{D-1}</code> (yesterday), <code>{D+1}</code>, <code>{YYYYMMDD-2}</code>, <code>{YYYY}</code>, or <code>{strftime:%Y-%m-%d}</code> &mdash; e.g. <code>"remote_path": "/feeds/trades_{YYYYMMDD}.csv"</code>.</p>
           <button onclick="saveConnection()" class="btn rounded-lg px-3 py-1 w-32 font-medium">Save</button>
         </div>
         <div id="cn-list"></div>
