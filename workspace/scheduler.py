@@ -166,6 +166,41 @@ def _run_fan_out(pairs, job, username):
     }
 
 
+def _evaluate_sla(sla: dict, result: dict) -> dict:
+    """Check a job's actual run result against its configured SLA
+    thresholds (set via the job's `sla` field -- max_breaks, min_dq_score,
+    max_null_pct, alert_on_schema_drift). Returns
+    {"breached": bool, "reasons": [str, ...]}; an empty/unconfigured sla
+    never breaches, so this is a no-op for every job that doesn't use SLAs."""
+    if not sla:
+        return {"breached": False, "reasons": []}
+    reasons = []
+    if sla.get("max_breaks") not in (None, ""):
+        counts = result.get("counts") or {}
+        breaks = (int(counts.get("file1_only", 0)) + int(counts.get("file2_only", 0))
+                  + int(counts.get("modified", 0)))
+        max_breaks = int(sla["max_breaks"])
+        if breaks > max_breaks:
+            reasons.append(f"{breaks} breaks exceeds max_breaks ({max_breaks})")
+    if sla.get("min_dq_score") not in (None, ""):
+        score = (result.get("dq_score") or {}).get("score")
+        min_score = float(sla["min_dq_score"])
+        if score is not None and float(score) < min_score:
+            reasons.append(f"DQ score {score} is below min_dq_score ({min_score})")
+    if sla.get("max_null_pct") not in (None, ""):
+        max_null = float(sla["max_null_pct"])
+        worst = None
+        for col in result.get("columns") or []:
+            pct = col.get("null_pct")
+            if pct is not None and float(pct) > max_null and (worst is None or pct > worst[1]):
+                worst = (col.get("name"), pct)
+        if worst:
+            reasons.append(f"Column '{worst[0]}' is {worst[1]}% null, exceeds max_null_pct ({max_null}%)")
+    if sla.get("alert_on_schema_drift") and result.get("schema_drift"):
+        reasons.append(f"Schema drift detected: {len(result['schema_drift'])} change(s)")
+    return {"breached": bool(reasons), "reasons": reasons}
+
+
 def _execute_job(job_id, username):
     run_id = db.create_run(job_id, username)
     try:
@@ -188,9 +223,14 @@ def _execute_job(job_id, username):
         summary = result.get("counts") or result.get("dimensions") or {}
         db.finish_run(run_id, "success", summary=summary)
         db.update_job_status(job_id, "ok")
-        if job.get("notify_email"):
+        sla = job.get("sla") or {}
+        sla_result = _evaluate_sla(sla, result)
+        should_email = bool(job.get("notify_email")) and (
+            sla_result["breached"] or not sla.get("alert_only_on_fail")
+        )
+        if should_email:
             try:
-                _send_rich_email_report(job, result)
+                _send_rich_email_report(job, result, sla_result)
             except Exception as e:
                 print(f"[scheduler] email failed for job {job_id}: {e}")
         return run_id
@@ -204,12 +244,21 @@ def _execute_job(job_id, username):
 # --------------------------------------------------------------------------
 # Email
 # --------------------------------------------------------------------------
-def _html_report(job, result):
+def _html_report(job, result, sla_result=None):
     counts = result.get("counts") or {}
     dims = result.get("dimensions") or {}
     rows = "".join(f"<tr><td>{k}</td><td style='text-align:right'>{v}</td></tr>"
                    for k, v in {**counts, **dims}.items())
+    sla_banner = ""
+    if sla_result and sla_result.get("breached"):
+        reasons = "".join(f"<li>{r}</li>" for r in sla_result.get("reasons", []))
+        sla_banner = f"""
+        <div style="background:#7f1d1d;color:#fff;padding:12px 16px;border-radius:6px;margin-bottom:12px;font-family:Arial">
+          <b>&#128308; SLA BREACH</b>
+          <ul style="margin:6px 0 0 0">{reasons}</ul>
+        </div>"""
     return f"""
+    {sla_banner}
     <h2>Data Validation report — {job.get('name')}</h2>
     <p>Action: <b>{job.get('action')}</b></p>
     <table border="1" cellpadding="6" cellspacing="0"
@@ -220,11 +269,12 @@ def _html_report(job, result):
     """
 
 
-def _send_rich_email_report(job, result):
+def _send_rich_email_report(job, result, sla_result=None):
     to_email = job["notify_email"]
     from_email = job.get("from_email") or os.getenv("EMAIL_FROM", "")
-    subject = f"[Data Validation] {job.get('name')} — {job.get('action')}"
-    html = _html_report(job, result)
+    breached = bool(sla_result and sla_result.get("breached"))
+    subject = f"[Data Validation] {'SLA BREACH -- ' if breached else ''}{job.get('name')} — {job.get('action')}"
+    html = _html_report(job, result, sla_result)
 
     if platform.system() == "Windows" and not os.getenv("SMTP_HOST"):
         try:

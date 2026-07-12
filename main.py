@@ -21889,7 +21889,9 @@ async def ws_get_sla(job_id: str, request: Request):
 
     _ws_check()
 
-    return JSONResponse(_ws_db.get_job_sla(job_id))
+    username = _ws_get_user(request)
+
+    return JSONResponse(_ws_db.get_job_sla(job_id, username))
 
 
 # -- AI job assistant -- suggest key columns, schedule, thresholds

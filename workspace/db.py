@@ -476,6 +476,11 @@ def get_job(job_id, username):
     return row
 
 
+def get_job_sla(job_id, username):
+    job = get_job(job_id, username)
+    return job.get("sla", {}) if job else {}
+
+
 def save_job(username, name, action, source_conn_id=None, conn_a_id=None,
              conn_b_id=None, key_columns=None, exclude_columns=None,
              ruleset_id=None, schedule_cron=None, from_email=None,
