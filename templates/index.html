@@ -421,8 +421,12 @@
             <option value="bloomberg">Bloomberg</option><option value="refinitiv">Refinitiv</option>
             <option value="murex">Murex (MX.3)</option><option value="calypso">Calypso</option>
           </select>
-          <textarea id="cn-config" rows="3" placeholder='{"url":"https://...","data_path":"items"}' class="inp col-span-2 font-mono"></textarea>
+          <div id="cn-fields" class="col-span-2 grid grid-cols-2 gap-2"></div>
           <p class="col-span-2 text-[11px] text-gray-500 -mt-1">&#128197; Any path/query field supports date tokens for daily feeds: <code>{YYYYMMDD}</code>, <code>{D-1}</code> (yesterday), <code>{D+1}</code>, <code>{YYYYMMDD-2}</code>, <code>{YYYY}</code>, or <code>{strftime:%Y-%m-%d}</code> &mdash; e.g. <code>"remote_path": "/feeds/trades_{YYYYMMDD}.csv"</code>.</p>
+          <details class="col-span-2 text-xs">
+            <summary class="cursor-pointer text-gray-400">Advanced: raw JSON overrides (merged on top of the fields above &mdash; use for things like custom headers)</summary>
+            <textarea id="cn-config-adv" rows="2" placeholder='{"headers":{"Authorization":"Bearer ..."}}' class="inp w-full mt-1 font-mono text-xs"></textarea>
+          </details>
           <button onclick="saveConnection()" class="btn rounded-lg px-3 py-1 w-32 font-medium">Save</button>
         </div>
         <div id="cn-list"></div>
@@ -2104,38 +2108,196 @@ async function loadConnections(){ const rows=await fetch('/api/ws/connections').
     <span class="flex gap-2"><button onclick="testConn(${c.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Test</button>
     <button onclick="previewConn(${c.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Preview</button>
     <button onclick="delConn(${c.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join(''):'<div class="text-gray-500 text-sm">No connections.</div>'; }
-const CN_CONFIG_EXAMPLES = {
-  api: '{"url":"https://...","data_path":"items"}',
-  s3: '{"bucket":"my-bucket","key":"path/to/trades_{YYYYMMDD}.csv","region":"us-east-1","aws_access_key_id":"...","aws_secret_access_key":"..."}',
-  sftp: '{"host":"sftp.example.com","port":22,"username":"user","password":"...","remote_path":"/feeds/trades_{YYYYMMDD}.csv"}',
-  ftp: '{"host":"ftp.example.com","port":21,"username":"user","password":"...","remote_path":"/feeds/trades_{YYYYMMDD}.csv"}',
-  mssql: '{"host":"myserver","port":1433,"database":"mydb","username":"user","password":"...","table":"dbo.trades"}',
-  postgres: '{"host":"myserver","port":5432,"database":"mydb","username":"user","password":"...","query":"SELECT * FROM trades"}',
-  mysql: '{"host":"myserver","port":3306,"database":"mydb","username":"user","password":"...","table":"trades"}',
-  oracle: '{"host":"myserver","port":1521,"service_name":"ORCL","username":"user","password":"...","table":"TRADES"}',
-  snowflake: '{"account":"xy12345","username":"user","password":"...","warehouse":"WH","database":"DB","schema":"PUBLIC","query":"SELECT * FROM trades"}',
-  azure_blob: '{"connection_string":"DefaultEndpointsProtocol=...","container":"feeds","blob":"trades_{YYYYMMDD}.csv"}',
-  gcs: '{"bucket":"my-bucket","blob":"feeds/trades_{YYYYMMDD}.csv","credentials_json":"(optional, path or inline JSON)"}',
-  kafka: '{"bootstrap_servers":"broker1:9092,broker2:9092","topic":"trades","group_id":"recon-consumer","max_records":5000}',
-  salesforce: '{"username":"user@org.com","password":"...","security_token":"...","object_name":"Account","fields":["Id","Name"]}',
-  sharepoint: '{"site_url":"https://tenant.sharepoint.com/sites/x","file_path":"/Shared Documents/trades.csv","tenant_id":"...","client_id":"...","client_secret":"..."}',
-  databricks: '{"server_hostname":"adb-....azuredatabricks.net","http_path":"/sql/1.0/warehouses/...","access_token":"...","table":"main.trades"}',
-  azure_sql: '{"server":"myserver.database.windows.net","database":"mydb","username":"user","password":"...","auth_type":"sql","table":"dbo.trades"}',
-  db2: '{"host":"myserver","port":50000,"database":"mydb","username":"user","password":"...","table":"TRADES"}',
-  bloomberg: '{"host":"localhost","port":8194,"securities":["AAPL US Equity"],"fields":["PX_LAST","SECURITY_NAME"],"request_type":"ReferenceData"}',
-  refinitiv: '{"client_id":"...","client_secret":"...","universe":["AAPL.O"],"fields":["BID","ASK"]}',
-  murex: '{"base_url":"https://murex.example.com/api","resource":"trades","api_key":"..."}',
-  calypso: '{"base_url":"https://calypso.example.com/api","resource":"trades","api_key":"..."}',
+// ---------- Connection config: per-type form fields (instead of raw JSON) ----------
+const _TABLE_OR_QUERY = [
+  {k:'table', label:'Table (or use Query below)', type:'text'},
+  {k:'query', label:'Query (optional, overrides Table)', type:'textarea', wide:true},
+];
+const CN_FIELD_SPECS = {
+  api: [
+    {k:'url', label:'URL', type:'text', required:true, placeholder:'https://api.example.com/trades'},
+    {k:'method', label:'Method', type:'select', options:['GET','POST'], default:'GET'},
+    {k:'data_path', label:'Data path (optional)', type:'text', placeholder:'items'},
+  ],
+  s3: [
+    {k:'bucket', label:'Bucket', type:'text', required:true},
+    {k:'key', label:'Key / path', type:'text', required:true, placeholder:'feeds/trades_{YYYYMMDD}.csv'},
+    {k:'region', label:'Region', type:'text', placeholder:'us-east-1'},
+    {k:'aws_access_key_id', label:'Access key ID', type:'text'},
+    {k:'aws_secret_access_key', label:'Secret access key', type:'password'},
+  ],
+  sftp: [
+    {k:'host', label:'Host', type:'text', required:true},
+    {k:'port', label:'Port', type:'number', default:22},
+    {k:'username', label:'Username', type:'text'},
+    {k:'password', label:'Password', type:'password'},
+    {k:'remote_path', label:'Remote path', type:'text', required:true, wide:true, placeholder:'/feeds/trades_{YYYYMMDD}.csv'},
+  ],
+  ftp: [
+    {k:'host', label:'Host', type:'text', required:true},
+    {k:'port', label:'Port', type:'number', default:21},
+    {k:'username', label:'Username', type:'text'},
+    {k:'password', label:'Password', type:'password'},
+    {k:'remote_path', label:'Remote path', type:'text', required:true, wide:true, placeholder:'/feeds/trades_{YYYYMMDD}.csv'},
+  ],
+  mssql: [
+    {k:'host', label:'Host', type:'text', required:true}, {k:'port', label:'Port', type:'number', default:1433},
+    {k:'database', label:'Database', type:'text', required:true},
+    {k:'username', label:'Username', type:'text'}, {k:'password', label:'Password', type:'password'},
+    ..._TABLE_OR_QUERY,
+  ],
+  postgres: [
+    {k:'host', label:'Host', type:'text', required:true}, {k:'port', label:'Port', type:'number', default:5432},
+    {k:'database', label:'Database', type:'text', required:true},
+    {k:'username', label:'Username', type:'text'}, {k:'password', label:'Password', type:'password'},
+    ..._TABLE_OR_QUERY,
+  ],
+  mysql: [
+    {k:'host', label:'Host', type:'text', required:true}, {k:'port', label:'Port', type:'number', default:3306},
+    {k:'database', label:'Database', type:'text', required:true},
+    {k:'username', label:'Username', type:'text'}, {k:'password', label:'Password', type:'password'},
+    ..._TABLE_OR_QUERY,
+  ],
+  oracle: [
+    {k:'host', label:'Host', type:'text', required:true}, {k:'port', label:'Port', type:'number', default:1521},
+    {k:'service_name', label:'Service name', type:'text', required:true},
+    {k:'username', label:'Username', type:'text'}, {k:'password', label:'Password', type:'password'},
+    ..._TABLE_OR_QUERY,
+  ],
+  snowflake: [
+    {k:'account', label:'Account', type:'text', required:true, placeholder:'xy12345'},
+    {k:'username', label:'Username', type:'text'}, {k:'password', label:'Password', type:'password'},
+    {k:'warehouse', label:'Warehouse', type:'text'}, {k:'database', label:'Database', type:'text'},
+    {k:'schema', label:'Schema', type:'text'},
+    ..._TABLE_OR_QUERY,
+  ],
+  azure_blob: [
+    {k:'connection_string', label:'Connection string', type:'password', wide:true, placeholder:'DefaultEndpointsProtocol=...'},
+    {k:'container', label:'Container', type:'text', required:true},
+    {k:'blob', label:'Blob name / path', type:'text', required:true, placeholder:'trades_{YYYYMMDD}.csv'},
+  ],
+  gcs: [
+    {k:'bucket', label:'Bucket', type:'text', required:true},
+    {k:'blob', label:'Blob name / path', type:'text', required:true, placeholder:'feeds/trades_{YYYYMMDD}.csv'},
+    {k:'credentials_json', label:'Credentials JSON (optional)', type:'textarea', wide:true, placeholder:'path or inline service-account JSON'},
+  ],
+  kafka: [
+    {k:'bootstrap_servers', label:'Bootstrap servers', type:'text', required:true, wide:true, placeholder:'broker1:9092,broker2:9092'},
+    {k:'topic', label:'Topic', type:'text', required:true},
+    {k:'group_id', label:'Group ID (recommended for polling jobs)', type:'text', placeholder:'recon-consumer'},
+    {k:'max_records', label:'Max records per fetch', type:'number', default:5000},
+  ],
+  salesforce: [
+    {k:'username', label:'Username', type:'text', required:true, placeholder:'user@org.com'},
+    {k:'password', label:'Password', type:'password'}, {k:'security_token', label:'Security token', type:'password'},
+    {k:'domain', label:'Domain', type:'text', placeholder:'login'},
+    {k:'object_name', label:'Object name (or use SOQL below)', type:'text', placeholder:'Account'},
+    {k:'soql', label:'SOQL (optional, overrides Object name)', type:'textarea', wide:true},
+  ],
+  sharepoint: [
+    {k:'site_url', label:'Site URL', type:'text', required:true, wide:true},
+    {k:'file_path', label:'File path', type:'text', required:true, wide:true, placeholder:'/Shared Documents/trades.csv'},
+    {k:'tenant_id', label:'Tenant ID', type:'text'}, {k:'client_id', label:'Client ID', type:'text'},
+    {k:'client_secret', label:'Client secret', type:'password'},
+  ],
+  databricks: [
+    {k:'server_hostname', label:'Server hostname', type:'text', required:true, wide:true},
+    {k:'http_path', label:'HTTP path', type:'text', required:true, wide:true, placeholder:'/sql/1.0/warehouses/...'},
+    {k:'access_token', label:'Access token', type:'password'},
+    ..._TABLE_OR_QUERY,
+  ],
+  azure_sql: [
+    {k:'server', label:'Server', type:'text', required:true, wide:true, placeholder:'myserver.database.windows.net'},
+    {k:'port', label:'Port', type:'number', default:1433}, {k:'database', label:'Database', type:'text', required:true},
+    {k:'auth_type', label:'Auth type', type:'select', options:['sql','aad_password','aad_msi','aad_default'], default:'sql'},
+    {k:'username', label:'Username', type:'text'}, {k:'password', label:'Password', type:'password'},
+    ..._TABLE_OR_QUERY,
+  ],
+  db2: [
+    {k:'host', label:'Host', type:'text', required:true}, {k:'port', label:'Port', type:'number', default:50000},
+    {k:'database', label:'Database', type:'text', required:true},
+    {k:'username', label:'Username', type:'text'}, {k:'password', label:'Password', type:'password'},
+    ..._TABLE_OR_QUERY,
+  ],
+  bloomberg: [
+    {k:'host', label:'Host', type:'text', default:'localhost'}, {k:'port', label:'Port', type:'number', default:8194},
+    {k:'securities', label:'Securities (comma-separated)', type:'text', required:true, wide:true, list:true, placeholder:'AAPL US Equity, MSFT US Equity'},
+    {k:'fields', label:'Fields (comma-separated)', type:'text', required:true, wide:true, list:true, placeholder:'PX_LAST, SECURITY_NAME'},
+    {k:'request_type', label:'Request type', type:'select', options:['ReferenceData','HistoricalData'], default:'ReferenceData'},
+  ],
+  refinitiv: [
+    {k:'client_id', label:'Client ID', type:'text', required:true}, {k:'client_secret', label:'Client secret', type:'password'},
+    {k:'universe', label:'Universe / RICs (comma-separated)', type:'text', required:true, wide:true, list:true, placeholder:'AAPL.O, MSFT.O'},
+    {k:'fields', label:'Fields (comma-separated)', type:'text', wide:true, list:true, placeholder:'BID, ASK'},
+  ],
+  murex: [
+    {k:'base_url', label:'Base URL', type:'text', required:true, wide:true, placeholder:'https://murex.example.com/api'},
+    {k:'resource', label:'Resource', type:'text', required:true, placeholder:'trades'},
+    {k:'api_key', label:'API key (or use Username/Password below)', type:'password'},
+    {k:'username', label:'Username (if not using API key)', type:'text'},
+    {k:'password', label:'Password (if not using API key)', type:'password'},
+  ],
+  calypso: [
+    {k:'base_url', label:'Base URL', type:'text', required:true, wide:true, placeholder:'https://calypso.example.com/api'},
+    {k:'resource', label:'Resource', type:'text', required:true, placeholder:'trades'},
+    {k:'api_key', label:'API key (or use Username/Password below)', type:'password'},
+    {k:'username', label:'Username (if not using API key)', type:'text'},
+    {k:'password', label:'Password (if not using API key)', type:'password'},
+  ],
 };
-function onCnTypeChange(){
+function renderCnFields(){
   const sel = document.getElementById('cn-type');
-  const box = document.getElementById('cn-config');
-  if(sel && box) box.placeholder = CN_CONFIG_EXAMPLES[sel.value] || '{}';
+  const box = document.getElementById('cn-fields');
+  if(!sel || !box) return;
+  const specs = CN_FIELD_SPECS[sel.value] || [];
+  box.innerHTML = specs.map(f=>{
+    const id = `cn-f-${f.k}`;
+    const wideCls = f.wide ? ' col-span-2' : '';
+    const reqMark = f.required ? ' <span class="text-red-400">*</span>' : '';
+    let control;
+    if(f.type === 'select'){
+      control = `<select id="${id}" class="inp text-sm" data-key="${f.k}">${(f.options||[]).map(o=>`<option value="${esc(o)}" ${o===f.default?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+    } else if(f.type === 'textarea'){
+      control = `<textarea id="${id}" class="inp text-sm font-mono" data-key="${f.k}" rows="2" placeholder="${esc(f.placeholder||'')}"></textarea>`;
+    } else {
+      control = `<input id="${id}" class="inp text-sm" type="${f.type==='password'?'password':f.type==='number'?'number':'text'}" data-key="${f.k}" placeholder="${esc(f.placeholder||'')}" value="${f.default!=null?esc(String(f.default)):''}">`;
+    }
+    return `<label class="flex flex-col gap-1 text-xs text-gray-400${wideCls}"><span>${esc(f.label)}${reqMark}</span>${control}</label>`;
+  }).join('');
 }
+function collectCnConfig(){
+  const sel = document.getElementById('cn-type');
+  const specs = CN_FIELD_SPECS[sel.value] || [];
+  const cfg = {};
+  const missing = [];
+  specs.forEach(f=>{
+    const el = document.getElementById(`cn-f-${f.k}`);
+    if(!el) return;
+    const raw = el.value.trim();
+    if(!raw){ if(f.required) missing.push(f.label); return; }
+    cfg[f.k] = f.list ? raw.split(',').map(s=>s.trim()).filter(Boolean)
+              : f.type === 'number' ? Number(raw) : raw;
+  });
+  if(missing.length) throw new Error(`Missing required field(s): ${missing.join(', ')}`);
+  const advRaw = document.getElementById('cn-config-adv')?.value?.trim();
+  if(advRaw){
+    let adv; try{ adv = JSON.parse(advRaw); }catch(e){ throw new Error('Advanced JSON is invalid.'); }
+    Object.assign(cfg, adv);
+  }
+  return cfg;
+}
+function onCnTypeChange(){ renderCnFields(); }
 onCnTypeChange();
-async function saveConnection(){ const cn_config=document.getElementById('cn-config'), cn_name=document.getElementById('cn-name'), cn_type=document.getElementById('cn-type');
-  let cfg; try{cfg=JSON.parse(cn_config.value||'{}');}catch(e){alert('Config must be valid JSON');return;}
-  await J('POST','/api/ws/connections',{name:cn_name.value,source_type:cn_type.value,config:cfg}); cn_name.value='';cn_config.value=''; loadConnections(); loadConnDropdowns(); }
+async function saveConnection(){
+  const cn_name=document.getElementById('cn-name'), cn_type=document.getElementById('cn-type');
+  if(!cn_name.value.trim()){ alert('Connection name is required.'); return; }
+  let cfg; try{ cfg = collectCnConfig(); }catch(e){ alert(e.message); return; }
+  await J('POST','/api/ws/connections',{name:cn_name.value,source_type:cn_type.value,config:cfg});
+  cn_name.value='';
+  document.querySelectorAll('#cn-fields input, #cn-fields textarea').forEach(el=>el.value='');
+  const adv = document.getElementById('cn-config-adv'); if(adv) adv.value='';
+  loadConnections(); loadConnDropdowns();
+}
 async function testConn(id){ const r=await J('POST',`/api/ws/connections/${id}/test`); alert(r.ok?'✅ Connection OK':'❌ '+(r.error||'failed')); }
 async function previewConn(id){ const r=await fetch(`/api/ws/connections/${id}/preview`).then(x=>x.json()); if(r.detail){alert(r.detail);return;} alert('Columns: '+r.columns.join(', ')+'\n'+r.rows.length+' rows'); }
 async function delConn(id){ if(confirm('Delete connection?')){await fetch(`/api/ws/connections/${id}`,{method:'DELETE'});loadConnections();loadConnDropdowns();} }
