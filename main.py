@@ -19275,10 +19275,12 @@ JSON schema (omit any key that is not needed):
     {{
       "side": "src|tgt|both",
       "col": "col_name_or_*",
-      "op": "upper|lower|strip|trim_quotes|strip_commas|strip_suffix|strip_prefix|replace_text|pad_left|truncate|regex_replace|to_numeric|round_numeric|negate|scale|abs_numeric|fillna_text|fillna_numeric|floor_numeric|parse_date|date_format|extract_date|ticker_strip|isin_strip|side_normalize|sign_to_side|map_values|coalesce",
+      "op": "upper|lower|strip|trim_quotes|strip_commas|strip_suffix|strip_prefix|replace_text|pad_left|truncate|regex_replace|to_numeric|round_numeric|negate|scale|fx_convert|abs_numeric|fillna_text|fillna_numeric|floor_numeric|parse_date|date_format|extract_date|ticker_strip|isin_strip|side_normalize|sign_to_side|map_values|coalesce",
       "arg": "meaning depends on op -- suffix string / regex pattern / fill value / width /
-              decimals / scale factor / date format / mapping dict / fallback column name",
-      "replacement": "replacement string for replace_text and regex_replace (default empty string)"
+              decimals / scale factor / date format / mapping dict / fallback column name /
+              FX rate table (JSON object, for fx_convert)",
+      "replacement": "replacement string for replace_text and regex_replace (default empty string)",
+      "ccy_col": "column holding each row's currency code -- REQUIRED for op fx_convert only"
     }}
   ],
   "src_agg": {{"group_by": ["col_a","col_b"], "agg_col": "vol_col", "agg_fn": "sum"}},
@@ -19305,6 +19307,11 @@ Key rules:
 - For rounding use op "round_numeric" with arg as decimal places (e.g. 2).
 - For sign flip use op "negate".
 - For unit scaling (e.g. units->thousands) use op "scale" with arg as the factor (e.g. 0.001).
+- For cross-currency amount comparison (e.g. "convert amount to USD using EUR=1.087, GBP=1.27")
+  use op "fx_convert" with arg as a JSON rate table (units of the common/base currency per 1 unit
+  of that currency -- the base currency itself gets rate 1.0) and ccy_col naming the column that
+  holds each row's currency code. Apply to the amount column on whichever side(s) need converting;
+  rows whose currency isn't in the rate table are left unconverted rather than dropped.
 - For buy/sell normalisation use op "side_normalize" -- maps B/S/BOT/SLD/1/-1 -> BUY/SELL.
 - For positive=BUY negative=SELL use op "sign_to_side".
 - For fixed value remapping use op "map_values" with arg as a JSON dict e.g. {{"B":"BUY","S":"SELL"}}.
@@ -19498,6 +19505,27 @@ def _apply_recon_params(
                 # Multiply by factor in arg (e.g. 0.001 to convert units -> thousands)
                 factor = float(t.get("arg", 1))
                 df[c] = pd.to_numeric(df[c], errors="coerce") * factor
+            elif op == "fx_convert":
+                # Convert a per-row currency-denominated amount into a common base
+                # currency before comparison, so e.g. a USD amount and a EUR amount
+                # for "the same" trade can actually be tolerance-compared instead of
+                # always looking like a value break. arg = JSON rate table (units of
+                # base currency per 1 unit of that currency), e.g.
+                # {"USD": 1.0, "EUR": 1.087, "GBP": 1.27}. ccy_col names the column
+                # holding each row's currency code; rows with an unrecognised or
+                # missing currency are left unconverted (rate 1.0) rather than
+                # dropped, since a wrong guess is worse than a visible discrepancy.
+                ccy_col = t.get("ccy_col", "")
+                rates_raw = t.get("arg", "{}")
+                try:
+                    rates = json.loads(rates_raw) if isinstance(rates_raw, str) else (rates_raw or {})
+                except Exception:
+                    rates = {}
+                if ccy_col and ccy_col in df.columns and rates:
+                    rate_lookup = {str(k).strip().upper(): float(v) for k, v in rates.items()}
+                    ccy_series = df[ccy_col].astype(str).str.strip().str.upper()
+                    rate_series = ccy_series.map(rate_lookup).fillna(1.0)
+                    df[c] = pd.to_numeric(df[c], errors="coerce") * rate_series
 
             # -- Date / Time ----------------------------------------
             elif op == "date_format":
