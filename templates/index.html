@@ -200,8 +200,24 @@
         </div>
       </div>
       <div id="cmp-extra-sources" class="space-y-3 mb-3"></div>
-      <div class="mb-4">
+      <div class="mb-4 flex flex-wrap gap-2 items-center">
         <button type="button" onclick="addCmpSource()" id="cmp-add-source-btn" class="btn-ghost btn rounded-lg px-3 py-1.5 text-xs">&#10011; Add source (for 3+ way reconciliation)</button>
+        <label class="flex items-center gap-2 text-xs text-gray-500 cursor-pointer ml-2">
+          <input type="checkbox" id="cmp-fuzzy-enable" class="accent-sky-500" onchange="document.getElementById('cmp-fuzzy-panel').classList.toggle('hidden', !this.checked)">
+          &#128269; Fuzzy match (no clean key &mdash; match by similarity instead)
+        </label>
+      </div>
+      <div id="cmp-fuzzy-panel" class="hidden card rounded-xl p-4 mb-4 text-sm">
+        <div class="grid grid-cols-2 gap-3">
+          <div><label class="text-xs text-gray-400">Fields to match on (comma-separated)</label>
+            <input id="cmp-fuzzy-fields" placeholder="e.g. name, amount, date" class="inp w-full mt-1 text-sm"></div>
+          <div><label class="text-xs text-gray-400">Match threshold (0.5&ndash;0.95 &mdash; higher = stricter)</label>
+            <input id="cmp-fuzzy-threshold" type="number" min="0.5" max="0.95" step="0.05" value="0.75" class="inp w-full mt-1 text-sm"></div>
+        </div>
+        <p class="text-xs text-gray-500 mt-2">For when there's no shared ID between the two files &mdash; e.g. matching a bank
+          statement narrative against an internal ledger description by name/amount/date proximity. Text fields are scored
+          by similarity (typos, reordering, and formatting differences are tolerated); numeric fields by relative closeness;
+          dates by day proximity. Capped at 3,000 rows per file. Not available for 3+ source reconciliation.</p>
       </div>
       <div class="flex gap-3 items-center flex-wrap">
         <div class="seg" id="cmp-seg">
@@ -1149,10 +1165,14 @@ function renderCompareResult(data, t0, mode){
 async function runCompare(){
   const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Comparing&hellip;</span>';
   const t0 = performance.now();
+  const fuzzyOn = document.getElementById('cmp-fuzzy-enable')?.checked;
+  const fuzzyFields = fuzzyOn ? (document.getElementById('cmp-fuzzy-fields')?.value.trim()||'') : '';
+  const extra = fuzzyFields ? {fuzzy_fields: fuzzyFields, fuzzy_threshold: document.getElementById('cmp-fuzzy-threshold')?.value||'0.75'} : {};
   const {ok,data}=await postForm('compare',
     [['files_a','cmp-f1','conn_a_ids','cmp-conn1'],['files_b','cmp-f2','conn_b_ids','cmp-conn2'],...cmpExtraFileInputs()],
-    {}, null);
+    extra, null);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
+  if(data.fuzzy){ renderFuzzyResult(data, t0); return; }
   if(data.nway){ renderNwayResult(data, t0); return; }
   renderCompareResult(data, t0);
 }
@@ -1231,6 +1251,76 @@ function renderNwayResult(data, t0){
   out.innerHTML = actionBar(data.session_id, t0!=null?((performance.now()-t0)/1000).toFixed(3):data.elapsed) + resultTabsShell('cmp', [
     {key:'summary', label:'Summary', content: summaryHTML},
     {key:'exceptions', label:`Exceptions (${(c.partial||0)+(c.value_breaks||0)})`, content: exceptionsHTML},
+    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('cmp','compare', chips)},
+    {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
+  ], 'summary');
+  loadDatasetControlRules('cmp','compare');
+}
+
+// ---------- Reconciliation: fuzzy/probabilistic match result ----------
+function renderFuzzyResult(data, t0){
+  const out=document.getElementById('cmp-out');
+  setSession(data.session_id);
+  const c = data.counts||{};
+  const f1=data.files?.file1||{}, f2=data.files?.file2||{};
+  const scoreColor = s => s>=0.9?'#059669':(s>=0.8?'#0284c7':'#b45309');
+
+  const summaryHTML = `
+    <div class="text-sm text-gray-400 mb-3">${esc(f1.name||'File 1')} &rarr; ${esc(f2.name||'File 2')}</div>
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+      <span class="badge" style="background:rgba(31,111,107,.12);color:#1f6f6b">&#128269; Fuzzy match</span>
+      <span class="badge" style="background:rgba(217,119,6,.12);color:#b45309">Fields: ${esc((data.fuzzy_fields||[]).join(', '))}</span>
+      <span class="badge" style="background:rgba(56,189,248,.12);color:#0369a1">Threshold: ${data.threshold}</span>
+    </div>
+    <div class="grid grid-cols-2 gap-4 mb-4">
+      <div class="card rounded-xl p-4"><div class="text-xs font-semibold text-gray-300 mb-1">FILE 1 &mdash; ${esc((f1.name||'').toUpperCase())}</div>
+        <div class="text-2xl font-bold mt-2">${f1.rows??'&mdash;'}</div><div class="text-xs text-gray-500">rows</div></div>
+      <div class="card rounded-xl p-4"><div class="text-xs font-semibold text-gray-300 mb-1">FILE 2 &mdash; ${esc((f2.name||'').toUpperCase())}</div>
+        <div class="text-2xl font-bold mt-2">${f2.rows??'&mdash;'}</div><div class="text-xs text-gray-500">rows</div></div>
+    </div>
+    <div class="grid grid-cols-4 gap-3 mb-4">
+      ${stat('Matched', c.matched??0, '#059669')}
+      ${stat('Modified', c.modified??0, '#b45309')}
+      ${stat('Only in '+(f1.name||'File 1'), c.file1_only??0, '#ef4444')}
+      ${stat('Only in '+(f2.name||'File 2'), c.file2_only??0, '#f59e0b')}
+    </div>`;
+
+  const rowPair = (m) => `
+    <div class="card rounded-lg p-2 text-xs">
+      <div class="flex items-center justify-between mb-1">
+        <span class="badge" style="background:${scoreColor(m.match_score)}22;color:${scoreColor(m.match_score)}">score ${m.match_score}</span>
+      </div>
+      <div>${(data.fuzzy_fields||[]).map(f=>`<div><b class="text-sky-700">${esc(f)}:</b> ${esc(m.file1_row[f]??'')} &harr; ${esc(m.file2_row[f]??'')}</div>`).join('')}</div>
+      ${m.changes ? `<div class="mt-1 pt-1 border-t border-[var(--line)]">${Object.entries(m.changes).map(([col,v])=>
+        `<div>${esc(col)}: <span class="text-amber-600">${esc(v.file1)}</span>&rarr;<span class="text-emerald-600">${esc(v.file2)}</span></div>`).join('')}</div>` : ''}
+    </div>`;
+
+  const exceptionsHTML = `
+    <details class="mb-4" ${(data.modified_rows||[]).length?'open':''}>
+      <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(217,119,6,.08)">&equals; Matched but other fields differ (${(data.modified_rows||[]).length})</summary>
+      <div class="mt-2 space-y-2">${(data.modified_rows||[]).length ? data.modified_rows.map(rowPair).join('') : '<span class="text-gray-500 text-xs">None.</span>'}</div>
+    </details>
+    <details class="mb-4">
+      <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(5,150,105,.08)">&#10003; Matched, fully agree (${(data.matched_rows||[]).length})</summary>
+      <div class="mt-2 space-y-2">${(data.matched_rows||[]).length ? data.matched_rows.map(rowPair).join('') : '<span class="text-gray-500 text-xs">None.</span>'}</div>
+    </details>
+    <details class="mb-3" ${(c.file1_only||0)>0?'':'open'}>
+      <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(220,38,38,.06)">&times; No match in ${esc(f2.name||'File 2')} (${c.file1_only??0})</summary>
+      <div class="mt-2 text-xs space-y-1">${(data.only_in_file1||[]).length ? data.only_in_file1.map(r=>`<div class="card rounded p-2">${(data.fuzzy_fields||[]).map(f=>esc(r.row_data[f]??'')).join(' &middot; ')}</div>`).join('') : '<span class="text-gray-500">None.</span>'}</div>
+    </details>
+    <details class="mb-3" ${(c.file2_only||0)>0?'':'open'}>
+      <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(217,119,6,.06)">&check; No match in ${esc(f1.name||'File 1')} (${c.file2_only??0})</summary>
+      <div class="mt-2 text-xs space-y-1">${(data.only_in_file2||[]).length ? data.only_in_file2.map(r=>`<div class="card rounded p-2">${(data.fuzzy_fields||[]).map(f=>esc(r.row_data[f]??'')).join(' &middot; ')}</div>`).join('') : '<span class="text-gray-500">None.</span>'}</div>
+    </details>`;
+
+  const chips = [
+    {label:'Why might some rows not have matched?', q:'Why might some rows not have found a fuzzy match? Suggest a lower threshold or different fields if useful.'},
+    {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
+  ];
+
+  out.innerHTML = actionBar(data.session_id, t0!=null?((performance.now()-t0)/1000).toFixed(3):data.elapsed) + resultTabsShell('cmp', [
+    {key:'summary', label:'Summary', content: summaryHTML},
+    {key:'exceptions', label:`Exceptions (${(c.modified||0)+(c.file1_only||0)+(c.file2_only||0)})`, content: exceptionsHTML},
     {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('cmp','compare', chips)},
     {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
   ], 'summary');
