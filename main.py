@@ -88,6 +88,8 @@ from agent.feedback_store import (
     update_rule as _fp_update,
     get_dataset_label as _fp_get_label,
     resolve_fingerprint as _fp_resolve,
+    list_all_datasets as _fp_list_datasets,
+    copy_rules as _fp_copy_rules,
 )
 
 app = FastAPI(title="Data Validation AGENT")
@@ -15151,6 +15153,34 @@ async def get_recon_baseline_endpoint(fingerprint: str, request: Request):
     except Exception:
         return JSONResponse(None)
 
+
+@app.get("/api/recon/rule-templates")
+async def list_rule_templates(exclude_fingerprint: str = ""):
+    """Every schema with saved reconciliation rules -- usable as a template
+    library: pick one and apply its rules onto a different (new) schema,
+    instead of rules only ever auto-loading for the exact schema they were
+    written for. exclude_fingerprint hides the current session's own schema
+    from the list, since copying a schema's rules onto itself is a no-op."""
+    datasets = _fp_list_datasets()
+    if exclude_fingerprint:
+        datasets = [d for d in datasets if d["fingerprint"] != exclude_fingerprint]
+    datasets.sort(key=lambda d: d.get("updated", ""), reverse=True)
+    return JSONResponse(datasets)
+
+
+@app.post("/api/recon/rule-templates/apply")
+async def apply_rule_template(request: Request):
+    """Copy every saved rule from one schema onto another. Duplicate rules
+    (already present on the target) are skipped automatically."""
+    body = await request.json()
+    from_fp = str(body.get("from_fingerprint", "")).strip()
+    to_fp = str(body.get("to_fingerprint", "")).strip()
+    if not from_fp or not to_fp:
+        raise HTTPException(400, "from_fingerprint and to_fingerprint are both required.")
+    if from_fp == to_fp:
+        raise HTTPException(400, "Source and target schema are the same -- nothing to apply.")
+    copied = _fp_copy_rules(from_fp, to_fp)
+    return JSONResponse({"copied": copied})
 
 
 

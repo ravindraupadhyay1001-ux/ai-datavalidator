@@ -230,6 +230,31 @@ def update_rule(fingerprint, rule_index, rule_text=None,
         _LOCK.release()
 
 
+def copy_rules(from_fingerprint, to_fingerprint, categories=None) -> int:
+    """Copy every rule from one schema's saved set onto another (a rule-set
+    "template" applied to a different schema) -- e.g. a set of exclude/
+    transform rules that make sense for any trade-file pair, not just the one
+    they were first written for. Reuses save_rule()'s own dedup logic, so
+    re-applying the same template twice is a no-op the second time. Returns
+    the number of rules actually copied (excludes ones already present)."""
+    with _LOCK:
+        source_rules = list(_load().get(from_fingerprint, {}).get("rules", []))
+    if not source_rules:
+        return 0
+    copied = 0
+    for r in source_rules:
+        if categories and r.get("category") not in categories:
+            continue
+        with _LOCK:
+            before = len(_load().get(to_fingerprint, {}).get("rules", []))
+        save_rule(to_fingerprint, r["rule"], category=r.get("category", "general"))
+        with _LOCK:
+            after = len(_load().get(to_fingerprint, {}).get("rules", []))
+        if after > before:
+            copied += 1
+    return copied
+
+
 def list_all_datasets():
     with _LOCK:
         store = _load()
