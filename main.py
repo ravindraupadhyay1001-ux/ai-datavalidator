@@ -15494,7 +15494,8 @@ async def dq_suggest(files: list[UploadFile] = File(...)):
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    # If local auth is enabled, redirect to login unless a valid session exists
+    # If local auth or LDAP-only login is enabled, redirect to login unless a
+    # valid session exists.
     try:
         from workspace.local_auth import LOCAL_AUTH_ENABLED, verify_session
         if LOCAL_AUTH_ENABLED:
@@ -15507,6 +15508,13 @@ async def index(request: Request):
 # ==== SOURCE PAGE 0679 ====
 
                 return RedirectResponse(url="/login", status_code=302)
+        else:
+            from workspace.sso import LDAP_ENABLED as _LDAP_ENABLED, verify_sso_token as _verify_sso
+            if _LDAP_ENABLED:
+                token = request.cookies.get("dv_session", "")
+                if not token or not _verify_sso(token):
+                    from fastapi.responses import RedirectResponse
+                    return RedirectResponse(url="/login", status_code=302)
     except Exception:
         pass
     resp = templates.TemplateResponse(request=request, name="index.html")
@@ -15520,19 +15528,27 @@ async def login_page(request: Request, error: str = "", registered: str = ""):
     """Serve the login page. Redirect to app if already logged in."""
     try:
         from workspace.local_auth import LOCAL_AUTH_ENABLED, verify_session, has_any_users
-        if not LOCAL_AUTH_ENABLED:
+        from workspace.sso import LDAP_ENABLED as _LDAP_ENABLED, verify_sso_token as _verify_sso
+        if not (LOCAL_AUTH_ENABLED or _LDAP_ENABLED):
             from fastapi.responses import RedirectResponse
             return RedirectResponse(url="/", status_code=302)
-        token = request.cookies.get("dv_local_session", "")
+        show_register = False
+        if LOCAL_AUTH_ENABLED:
+            token = request.cookies.get("dv_local_session", "")
 
 
 
 # ==== SOURCE PAGE 0680 ====
 
-        if token and verify_session(token):
-            from fastapi.responses import RedirectResponse
-            return RedirectResponse(url="/", status_code=302)
-        show_register = not has_any_users()
+            if token and verify_session(token):
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url="/", status_code=302)
+            show_register = not has_any_users()
+        else:
+            token = request.cookies.get("dv_session", "")
+            if token and _verify_sso(token):
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url="/", status_code=302)
     except Exception:
         from fastapi.responses import RedirectResponse
         return RedirectResponse(url="/", status_code=302)
@@ -15554,20 +15570,45 @@ async def login_submit(request: Request):
 # ==== SOURCE PAGE 0681 ====
 
         from workspace.local_auth import LOCAL_AUTH_ENABLED, login as _local_login, AuthError, has_any_users
-        if not LOCAL_AUTH_ENABLED:
-            return RedirectResponse(url="/", status_code=302)
 
         form = await request.form()
         username = str(form.get("username", "")).strip()
         password = str(form.get("password", ""))
 
-        token = _local_login(username, password)
+        if LOCAL_AUTH_ENABLED:
+            token = _local_login(username, password)
+            response = RedirectResponse(url="/", status_code=302)
+            response.set_cookie(
+                key="dv_local_session",
+                value=token,
+                httponly=True,
+                samesite="lax",
+                max_age=8 * 3600,
+            )
+            return response
+
+        from workspace.sso import (
+            LDAP_ENABLED as _LDAP_ENABLED, authenticate as _ldap_authenticate,
+            create_sso_session_token as _sso_create_token, SSO_ROLE_MAP as _SSO_ROLE_MAP,
+        )
+        if not _LDAP_ENABLED:
+            return RedirectResponse(url="/", status_code=302)
+
+        result = _ldap_authenticate(username, password)
+        if not result:
+            raise ValueError("Invalid username or password.")
+        from workspace.db import ensure_user as _ensure_user
+        _ensure_user(result["username"], result["username"], "")
+        if _SSO_ROLE_MAP:
+            _ws_db.set_user_role(result["username"], result["role"])
+        token = _sso_create_token(result["username"], result["role"], [])
         response = RedirectResponse(url="/", status_code=302)
         response.set_cookie(
-            key="dv_local_session",
+            key="dv_session",
             value=token,
             httponly=True,
             samesite="lax",
+            secure=request.url.scheme == "https",
             max_age=8 * 3600,
         )
         return response
@@ -22452,6 +22493,14 @@ async def sso_saml_acs(request: Request):
 
         )
 
+        # Sync the group-resolved role on every login -- but only when
+        # SSO_ROLE_MAP is actually configured, so a manually-promoted role
+        # (set via the workspace user admin UI) is never silently
+        # overwritten by SSO's own "analyst" default when no mapping exists.
+        from workspace.sso import SSO_ROLE_MAP as _SSO_ROLE_MAP
+        if _SSO_ROLE_MAP:
+            _ws_db.set_user_role(user_info["username"], user_info["role"])
+
         response = RedirectResponse(url="/", status_code=302)
 
         response.set_cookie(
@@ -22559,6 +22608,10 @@ async def sso_oidc_callback(
 # ==== SOURCE PAGE 0936 ====
 
         )
+
+        from workspace.sso import SSO_ROLE_MAP as _SSO_ROLE_MAP
+        if _SSO_ROLE_MAP:
+            _ws_db.set_user_role(user_info["username"], user_info["role"])
 
         response = RedirectResponse(url="/", status_code=302)
 

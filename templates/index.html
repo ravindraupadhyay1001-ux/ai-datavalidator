@@ -411,7 +411,7 @@
       <div id="ws-conn" class="ws-panel">
         <div class="card rounded-xl p-4 mb-4 max-w-3xl grid grid-cols-2 gap-3 text-sm">
           <input id="cn-name" placeholder="Name" class="inp">
-          <select id="cn-type" class="inp">
+          <select id="cn-type" class="inp" onchange="onCnTypeChange()">
             <option value="api">REST API</option><option value="s3">S3</option><option value="sftp">SFTP</option>
             <option value="ftp">FTP</option><option value="mssql">MSSQL</option><option value="postgres">Postgres</option>
             <option value="mysql">MySQL</option><option value="oracle">Oracle</option><option value="snowflake">Snowflake</option>
@@ -2104,6 +2104,35 @@ async function loadConnections(){ const rows=await fetch('/api/ws/connections').
     <span class="flex gap-2"><button onclick="testConn(${c.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Test</button>
     <button onclick="previewConn(${c.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Preview</button>
     <button onclick="delConn(${c.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join(''):'<div class="text-gray-500 text-sm">No connections.</div>'; }
+const CN_CONFIG_EXAMPLES = {
+  api: '{"url":"https://...","data_path":"items"}',
+  s3: '{"bucket":"my-bucket","key":"path/to/trades_{YYYYMMDD}.csv","region":"us-east-1","aws_access_key_id":"...","aws_secret_access_key":"..."}',
+  sftp: '{"host":"sftp.example.com","port":22,"username":"user","password":"...","remote_path":"/feeds/trades_{YYYYMMDD}.csv"}',
+  ftp: '{"host":"ftp.example.com","port":21,"username":"user","password":"...","remote_path":"/feeds/trades_{YYYYMMDD}.csv"}',
+  mssql: '{"host":"myserver","port":1433,"database":"mydb","username":"user","password":"...","table":"dbo.trades"}',
+  postgres: '{"host":"myserver","port":5432,"database":"mydb","username":"user","password":"...","query":"SELECT * FROM trades"}',
+  mysql: '{"host":"myserver","port":3306,"database":"mydb","username":"user","password":"...","table":"trades"}',
+  oracle: '{"host":"myserver","port":1521,"service_name":"ORCL","username":"user","password":"...","table":"TRADES"}',
+  snowflake: '{"account":"xy12345","username":"user","password":"...","warehouse":"WH","database":"DB","schema":"PUBLIC","query":"SELECT * FROM trades"}',
+  azure_blob: '{"connection_string":"DefaultEndpointsProtocol=...","container":"feeds","blob":"trades_{YYYYMMDD}.csv"}',
+  gcs: '{"bucket":"my-bucket","blob":"feeds/trades_{YYYYMMDD}.csv","credentials_json":"(optional, path or inline JSON)"}',
+  kafka: '{"bootstrap_servers":"broker1:9092,broker2:9092","topic":"trades","group_id":"recon-consumer","max_records":5000}',
+  salesforce: '{"username":"user@org.com","password":"...","security_token":"...","object_name":"Account","fields":["Id","Name"]}',
+  sharepoint: '{"site_url":"https://tenant.sharepoint.com/sites/x","file_path":"/Shared Documents/trades.csv","tenant_id":"...","client_id":"...","client_secret":"..."}',
+  databricks: '{"server_hostname":"adb-....azuredatabricks.net","http_path":"/sql/1.0/warehouses/...","access_token":"...","table":"main.trades"}',
+  azure_sql: '{"server":"myserver.database.windows.net","database":"mydb","username":"user","password":"...","auth_type":"sql","table":"dbo.trades"}',
+  db2: '{"host":"myserver","port":50000,"database":"mydb","username":"user","password":"...","table":"TRADES"}',
+  bloomberg: '{"host":"localhost","port":8194,"securities":["AAPL US Equity"],"fields":["PX_LAST","SECURITY_NAME"],"request_type":"ReferenceData"}',
+  refinitiv: '{"client_id":"...","client_secret":"...","universe":["AAPL.O"],"fields":["BID","ASK"]}',
+  murex: '{"base_url":"https://murex.example.com/api","resource":"trades","api_key":"..."}',
+  calypso: '{"base_url":"https://calypso.example.com/api","resource":"trades","api_key":"..."}',
+};
+function onCnTypeChange(){
+  const sel = document.getElementById('cn-type');
+  const box = document.getElementById('cn-config');
+  if(sel && box) box.placeholder = CN_CONFIG_EXAMPLES[sel.value] || '{}';
+}
+onCnTypeChange();
 async function saveConnection(){ const cn_config=document.getElementById('cn-config'), cn_name=document.getElementById('cn-name'), cn_type=document.getElementById('cn-type');
   let cfg; try{cfg=JSON.parse(cn_config.value||'{}');}catch(e){alert('Config must be valid JSON');return;}
   await J('POST','/api/ws/connections',{name:cn_name.value,source_type:cn_type.value,config:cfg}); cn_name.value='';cn_config.value=''; loadConnections(); loadConnDropdowns(); }
