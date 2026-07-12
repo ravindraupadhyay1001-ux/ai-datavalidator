@@ -2114,27 +2114,84 @@ def _parse_reuters_ric(raw: bytes, enc: str) -> pd.DataFrame:
                         engine="python", on_bad_lines="skip")
 
 
-def _extract_first_file_from_zip(raw: bytes, zip_name: str) -> tuple[bytes, str]:
-    # Extract the largest usable file from a .zip upload (largest = the actual
-    # data file, not a bundled README/manifest) so users don't have to unzip
-    # manually before uploading.
+def _is_junk_archive_member(filename: str) -> bool:
+    base = os.path.basename(filename)
+    return (not base or filename.startswith("__MACOSX/")
+            or base.startswith(".") or base.lower() in ("thumbs.db", "desktop.ini"))
+
+
+def _extract_zip_members(raw: bytes, archive_name: str) -> list[tuple[bytes, str]]:
     import zipfile
     try:
         zf = zipfile.ZipFile(io.BytesIO(raw))
     except zipfile.BadZipFile:
-        raise HTTPException(400, f"'{zip_name}' is not a valid zip file.")
+        raise HTTPException(400, f"'{archive_name}' is not a valid zip file.")
+    members: list[tuple[bytes, str]] = []
+    for info in zf.infolist():
+        if info.is_dir() or _is_junk_archive_member(info.filename):
+            continue
+        try:
+            members.append((zf.read(info), os.path.basename(info.filename)))
+        except Exception:
+            continue  # skip a corrupt member rather than failing the whole archive
+    if not members:
+        raise HTTPException(400, f"Zip file '{archive_name}' contains no usable files.")
+    return members
 
-    candidates = [
-        info for info in zf.infolist()
-        if not info.is_dir()
-        and not info.filename.startswith("__MACOSX/")
-        and not os.path.basename(info.filename).startswith(".")
-    ]
-    if not candidates:
-        raise HTTPException(400, f"Zip file '{zip_name}' contains no usable files.")
 
-    best = max(candidates, key=lambda info: info.file_size)
-    return zf.read(best), os.path.basename(best.filename)
+def _extract_tar_members(raw: bytes, archive_name: str) -> list[tuple[bytes, str]]:
+    import tarfile
+    try:
+        tf = tarfile.open(fileobj=io.BytesIO(raw), mode="r:*")
+    except tarfile.TarError as exc:
+        raise HTTPException(400, f"'{archive_name}' is not a valid tar archive: {exc}")
+    members: list[tuple[bytes, str]] = []
+    try:
+        for info in tf.getmembers():
+            if not info.isfile() or _is_junk_archive_member(info.name):
+                continue
+            try:
+                fh = tf.extractfile(info)
+                if fh is None:
+                    continue
+                members.append((fh.read(), os.path.basename(info.name)))
+            except Exception:
+                continue
+    finally:
+        tf.close()
+    if not members:
+        raise HTTPException(400, f"Tar archive '{archive_name}' contains no usable files.")
+    return members
+
+
+def _extract_gz_member(raw: bytes, archive_name: str) -> list[tuple[bytes, str]]:
+    import gzip
+    try:
+        data = gzip.decompress(raw)
+    except Exception as exc:
+        raise HTTPException(400, f"'{archive_name}' is not a valid gzip file: {exc}")
+    inner_name = re.sub(r"\.gz$", "", archive_name, flags=re.IGNORECASE) or "data"
+    return [(data, os.path.basename(inner_name))]
+
+
+def _extract_archive_members(raw: bytes, name: str) -> list[tuple[bytes, str]] | None:
+    """Every usable file inside a recognised archive (zip / tar / tar.gz / tgz /
+    tar.bz2 / gz), skipping junk (macOS resource forks, hidden/system files) and
+    any individual corrupt member without failing the whole upload. Returns None
+    if `name` isn't a recognised archive extension (i.e. nothing to extract)."""
+    lower = name.lower()
+    try:
+        if lower.endswith((".tar.gz", ".tgz", ".tar.bz2", ".tbz2", ".tar")):
+            return _extract_tar_members(raw, name)
+        if lower.endswith(".zip"):
+            return _extract_zip_members(raw, name)
+        if lower.endswith(".gz"):
+            return _extract_gz_member(raw, name)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(400, f"Could not open '{name}' as an archive: {exc}") from exc
+    return None
 
 
 def _load_file(upload, delimiter=None) -> pd.DataFrame:
@@ -2152,22 +2209,39 @@ def _load_file(upload, delimiter=None) -> pd.DataFrame:
     #
     # Supported formats
     # -----------------
-    # CSV - TSV - XLSX/XLS - Parquet - JSON (nested) - XML - ISO 20022 MX
-    # SWIFT MT (.mt/.fin/.swift) - FIX Protocol (.fix) - FpML (.fpml)
-    # XBRL (.xbrl) - NACHA/ACH (.ach/.nacha) - Avro (.avro) - ORC (.orc)
-    # PDF (.pdf) - Bloomberg DLX (.bbg/.dlx/.bdl) - Murex MXML (.mxml)
+    # CSV - TSV - PSV - XLSX/XLS - Parquet - JSON (nested) - JSON Lines
+    # (.jsonl/.ndjson) - XML - ISO 20022 MX - SWIFT MT (.mt/.fin/.swift)
+    # FIX Protocol (.fix) - FpML (.fpml) - XBRL (.xbrl) - NACHA/ACH
+    # (.ach/.nacha) - Avro (.avro) - ORC (.orc) - PDF (.pdf)
+    # Bloomberg DLX (.bbg/.dlx/.bdl) - Murex MXML (.mxml)
     # MarkitWire (.mwire/.markitwire) - DTCC GTR/TRACE (.gtr/.trace)
     # Reuters RIC (.ric) - plain TXT
     # ==== SOURCE PAGE 0097 ====
     # Text files without a recognised extension are auto-sniffed for
     # SWIFT MT -> FIX -> delimiter-separated -> single-value fallback.
+    #
+    # Archives -- .zip / .tar / .tar.gz / .tgz / .tar.bz2 / .gz are
+    # transparently unpacked first; multi-file loaders (_load_file_multi_
+    # from_upload, used by Reconciliation/Cross Reference) expand every
+    # usable file inside into a separate dataset, not just the largest.
     raw = upload.file.read()
     name = upload.filename or ""
+    return _load_file_from_bytes(raw, name, delimiter)
+
+
+def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame:
+    # Core of _load_file(), operating on already-read bytes so archive members
+    # (extracted separately, see _load_file_multi_from_upload) can be parsed
+    # through the same format-detection logic without re-reading an upload.
     ext = os.path.splitext(name)[1].lower()
 
     _resolved_name = name
-    if ext == ".zip":
-        raw, _resolved_name = _extract_first_file_from_zip(raw, name)
+    members = _extract_archive_members(raw, name)
+    if members:
+        # Single-file callers get the largest member (the actual data file,
+        # not a bundled README/manifest) -- use _load_file_multi_from_upload
+        # to get every member back as a separate dataset.
+        raw, _resolved_name = max(members, key=lambda m: len(m[0]))
         ext = os.path.splitext(_resolved_name)[1].lower()
         name = _resolved_name
 
@@ -2257,6 +2331,18 @@ def _load_file(upload, delimiter=None) -> pd.DataFrame:
             df = pd.read_csv(io.BytesIO(raw), sep=sep, encoding=enc,
                               engine="python", on_bad_lines="skip")
             return _labelled(df, "TSV", sep)
+
+        if ext == ".psv":
+            # Explicitly pipe-separated
+            sep = delimiter or "|"
+            df = pd.read_csv(io.BytesIO(raw), sep=sep, encoding=enc,
+                              engine="python", on_bad_lines="skip")
+            return _labelled(df, "PSV", sep)
+
+        if ext in (".jsonl", ".ndjson"):
+            # JSON Lines: one JSON object per line (common for event/log exports)
+            df = pd.read_json(io.BytesIO(raw), lines=True, encoding=enc)
+            return _labelled(df, "JSON Lines")
 
         if ext in (".xlsx", ".xls"):
             return _labelled(pd.read_excel(io.BytesIO(raw)), "Excel")
@@ -2440,6 +2526,32 @@ def _load_file(upload, delimiter=None) -> pd.DataFrame:
         raise
     except Exception as exc:
         raise HTTPException(400, f"Cannot parse '{name}': {exc}") from exc
+
+
+def _load_file_multi_from_upload(upload, delimiter=None) -> list[tuple[str, pd.DataFrame]]:
+    """Like _load_file(), but when the upload is an archive containing multiple
+    usable files, returns ALL of them as separate (filename, DataFrame) entries
+    instead of just the largest -- so one zip/tar/tgz upload can expand into
+    several datasets (e.g. multiple monthly extracts to combine, or several
+    sources for cross reference). A member that fails to parse is skipped
+    rather than failing the whole batch; only raises if none could be parsed."""
+    raw = upload.file.read()
+    name = upload.filename or ""
+    members = _extract_archive_members(raw, name)
+    if not members:
+        return [(name, _load_file_from_bytes(raw, name, delimiter))]
+
+    results: list[tuple[str, pd.DataFrame]] = []
+    skipped: list[str] = []
+    for member_raw, member_name in members:
+        try:
+            results.append((member_name, _load_file_from_bytes(member_raw, member_name, delimiter)))
+        except Exception:
+            skipped.append(member_name)
+            continue
+    if not results:
+        raise HTTPException(400, f"None of the {len(members)} file(s) inside '{name}' could be parsed.")
+    return results
 
 
 # ------------------------------------------------------------------------
@@ -15791,23 +15903,35 @@ async def analyze(request: Request):
 
     def _load_upload_list(upload_list: list[UploadFile]) -> list[tuple[str, pd.DataFrame]]:
         # Load a list of UploadFile objects into (filename, DataFrame) tuples.
+        # An archive (.zip/.tar/.tar.gz/.tgz/.gz) expands into one entry per
+        # usable file inside it, so a single zip of several datasets becomes
+        # several entries here -- not just its largest file.
         result = []
         for f in upload_list:
 
             # ==== SOURCE PAGE 0719 ====
             _log(f"Loading data file: {f.filename}")
             f.file.seek(0)
-            df = _load_file(f, delimiter=delimiter)
-            fmt  = df.attrs.get("_format",  "unknown")
-            delim = df.attrs.get("_delimiter", "")
-            _resolved_fname = df.attrs.get("_source_filename") or f.filename
-            delim_info = f" delim={repr(delim)}" if delim and delim != "auto" else ""
-            _log(f"Loaded '{_resolved_fname}' [format: {fmt}{delim_info}] -> {len(df)} rows x {len(df.columns)} cols")
-            result.append((_resolved_fname, df))
+            try:
+                loaded = _load_file_multi_from_upload(f, delimiter=delimiter)
+            except HTTPException as exc:
+                _log(f"Skipped '{f.filename}': {exc.detail}")
+                continue
+            if len(loaded) > 1:
+                _log(f"'{f.filename}' is an archive -> expanded into {len(loaded)} file(s)")
+            for _resolved_fname, df in loaded:
+                fmt  = df.attrs.get("_format",  "unknown")
+                delim = df.attrs.get("_delimiter", "")
+                delim_info = f" delim={repr(delim)}" if delim and delim != "auto" else ""
+                _log(f"Loaded '{_resolved_fname}' [format: {fmt}{delim_info}] -> {len(df)} rows x {len(df.columns)} cols")
+                result.append((_resolved_fname, df))
         return result
 
     def _concat_group(tuples: list[tuple[str, pd.DataFrame]], label: str) -> tuple[str, pd.DataFrame]:
         # Row-concatenate a list of same-schema DataFrames into one.
+        if not tuples:
+            raise HTTPException(400, f"Dataset {label} has no usable files -- every uploaded file "
+                                      f"was unreadable, empty, or (if an archive) contained nothing parseable.")
         if len(tuples) == 1:
             return tuples[0]
         names = ", ".join(n for n, _ in tuples)
