@@ -446,8 +446,19 @@
           </select>
           <input id="jb-conna" placeholder="conn_a / source id" class="inp">
           <input id="jb-connb" placeholder="conn_b id (compare)" class="inp">
-          <input id="jb-cron" placeholder="cron e.g. 0 6 * * *" class="inp">
+          <div>
+            <input id="jb-cron" placeholder="cron e.g. 0 6 * * *" class="inp w-full">
+            <div class="flex flex-wrap gap-1 mt-1">
+              <span class="suggest-chip" style="padding:1px 8px;font-size:10px" onclick="document.getElementById('jb-cron').value='*/1 * * * *'">1m</span>
+              <span class="suggest-chip" style="padding:1px 8px;font-size:10px" onclick="document.getElementById('jb-cron').value='*/2 * * * *'">2m</span>
+              <span class="suggest-chip" style="padding:1px 8px;font-size:10px" onclick="document.getElementById('jb-cron').value='*/5 * * * *'">5m</span>
+              <span class="suggest-chip" style="padding:1px 8px;font-size:10px" onclick="document.getElementById('jb-cron').value='*/15 * * * *'">15m</span>
+              <span class="suggest-chip" style="padding:1px 8px;font-size:10px" onclick="document.getElementById('jb-cron').value='0 * * * *'">1h</span>
+              <span class="suggest-chip" style="padding:1px 8px;font-size:10px" onclick="document.getElementById('jb-cron').value='0 6 * * *'">daily</span>
+            </div>
+          </div>
           <input id="jb-email" placeholder="notify email" class="inp">
+          <p class="col-span-2 text-[11px] text-gray-500 -mt-1">&#9889; Near real-time reconciliation: point conn_a/conn_b at Kafka connections (set a <code>group_id</code> in the connection config so each poll only reads new messages) and schedule at 1&ndash;5 minutes for continuous streaming reconciliation.</p>
           <label class="col-span-2 flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
             <input type="checkbox" id="jb-bulk-enable" class="accent-sky-500" onchange="document.getElementById('jb-bulk-panel').classList.toggle('hidden', !this.checked)">
             &#128230; Bulk (fan-out) &mdash; run this compare across many connection pairs at once, e.g. one per branch
@@ -2057,9 +2068,15 @@ async function saveRuleset(){ const rs_rules=document.getElementById('rs-rules')
   let rules; try{rules=JSON.parse(rs_rules.value||'[]');}catch(e){alert('Rules must be valid JSON');return;}
   await J('POST','/api/ws/rulesets',{name:rs_name.value,description:rs_desc.value,rules}); rs_name.value='';rs_rules.value=''; loadRulesets(); }
 async function delRuleset(id){ if(confirm('Delete ruleset?')){await fetch(`/api/ws/rulesets/${id}`,{method:'DELETE'});loadRulesets();} }
+function _isFastCron(cron){
+  if(!cron) return false;
+  const m = cron.trim().split(/\s+/)[0];
+  return /^\*\/[1-5]$/.test(m) || m === '*';
+}
 async function loadJobs(){ const rows=await fetch('/api/ws/jobs').then(r=>r.json());
   document.getElementById('jb-list').innerHTML=rows.length?rows.map(j=>row(`<span><b>${esc(j.name)}</b> <span class="text-gray-500">[${j.action}] #${j.id} ${j.schedule_cron||'manual'} &middot; ${j.status||''}</span>
-    ${j.fan_out_pairs?'<span class="badge ml-1" style="background:rgba(31,111,107,.12);color:#1f6f6b">&#128230; bulk</span>':''}</span>
+    ${j.fan_out_pairs?'<span class="badge ml-1" style="background:rgba(31,111,107,.12);color:#1f6f6b">&#128230; bulk</span>':''}
+    ${_isFastCron(j.schedule_cron)?'<span class="badge ml-1" style="background:rgba(2,132,199,.12);color:#0369a1">&#9889; near real-time</span>':''}</span>
     <span class="flex gap-2"><button onclick="runJob(${j.id})" class="btn rounded px-2 py-0.5 text-xs">Run</button>
     <button onclick="jobRuns(${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">History</button>
     <button onclick="delJob(${j.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join(''):'<div class="text-gray-500 text-sm">No jobs.</div>'; }

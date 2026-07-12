@@ -105,8 +105,15 @@ def _run_compare(df_a, df_b, job):
     excludes = [c.strip() for c in excludes if c.strip()] or None
     try:
         main = importlib.import_module("main")
-        return main.compare_dataframes(df_a, df_b, manual_keys=keys,
+        diff = main.compare_dataframes(df_a, df_b, keys, True,
                                        exclude_cols=excludes)
+        diff["counts"] = {
+            "matched": diff.get("file1_rows", 0) - diff.get("removed_count", 0),
+            "file1_only": diff.get("file1_only_count", 0),
+            "file2_only": diff.get("file2_only_count", 0),
+            "modified": diff.get("modified_count", 0),
+        }
+        return diff
     except Exception as e:
         common = [c for c in df_a.columns if c in set(df_b.columns)]
         merged = df_a.merge(df_b, on=keys or common, how="outer",

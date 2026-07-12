@@ -4524,11 +4524,15 @@ def compare_dataframes(
     return diff
 
 
-def _values_differ_scalar(a: str, b: str) -> bool:
+def _values_differ_scalar(a: str, b: str, try_date: bool = True) -> bool:
     # Scalar counterpart to _series_differs -- numeric- and date-aware equality
     # for two already-stringified cell values, used by the N-way engine's
     # per-key Python loop (compare_dataframes' vectorised path doesn't apply
     # once there are more than two sources to line up per key).
+    # try_date=False skips the pd.to_datetime fallback entirely -- callers
+    # that already know a column isn't date-like (e.g. currency codes,
+    # statuses) use this to avoid dateutil's expensive parser running on
+    # every mismatching pair of plain text values.
     if a == b:
         return False
     try:
@@ -4536,12 +4540,13 @@ def _values_differ_scalar(a: str, b: str) -> bool:
             return False
     except (ValueError, TypeError):
         pass
-    try:
-        da, db = pd.to_datetime(a, errors="raise"), pd.to_datetime(b, errors="raise")
-        if da == db:
-            return False
-    except Exception:
-        pass
+    if try_date:
+        try:
+            da, db = pd.to_datetime(a, errors="raise"), pd.to_datetime(b, errors="raise")
+            if da == db:
+                return False
+        except Exception:
+            pass
     return True
 
 
@@ -4625,13 +4630,49 @@ def compare_dataframes_nway(
     def make_kv(key):
         return dict(zip(keys, key)) if isinstance(key, tuple) else {keys[0]: key}
 
+    all_keys_sorted = sorted(all_keys, key=_safe_sort_key)
+    key_pos = {k: i for i, k in enumerate(all_keys_sorted)}
+
+    # Reindex every source to the shared, sorted key list once and pull each
+    # value column out as a plain numpy array. The per-key loop below then
+    # does O(1) positional array indexing instead of repeated
+    # DataFrame.loc[key, col] scalar lookups, which do not scale -- profiling
+    # showed 20k rows x 3 sources spending ~12s in .loc alone (of ~21s total).
+    _empty_idx = pd.Index([], dtype=object)
+    aligned_cols: list[dict[str, "np.ndarray | None"]] = []
+    for df_idx in indexed:
+        src = (df_idx if df_idx is not None else pd.DataFrame(index=_empty_idx)).reindex(all_keys_sorted)
+        aligned_cols.append({
+            c: (src[c].map(_safe_str).to_numpy() if c in src.columns else None)
+            for c in value_cols
+        })
+
+    # Decide once per column whether it's worth attempting date-aware
+    # comparison at all -- _values_differ_scalar's pd.to_datetime fallback is
+    # expensive (dateutil parsing), and running it for every mismatching pair
+    # in plainly non-date columns (currency codes, statuses, free text) was
+    # the other dominant cost alongside the .loc lookups above.
+    date_like_cols: set[str] = set()
+    for c in value_cols:
+        sample: list[str] = []
+        for arr in aligned_cols:
+            vals = arr.get(c)
+            if vals is not None:
+                sample.extend(v for v in vals[:50] if v)
+            if len(sample) >= 50:
+                break
+        if sample:
+            parsed = pd.to_datetime(pd.Series(sample[:50]), errors="coerce", format="mixed")
+            if parsed.notna().mean() > 0.5:
+                date_like_cols.add(c)
+
     fully_matched = 0
     partial_rows: list[dict] = []
     singleton_counts = {n: 0 for n in names}
     value_break_rows: list[dict] = []
     col_break_counts: dict[str, int] = {}
 
-    for key in sorted(all_keys, key=_safe_sort_key):
+    for key in all_keys_sorted:
         presence = [i for i, ks in enumerate(key_sets) if key in ks]
         if len(presence) == len(names):
             fully_matched += 1
@@ -4647,18 +4688,17 @@ def compare_dataframes_nway(
         if len(presence) < 2:
             continue  # nothing to value-compare with only one (or zero) source holding this key
 
+        pos = key_pos[key]
         row_changes: dict[str, dict[str, str]] = {}
         for col in value_cols:
             values: dict[str, str] = {}
             for i in presence:
-                try:
-                    v = indexed[i].loc[key, col] if col in indexed[i].columns else ""
-                except Exception:
-                    v = ""
-                values[names[i]] = _safe_str(v)
+                arr = aligned_cols[i].get(col)
+                values[names[i]] = arr[pos] if arr is not None else ""
             distinct_vals = list(values.values())
             ref = distinct_vals[0]
-            if any(_values_differ_scalar(ref, v) for v in distinct_vals[1:]):
+            try_date = col in date_like_cols
+            if any(_values_differ_scalar(ref, v, try_date=try_date) for v in distinct_vals[1:]):
                 row_changes[col] = values
                 col_break_counts[col] = col_break_counts.get(col, 0) + 1
         if row_changes and len(value_break_rows) < _MAX_DIFF_ROWS:
