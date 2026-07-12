@@ -20619,7 +20619,12 @@ async def update_rule_endpoint(session_id: str, request: Request):
 
     new_rule  = body.get("rule", "").strip()
 
-    new_cat   = body.get("category", "general")
+    # No default here -- absent/empty means "leave the category as-is". A
+    # default of "general" would silently strip a rule's dc_{module}_ module
+    # namespace on every text-only edit (any caller that omits category,
+    # which is every caller that's just fixing a typo) and make it vanish
+    # from that module's context-filtered rule list.
+    new_cat   = body.get("category")
 
 
 

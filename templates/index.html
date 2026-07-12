@@ -2021,7 +2021,10 @@ function renderDatasetControlRules(prefix, context, rules){
   if(!box) return;
   box.innerHTML = rules.map(r=>`<div class="flex items-center justify-between card rounded px-2 py-1">
     <span><span class="badge mr-1" style="background:rgba(2,132,199,.12);color:#0369a1">${esc(r.base_cat)}</span>${esc(r.rule)}</span>
-    <button onclick="deleteDatasetControlRule(${r.index},'${prefix}','${context}')" class="text-red-400 text-xs px-1">&times;</button></div>`).join('');
+    <span class="flex gap-1 shrink-0">
+      <button onclick="editDatasetControlRule(${r.index},'${prefix}','${context}',${JSON.stringify(r.rule)})" class="text-sky-400 text-xs px-1" title="Edit">&#9998;</button>
+      <button onclick="deleteDatasetControlRule(${r.index},'${prefix}','${context}')" class="text-red-400 text-xs px-1" title="Delete">&times;</button>
+    </span></div>`).join('');
 }
 async function loadDatasetControlRules(prefix, context){
   if(!SESSION) return;
@@ -2032,6 +2035,12 @@ async function loadDatasetControlRules(prefix, context){
 }
 async function deleteDatasetControlRule(index, prefix, context){
   await J('POST', `/rules/${SESSION}/delete`, {rule_index: index});
+  loadDatasetControlRules(prefix, context);
+}
+async function editDatasetControlRule(index, prefix, context, currentText){
+  const updated = prompt('Edit rule:', currentText);
+  if(updated == null || !updated.trim() || updated.trim() === currentText) return;
+  await J('POST', `/rules/${SESSION}/update`, {rule_index: index, rule: updated.trim()});
   loadDatasetControlRules(prefix, context);
 }
 
