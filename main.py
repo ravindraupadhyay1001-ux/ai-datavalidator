@@ -4713,32 +4713,20 @@ def _fuzzy_field_score(a: str, b: str, kind: str) -> float:
 _FUZZY_MAX_ROWS = 3000  # O(n*m) candidate generation -- keep the pairwise scan bounded
 
 
-def fuzzy_match_dataframes(
+def _fuzzy_score_and_match(
     df1: pd.DataFrame, df2: pd.DataFrame,
     fuzzy_fields: list[str],
-    weights: dict[str, float] | None = None,
-    threshold: float = 0.75,
-    exclude_cols: list[str] | None = None,
-) -> dict:
-    # Probabilistic row matching for when there's no clean shared key -- e.g.
-    # matching a bank statement narrative against an internal ledger by
-    # name/amount/date proximity, tolerating typos and formatting drift.
-    # Not an extension of the exact key-based engine: every row in df1 is
-    # scored against every candidate row in df2 across the chosen fields
-    # (SequenceMatcher for text, relative distance for numeric, day-delta for
-    # dates), then greedily assigned best-match-first so each row matches at
-    # most once. O(n*m) candidate generation is bounded by _FUZZY_MAX_ROWS.
-    df1, df2 = _normalise(df1), _normalise(df2)
-    all_excludes = set(exclude_cols or [])
-    common_cols = [c for c in df1.columns if c in df2.columns and c not in all_excludes]
-    fuzzy_fields = [f for f in fuzzy_fields if f in common_cols]
-    if not fuzzy_fields:
-        raise HTTPException(400, "None of the requested fuzzy-match fields exist in both files.")
-    if len(df1) > _FUZZY_MAX_ROWS or len(df2) > _FUZZY_MAX_ROWS:
-        raise HTTPException(400, f"Fuzzy matching is capped at {_FUZZY_MAX_ROWS:,} rows per file "
-                                  f"(got {len(df1):,} and {len(df2):,}) -- the pairwise comparison "
-                                  f"doesn't scale past that. Use an exact key for larger files.")
-
+    weights: dict[str, float] | None,
+    threshold: float,
+) -> list[tuple[int, int, float]]:
+    # Core scoring + greedy assignment, shared by the 2-file and N-way fuzzy
+    # entry points. Every row in df1 is scored against every candidate row in
+    # df2 across the chosen fields (SequenceMatcher for text, relative
+    # distance for numeric, day-delta for dates), combined into a weighted
+    # average, then greedily assigned best-match-first so each row matches at
+    # most once. Returns (df1_idx, df2_idx, score) triples for matches
+    # scoring at or above threshold. Callers are responsible for the
+    # _FUZZY_MAX_ROWS check (O(n*m) candidate generation).
     weights = weights or {f: 1.0 for f in fuzzy_fields}
     total_weight = sum(weights.get(f, 1.0) for f in fuzzy_fields) or 1.0
 
@@ -4775,7 +4763,37 @@ def fuzzy_match_dataframes(
         used1.add(i)
         used2.add(j)
         matches.append((i, j, score))
+    return matches
 
+
+def fuzzy_match_dataframes(
+    df1: pd.DataFrame, df2: pd.DataFrame,
+    fuzzy_fields: list[str],
+    weights: dict[str, float] | None = None,
+    threshold: float = 0.75,
+    exclude_cols: list[str] | None = None,
+) -> dict:
+    # Probabilistic row matching for when there's no clean shared key -- e.g.
+    # matching a bank statement narrative against an internal ledger by
+    # name/amount/date proximity, tolerating typos and formatting drift.
+    # Not an extension of the exact key-based engine -- see
+    # _fuzzy_score_and_match for the actual scoring/assignment.
+    df1, df2 = _normalise(df1), _normalise(df2)
+    all_excludes = set(exclude_cols or [])
+    common_cols = [c for c in df1.columns if c in df2.columns and c not in all_excludes]
+    fuzzy_fields = [f for f in fuzzy_fields if f in common_cols]
+    if not fuzzy_fields:
+        raise HTTPException(400, "None of the requested fuzzy-match fields exist in both files.")
+    if len(df1) > _FUZZY_MAX_ROWS or len(df2) > _FUZZY_MAX_ROWS:
+        raise HTTPException(400, f"Fuzzy matching is capped at {_FUZZY_MAX_ROWS:,} rows per file "
+                                  f"(got {len(df1):,} and {len(df2):,}) -- the pairwise comparison "
+                                  f"doesn't scale past that. Use an exact key for larger files.")
+
+    matches = _fuzzy_score_and_match(df1, df2, fuzzy_fields, weights, threshold)
+    used1 = {i for i, _, _ in matches}
+    used2 = {j for _, j, _ in matches}
+    rows1 = df1[fuzzy_fields].astype(str).to_dict(orient="records")
+    rows2 = df2[fuzzy_fields].astype(str).to_dict(orient="records")
     data_cols = [c for c in common_cols if c not in fuzzy_fields][:_MAX_DATA_COLS]
 
     def _row_dict(df: pd.DataFrame, idx: int, cols: list[str]) -> dict:
@@ -4820,6 +4838,119 @@ def fuzzy_match_dataframes(
         "modified_rows": modified_rows[:_MAX_DIFF_ROWS],
         "file1_only": file1_only,
         "file2_only": file2_only,
+    }
+
+
+def fuzzy_match_dataframes_nway(
+    dataframes: list[tuple[str, pd.DataFrame]],
+    fuzzy_fields: list[str],
+    weights: dict[str, float] | None = None,
+    threshold: float = 0.75,
+    exclude_cols: list[str] | None = None,
+) -> dict:
+    # Fuzzy matching across 3+ sources. Like compare_dataframes_nway's exact-key
+    # engine, this reuses the pairwise algorithm against a reference source
+    # (the first uploaded file) rather than a new N-way-native fuzzy algorithm
+    # -- deliberately, for the same reason: a much larger and riskier
+    # undertaking for comparatively little benefit, since one source usually
+    # serves as the natural anchor in real reconciliation work anyway.
+    # Every other source is fuzzy-matched against the reference independently;
+    # a reference row that matched in ALL other sources is "fully matched", one
+    # that matched in some but not all is "partial", one that matched in none
+    # is a reference-only singleton. Each non-reference source's own unmatched
+    # rows are its own singletons.
+    if len(dataframes) < 2:
+        raise HTTPException(400, "N-way fuzzy matching requires at least 2 files.")
+
+    names = [n for n, _ in dataframes]
+    dfs = [_normalise(df) for _, df in dataframes]
+    ref_df = dfs[0]
+
+    all_excludes = set(exclude_cols or [])
+    common_cols = set(dfs[0].columns)
+    for df in dfs[1:]:
+        common_cols &= set(df.columns)
+    common_cols = [c for c in dfs[0].columns if c in common_cols and c not in all_excludes]
+    fuzzy_fields = [f for f in fuzzy_fields if f in common_cols]
+    if not fuzzy_fields:
+        raise HTTPException(400, "None of the requested fuzzy-match fields exist in every file.")
+    if any(len(df) > _FUZZY_MAX_ROWS for df in dfs):
+        raise HTTPException(400, f"Fuzzy matching is capped at {_FUZZY_MAX_ROWS:,} rows per file.")
+
+    data_cols = [c for c in common_cols if c not in fuzzy_fields][:_MAX_DATA_COLS]
+
+    def _row_dict(df: pd.DataFrame, idx: int) -> dict:
+        r = df.iloc[idx]
+        return {c: _safe_str(r.get(c, "")) for c in fuzzy_fields + data_cols}
+
+    # ref_idx -> {other_source_name: (other_idx, score)}
+    ref_matches: dict[int, dict[str, tuple[int, float]]] = {i: {} for i in range(len(ref_df))}
+    other_unmatched: dict[str, list[int]] = {}
+
+    for name, df in zip(names[1:], dfs[1:]):
+        matches = _fuzzy_score_and_match(ref_df, df, fuzzy_fields, weights, threshold)
+        matched_other_idx: set[int] = set()
+        for ref_i, other_j, score in matches:
+            ref_matches[ref_i][name] = (other_j, score)
+            matched_other_idx.add(other_j)
+        other_unmatched[name] = [j for j in range(len(df)) if j not in matched_other_idx]
+
+    fully_matched = 0
+    partial_rows: list[dict] = []
+    ref_singletons = 0
+    value_break_rows: list[dict] = []
+    col_break_counts: dict[str, int] = {}
+
+    for ref_i in range(len(ref_df)):
+        present = ref_matches[ref_i]
+        if not present:
+            ref_singletons += 1
+            continue
+        if len(present) == len(names) - 1:
+            fully_matched += 1
+        elif len(partial_rows) < _MAX_DIFF_ROWS:
+            partial_rows.append({
+                "reference_row": _row_dict(ref_df, ref_i),
+                "present_in": [names[0]] + list(present.keys()),
+                "missing_from": [n for n in names[1:] if n not in present],
+            })
+
+        if len(present) < 1:
+            continue
+        row_changes: dict[str, dict[str, str]] = {}
+        for col in data_cols:
+            values = {names[0]: _safe_str(ref_df.iloc[ref_i].get(col, ""))}
+            for name, (other_j, _score) in present.items():
+                df = dfs[names.index(name)]
+                values[name] = _safe_str(df.iloc[other_j].get(col, ""))
+            distinct_vals = list(values.values())
+            ref_val = distinct_vals[0]
+            if any(_values_differ_scalar(ref_val, v) for v in distinct_vals[1:]):
+                row_changes[col] = values
+                col_break_counts[col] = col_break_counts.get(col, 0) + 1
+        if row_changes and len(value_break_rows) < _MAX_DIFF_ROWS:
+            value_break_rows.append({"reference_row": _row_dict(ref_df, ref_i), "changes": row_changes})
+
+    top_broken_columns = [{"col": c, "count": n} for c, n in
+                           sorted(col_break_counts.items(), key=lambda x: x[1], reverse=True)[:10]]
+
+    return {
+        "fuzzy": True,
+        "nway": True,
+        "fuzzy_fields": fuzzy_fields,
+        "threshold": threshold,
+        "sources": [{"name": n, "rows": len(df), "columns": len(df.columns)} for n, df in zip(names, dfs)],
+        "counts": {
+            "fully_matched": fully_matched,
+            "partial": len(partial_rows),
+            "value_breaks": len(value_break_rows),
+            "reference_only": ref_singletons,
+        },
+        "singleton_counts": {names[0]: ref_singletons,
+                             **{n: len(other_unmatched.get(n, [])) for n in names[1:]}},
+        "partial_rows": partial_rows,
+        "value_breaks": value_break_rows,
+        "top_broken_columns": top_broken_columns,
     }
 
 
@@ -16488,6 +16619,7 @@ async def analyze(request: Request):
     pairs      = []
     nway_result = None
     fuzzy_result = None
+    nway_fuzzy_result = None
     quality_reports  = []
     governance_reports = []
 
@@ -16508,7 +16640,13 @@ async def analyze(request: Request):
     session_id = str(uuid.uuid4())
 
     # -- Per-action logic --
-    if action == "compare" and fuzzy_fields and len(dataframes) == 2:
+    if action == "compare" and fuzzy_fields and len(dataframes) > 2:
+      # Opt-in probabilistic matching across 3+ sources -- picked up by the
+      # response-building block below via nway_fuzzy_result.
+      nway_fuzzy_result = await asyncio.to_thread(
+        fuzzy_match_dataframes_nway, dataframes, fuzzy_fields, None, fuzzy_threshold, excluded_cols)
+
+    elif action == "compare" and fuzzy_fields and len(dataframes) == 2:
       # Opt-in probabilistic matching when there's no clean shared key --
       # picked up by the response-building block below via fuzzy_result.
       fuzzy_result = await asyncio.to_thread(
@@ -17463,6 +17601,27 @@ async def analyze(request: Request):
     # -- Build the JSON payload the frontend's fetch()-based UI expects for
     # each action. (The full session data above is still kept in
     # _results_store/_chat_contexts for downloads, chat, and reruns.)
+    if action == "compare" and nway_fuzzy_result is not None:
+        r = nway_fuzzy_result
+        _resp = {
+            "session_id": session_id,
+            "nway": True,
+            "fuzzy": True,
+            "fuzzy_fields": r["fuzzy_fields"],
+            "threshold": r["threshold"],
+            "sources": r["sources"],
+            "counts": r["counts"],
+            "singleton_counts": r["singleton_counts"],
+            "partial_rows": r["partial_rows"],
+            "value_breaks": r["value_breaks"],
+            "top_broken_columns": r["top_broken_columns"],
+            "elapsed": total_elapsed,
+            "logs": proc_logs,
+        }
+        if session_id in _results_store:
+            _results_store[session_id]["_digest"] = _resp
+        return JSONResponse(_sanitize_json(_resp))
+
     if action == "compare" and fuzzy_result is not None:
         (_ff1_name, _ff1_df), (_ff2_name, _ff2_df) = dataframes[0], dataframes[1]
         r = fuzzy_result

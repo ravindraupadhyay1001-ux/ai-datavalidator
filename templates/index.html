@@ -227,7 +227,8 @@
         <p class="text-xs text-gray-500 mt-3 pt-3 border-t border-[var(--line)]">For when there's no shared ID between the two files &mdash; e.g. matching a bank
           statement narrative against an internal ledger description by name/amount/date proximity. Text fields are scored
           by similarity (typos, reordering, and formatting differences are tolerated); numeric fields by relative closeness;
-          dates by day proximity. Capped at 3,000 rows per file. Not available for 3+ source reconciliation.</p>
+          dates by day proximity. Capped at 3,000 rows per file. Works with 3+ sources too &mdash; the first
+          uploaded file (Dataset A) is used as the reference every other source is matched against.</p>
       </div>
       <div class="flex gap-3 items-center flex-wrap">
         <div class="seg" id="cmp-seg">
@@ -1247,12 +1248,17 @@ async function runCompare(){
     [['files_a','cmp-f1','conn_a_ids','cmp-conn1'],['files_b','cmp-f2','conn_b_ids','cmp-conn2'],...cmpExtraFileInputs()],
     extra, null);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
+  if(data.nway){ renderNwayResult(data, t0); return; }  // handles both exact-key and fuzzy N-way shapes
   if(data.fuzzy){ renderFuzzyResult(data, t0); return; }
-  if(data.nway){ renderNwayResult(data, t0); return; }
   renderCompareResult(data, t0);
 }
 
 // ---------- Reconciliation: N-way (3+ files) result ----------
+function _nwayRowLabel(r, data){
+  if(r.key) return esc(r.key);
+  if(r.reference_row) return (data.fuzzy_fields||[]).map(f=>esc(r.reference_row[f]??'')).join(' &middot; ');
+  return '';
+}
 function renderNwayResult(data, t0){
   const out=document.getElementById('cmp-out');
   setSession(data.session_id);
@@ -1262,8 +1268,10 @@ function renderNwayResult(data, t0){
 
   const summaryHTML = `
     <div class="mb-4 flex flex-wrap items-center gap-2">
-      <span class="badge" style="background:rgba(31,111,107,.12);color:#1f6f6b">&#128279; ${sources.length}-way reconciliation</span>
-      <span class="badge" style="background:rgba(217,119,6,.12);color:#b45309">&#9889; Key: ${esc((data.keys||[]).join(', ')||'n/a')} &mdash; ${esc(data.method||'')}</span>
+      <span class="badge" style="background:rgba(31,111,107,.12);color:#1f6f6b">&#128279; ${sources.length}-way ${data.fuzzy?'fuzzy ':''}reconciliation</span>
+      ${data.fuzzy
+        ? `<span class="badge" style="background:rgba(217,119,6,.12);color:#b45309">&#128269; Fields: ${esc((data.fuzzy_fields||[]).join(', '))} &mdash; threshold ${data.threshold}</span>`
+        : `<span class="badge" style="background:rgba(217,119,6,.12);color:#b45309">&#9889; Key: ${esc((data.keys||[]).join(', ')||'n/a')} &mdash; ${esc(data.method||'')}</span>`}
     </div>
     <div class="grid gap-3 mb-4" style="grid-template-columns:repeat(${Math.min(sources.length,4)},1fr)">
       ${sources.map(s=>`<div class="card rounded-xl p-4"><div class="text-xs font-semibold text-gray-300 mb-1 truncate">${esc(s.name)}</div>
@@ -1274,7 +1282,7 @@ function renderNwayResult(data, t0){
       ${stat('Fully matched (all '+sources.length+')', c.fully_matched??0, '#059669')}
       ${stat('Partial match', c.partial??0, '#b45309')}
       ${stat('Value breaks', c.value_breaks??0, '#dc2626')}
-      ${stat('Total unique keys', c.total_keys??0, '#38bdf8')}
+      ${data.fuzzy ? stat('Reference-only rows', c.reference_only??0, '#38bdf8') : stat('Total unique keys', c.total_keys??0, '#38bdf8')}
     </div>
     <div class="card rounded-xl p-4 mb-4">
       <div class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-3">Present in only one source</div>
@@ -1301,7 +1309,7 @@ function renderNwayResult(data, t0){
     <details class="mb-4" ${(data.partial_rows||[]).length?'open':''}>
       <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(217,119,6,.08)">&#9680; Present in some but not all sources (${(data.partial_rows||[]).length})</summary>
       <div class="mt-2 space-y-2 text-xs">${(data.partial_rows||[]).length ? data.partial_rows.map(r=>`
-        <div class="card rounded-lg p-2"><b class="text-sky-700">${esc(r.key)}</b>
+        <div class="card rounded-lg p-2"><b class="text-sky-700">${_nwayRowLabel(r,data)}</b>
           <div class="mt-1"><span class="text-emerald-600">present in: ${r.present_in.map(esc).join(', ')}</span> &middot;
           <span class="text-red-600">missing from: ${r.missing_from.map(esc).join(', ')}</span></div>
         </div>`).join('') : '<span class="text-gray-500">None &mdash; every key is either in all sources or exactly one.</span>'}</div>
@@ -1309,7 +1317,7 @@ function renderNwayResult(data, t0){
     <details class="mb-4" ${(data.value_breaks||[]).length?'open':''}>
       <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(220,38,38,.08)">&equals; Value breaks across sources (${(data.value_breaks||[]).length})</summary>
       <div class="mt-2 space-y-2 text-xs">${(data.value_breaks||[]).length ? data.value_breaks.map(vb=>`
-        <div class="card rounded-lg p-2"><b class="text-sky-700">${vb.key?esc(vb.key):''}</b>
+        <div class="card rounded-lg p-2"><b class="text-sky-700">${_nwayRowLabel(vb,data)}</b>
           ${Object.entries(vb.changes).map(([col,vals])=>`
             <div class="mt-1"><span class="font-medium">${esc(col)}:</span> ${Object.entries(vals).map(([src,v],i)=>
               `<span class="ml-1">${esc(src)}=<b class="${i===0?'text-amber-600':'text-red-600'}">${esc(v)}</b></span>`).join('')}</div>
