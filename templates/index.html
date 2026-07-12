@@ -1485,25 +1485,77 @@ async function runCompareAI(){
   await renderCompareResult(finalData, t0, 'ai');
 }
 // ---------- Quality / Profile / Governance -- AI Copilot mode ----------
+// Lean summary card for the AI Copilot's auto-run report, mirroring compare's
+// aiReportHTML -- built from the flattened JSON that /rerun-{context}-json
+// returns (a chat-card shape, not the full standard-report shape), since that
+// endpoint already existed for the "run quality"-style chat command but was
+// never called directly on load the way recon's run-llm is.
+function renderAiReportCard(context, data){
+  if(!data) return '';
+  if(context === 'quality'){
+    const dims = ['completeness','uniqueness','validity','consistency','conformity']
+      .filter(k => data[k] != null);
+    return `<div class="grid grid-cols-4 gap-3 mb-4">
+      ${stat('DQ Score', data.score!=null?data.score.toFixed(1):'&mdash;', '#059669')}
+      ${stat('Grade', esc(data.grade||'&mdash;'), '#0284c7')}
+      ${stat('Rule Fails', data.rule_fails??0, '#dc2626')}
+      ${stat('Rule Warnings', data.rule_warns??0, '#b45309')}
+    </div>
+    ${dims.length?`<div class="card rounded-xl p-4 mb-4 text-xs">
+      <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Dimensions</div>
+      <div class="grid grid-cols-3 gap-2">${dims.map(k=>`<div><span class="text-gray-500">${esc(k)}:</span> <b>${(+data[k]).toFixed(1)}</b></div>`).join('')}</div>
+    </div>`:''}
+    ${data.ai_summary?`<div class="card rounded-xl p-4 mb-4 text-sm text-gray-300">&#9889; ${esc(data.ai_summary)}</div>`:''}`;
+  }
+  if(context === 'profile'){
+    return `<div class="grid grid-cols-4 gap-3 mb-4">
+      ${stat('Rows', data.total_rows??'&mdash;', '#0284c7')}
+      ${stat('Columns', data.total_cols??'&mdash;', '#0284c7')}
+      ${stat('Duplicate Rows', data.duplicate_rows??0, '#b45309')}
+      ${stat('Numeric Cols', data.numeric_cols??0, '#059669')}
+    </div>
+    ${(data.key_candidates||[]).length?`<div class="card rounded-xl p-3 mb-4 text-xs"><span class="text-gray-500">Key candidates:</span> ${data.key_candidates.map(esc).join(', ')}</div>`:''}
+    ${data.ai_summary?`<div class="card rounded-xl p-4 mb-4 text-sm text-gray-300">&#9889; ${esc(data.ai_summary)}</div>`:''}`;
+  }
+  if(context === 'governance'){
+    return `<div class="grid grid-cols-4 gap-3 mb-4">
+      ${stat('Classification', esc(data.classification||'&mdash;'), '#dc2626')}
+      ${stat('PII Columns', data.pii_col_count??0, '#b45309')}
+      ${stat('BFSI IDs', data.bfsi_id_col_count??0, '#0284c7')}
+      ${stat('Frameworks', (data.regulatory_frameworks||[]).length, '#059669')}
+    </div>
+    ${(data.regulatory_frameworks||[]).length?`<div class="card rounded-xl p-3 mb-4 text-xs"><span class="text-gray-500">Applicable regulations:</span> ${data.regulatory_frameworks.map(esc).join(', ')}</div>`:''}
+    ${data.ai_summary?`<div class="card rounded-xl p-4 mb-4 text-sm text-gray-300">&#9889; ${esc(data.ai_summary)}</div>`:''}`;
+  }
+  return '';
+}
 async function _runAICopilotMode(action, fileId, prefix, context, label, connId){
   const out=document.getElementById(prefix+'-out'); out.innerHTML='<span class="text-gray-400">Loading file for the AI Copilot&hellip;</span>';
   const t0 = performance.now();
   const fileInputs = connId ? [['files',fileId,'conn_ids',connId]] : [['files',fileId]];
   const {ok,data}=await postForm(action, fileInputs);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
-  setSession(data.session_id);
+  out.innerHTML = `<span class="text-gray-400">Applying saved rules and running the AI-driven ${esc(label)} analysis&hellip;</span>`;
+  let reportData = null, activeSession = data.session_id;
+  try{
+    const r = await fetch(`/rerun-${context}-json/${data.session_id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    if(r.ok){ const j = await r.json(); if(!j.error){ reportData = j; activeSession = j.session_id; } }
+  }catch(e){ /* fall back to chat-only below */ }
+  setSession(activeSession);
   const chips = [
     {label:`What ${label} issues should I be aware of?`, q:`What ${label} issues should I be aware of in this dataset?`},
     {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
   ];
-  out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell(prefix, [
-    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML(prefix, context, chips)},
+  out.innerHTML = actionBar(activeSession, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell(prefix, [
+    {key:'copilot', label:'&#9889; AI Copilot', content: renderAiReportCard(context, reportData) + copilotPanelHTML(prefix, context, chips)},
     {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
   ], 'copilot');
   mountCopilotChat(prefix);
   loadDatasetControlRules(prefix, context);
   const chatInput = document.getElementById('chat-in');
-  chatInput.value = `What ${label} issues should I be aware of in this dataset?`;
+  chatInput.value = reportData
+    ? `Look at these ${label} results and tell me what stands out or needs attention.`
+    : `What ${label} issues should I be aware of in this dataset?`;
   chatInput.focus();
 }
 function runProfileAI(){ return _runAICopilotMode('profile_ai', 'prof-f1', 'prof', 'profile', 'the structure and profile', 'prof-conn1'); }
@@ -1622,15 +1674,23 @@ async function runQualityAI(){
   const t0 = performance.now();
   const {ok,data}=await postForm('quality_ai',[['files','q-f1','conn_ids','q-conn1']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
-  setSession(data.session_id);
-  out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('q', [
-    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('q','quality', qualityChips((data.file_names||[])[0]))},
+  out.innerHTML = '<span class="text-gray-400">Applying saved rules and running the AI-driven data quality analysis&hellip;</span>';
+  let reportData = null, activeSession = data.session_id;
+  try{
+    const r = await fetch(`/rerun-quality-json/${data.session_id}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    if(r.ok){ const j = await r.json(); if(!j.error){ reportData = j; activeSession = j.session_id; } }
+  }catch(e){ /* fall back to chat-only below */ }
+  setSession(activeSession);
+  out.innerHTML = actionBar(activeSession, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('q', [
+    {key:'copilot', label:'&#9889; AI Copilot', content: renderAiReportCard('quality', reportData) + copilotPanelHTML('q','quality', qualityChips((reportData||data).file_names?.[0] || reportData?.file_name))},
     {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
   ], 'copilot');
   mountCopilotChat('q');
   loadDatasetControlRules('q','quality');
   const chatInput = document.getElementById('chat-in');
-  chatInput.value = `What data quality issues should I be aware of in this dataset?`;
+  chatInput.value = reportData
+    ? 'Look at these data quality results and tell me what stands out or needs attention.'
+    : 'What data quality issues should I be aware of in this dataset?';
   chatInput.focus();
 }
 

@@ -18558,7 +18558,7 @@ async def rerun_quality_json(session_id: str, request: Request):
             except Exception as _eh:
                 pass  # non-fatal
 
-            return JSONResponse({
+            return JSONResponse(_sanitize_json({
                 "session_id":  new_sid,
                 "file_name":   fname,
                 "file_format": df.attrs.get("_format", ""),
@@ -18591,7 +18591,7 @@ async def rerun_quality_json(session_id: str, request: Request):
                 "ai_hints_used": list(_hints.keys()),
                 "ai_rules":     ai_rules,
                 "ai_summary":   _exec_summary,
-            })
+            }))
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -18869,7 +18869,25 @@ async def rerun_profile_json(session_id: str, request: Request):
             "is_numeric": c.get("is_numeric", c.get("mean") is not None),
         } for c in cols]
 
-        return JSONResponse({
+        # The executive summary is a nice-to-have on top of the profile that was
+        # already computed above -- an LLM hiccup (rate limit, no provider
+        # configured, etc.) must not take down the whole report, same as the
+        # quality endpoint's ai_summary is already protected.
+        _profile_ai_summary = ""
+        try:
+            _profile_ai_summary = (await _asyncio.to_thread(_ask_llm,
+                [{"role":"user","content":[{"text":
+                    f"Write a 2-3 sentence executive summary of this data profile for {fname} "
+                    f"({q['total_rows']} rows, {q.get('total_cols',len(df.columns))} cols). "
+                    f"Key candidates: {_prof.get('key_candidates',[])}. "
+                    f"Numeric cols: {sum(1 for c in cols if c.get('mean') is not None)}. "
+                    f"Duplicate rows: {q.get('duplicate_rows',0)}. Be concise and business-focused."
+                }]}], "", "profile", "ai_summary",
+                    getattr(request.state, "username", None) or "")).strip()
+        except Exception:
+            pass
+
+        return JSONResponse(_sanitize_json({
             "session_id":  new_sid,
             "file_name":   fname,
             "file_format": df.attrs.get("_format",""),
@@ -18883,24 +18901,9 @@ async def rerun_profile_json(session_id: str, request: Request):
             "type_breakdown": _prof.get("type_breakdown",{}),
             "correlations":   _prof.get("correlations",[])[:8],
             "columns":        col_summary,
-
-
-# ==== SOURCE PAGE 0808 ====
-
             "ai_hints_used": list(_hints.keys()),
-            "ai_summary":    await _asyncio.to_thread(_ask_llm,
-[{"role":"user","content":[{"text":
-                f"Write a 2-3 sentence executive summary of this data profile for {fname} "
-                f"({q['total_rows']} rows, {q.get('total_cols',len(df.columns))} cols). "
-                f"Key candidates: {_prof.get('key_candidates',[])}. "
-                f"Numeric cols: {sum(1 for c in cols if c.get('mean') is not None)}. "
-                f"Duplicate rows: {q.get('duplicate_rows',0)}. Be concise and business-focused."
-            }]}], "", "profile", "ai_summary",
-                getattr(request.state, "username", None) or "") if True else "",
-            # OCR-UNCERTAIN: the trailing "if True else """ clause after the getattr(...) call
-            # reads clearly in the photo but its exact parenthesization/scope is hard to verify
-            # from the blurred image -- transcribed literally.
-        })
+            "ai_summary":    _profile_ai_summary,
+        }))
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
@@ -18961,7 +18964,23 @@ async def rerun_governance_json(session_id: str, request: Request):
         pii_cols = [c for c in g.get("columns", []) if c.get("pii_detected")]
         clean_cols = [c for c in g.get("columns",[]) if not c.get("pii_detected")]
 
-        return JSONResponse({
+        # Same reasoning as the profile endpoint: the executive summary is a
+        # nice-to-have on top of the already-computed governance audit, so an
+        # LLM hiccup must not take down the whole report.
+        _gov_ai_summary = ""
+        try:
+            _gov_ai_summary = (await _asyncio.to_thread(_ask_llm,[{"role":"user","content":[{"text":
+                f"Write a 2-3 sentence executive summary of this governance audit for {fname}. "
+                f"Classification: {g.get('overall_classification','')}. "
+                f"PII columns: {g.get('pii_column_count',0)}. "
+                f"Regulatory frameworks: {g.get('regulatory_frameworks',[])}. "
+                f"Be direct about data sensitivity and compliance risk."
+            }]}], "", "governance", "ai_summary",
+                getattr(request.state, "username", None) or "")).strip()
+        except Exception:
+            pass
+
+        return JSONResponse(_sanitize_json({
             "session_id":   new_sid,
             "file_name":    fname,
             "file_format":  df.attrs.get("_format",""),
@@ -18977,25 +18996,12 @@ async def rerun_governance_json(session_id: str, request: Request):
                 "sensitivity": c.get("sensitivity",""),
                 "pii_types": c.get("pii_detected",[])[:3],
                 "regulatory": c.get("regulatory_flags",[])[:3],
-
-
-# ==== SOURCE PAGE 0812 ====
-
                 "access":   c.get("access_recommendation",""),
             } for c in pii_cols[:15]],
             "undocumented": g.get("undocumented_columns",[])[:10],
             "ai_hints_used": list(_hints.keys()),
-            "ai_summary": await _asyncio.to_thread(_ask_llm,[{"role":"user","content":[{"text":
-                f"Write a 2-3 sentence executive summary of this governance audit for {fname}. "
-                f"Classification: {g.get('overall_classification','')}. "
-                f"PII columns: {g.get('pii_column_count',0)}. "
-                f"Regulatory frameworks: {g.get('regulatory_frameworks',[])}. "
-                f"Be direct about data sensitivity and compliance risk."
-            }]}], "", "governance", "ai_summary",
-                getattr(request.state, "username", None) or "") if True else "",
-            # OCR-UNCERTAIN: same "if True else """ trailing pattern as page 0808 -- transcribed
-            # literally though the exact grouping is hard to confirm from the photo.
-        })
+            "ai_summary": _gov_ai_summary,
+        }))
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 
