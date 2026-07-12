@@ -202,19 +202,29 @@
       <div id="cmp-extra-sources" class="space-y-3 mb-3"></div>
       <div class="mb-4 flex flex-wrap gap-2 items-center">
         <button type="button" onclick="addCmpSource()" id="cmp-add-source-btn" class="btn-ghost btn rounded-lg px-3 py-1.5 text-xs">&#10011; Add source (for 3+ way reconciliation)</button>
+        <span id="cmp-source-count" class="badge hidden" style="background:rgba(31,111,107,.12);color:#1f6f6b"></span>
         <label class="flex items-center gap-2 text-xs text-gray-500 cursor-pointer ml-2">
           <input type="checkbox" id="cmp-fuzzy-enable" class="accent-sky-500" onchange="document.getElementById('cmp-fuzzy-panel').classList.toggle('hidden', !this.checked)">
           &#128269; Fuzzy match (no clean key &mdash; match by similarity instead)
         </label>
       </div>
       <div id="cmp-fuzzy-panel" class="hidden card rounded-xl p-4 mb-4 text-sm">
-        <div class="grid grid-cols-2 gap-3">
-          <div><label class="text-xs text-gray-400">Fields to match on (comma-separated)</label>
-            <input id="cmp-fuzzy-fields" placeholder="e.g. name, amount, date" class="inp w-full mt-1 text-sm"></div>
-          <div><label class="text-xs text-gray-400">Match threshold (0.5&ndash;0.95 &mdash; higher = stricter)</label>
-            <input id="cmp-fuzzy-threshold" type="number" min="0.5" max="0.95" step="0.05" value="0.75" class="inp w-full mt-1 text-sm"></div>
+        <div class="mb-4">
+          <label class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Fields to match on</label>
+          <div id="cmp-fuzzy-chips-hint" class="text-xs text-gray-500 mt-1 mb-2">Upload both files to see their columns here, or type field names manually below.</div>
+          <div id="cmp-fuzzy-chips" class="flex flex-wrap gap-2 mb-2"></div>
+          <input id="cmp-fuzzy-fields" placeholder="or type field names manually, comma-separated" class="inp w-full mt-1 text-xs" oninput="refreshFuzzyFieldChips()">
         </div>
-        <p class="text-xs text-gray-500 mt-2">For when there's no shared ID between the two files &mdash; e.g. matching a bank
+        <div class="mb-2">
+          <label class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Match threshold</label>
+          <div class="flex items-center gap-3 mt-1">
+            <input type="range" min="0.5" max="0.95" step="0.05" value="0.75" class="flex-1 accent-sky-500" oninput="onFuzzyThresholdSlide(this.value)">
+            <span id="cmp-fuzzy-threshold-label" class="badge" style="background:rgba(56,189,248,.12);color:#0369a1;min-width:48px;text-align:center">75%</span>
+            <input id="cmp-fuzzy-threshold" type="hidden" value="0.75">
+          </div>
+          <div class="text-[11px] text-gray-500 mt-1">Lower = matches more loosely (more false positives). Higher = stricter (may miss real matches with typos).</div>
+        </div>
+        <p class="text-xs text-gray-500 mt-3 pt-3 border-t border-[var(--line)]">For when there's no shared ID between the two files &mdash; e.g. matching a bank
           statement narrative against an internal ledger description by name/amount/date proximity. Text fields are scored
           by similarity (typos, reordering, and formatting differences are tolerated); numeric fields by relative closeness;
           dates by day proximity. Capped at 3,000 rows per file. Not available for 3+ source reconciliation.</p>
@@ -722,24 +732,78 @@ function wireDropzone(zoneId, inputId, chipId){
  'xref-zone1|xref-f1|xref-chip1','xref-zone2|xref-f2|xref-chip2','xref-zone3|xref-f3|xref-chip3','xref-zone4|xref-f4|xref-chip4'
 ].forEach(spec=>wireDropzone(...spec.split('|')));
 
+// ---------- Reconciliation: live column preview -> fuzzy-match field chips ----------
+// /preview is a lightweight single-file parse (columns + sample rows + inferred key)
+// that already existed on the backend but nothing called it -- wiring it here turns
+// the fuzzy-match field picker from "type an exact column name blind" into real
+// clickable chips populated from what's actually in the uploaded files.
+const _cmpColumnsCache = {A: null, B: null};
+async function previewCmpFile(side, inputId){
+  const f = document.getElementById(inputId)?.files[0];
+  if(!f){ _cmpColumnsCache[side] = null; refreshFuzzyFieldChips(); return; }
+  const fd = new FormData(); fd.append('files', f);
+  try{
+    const r = await fetch('/preview', {method:'POST', body:fd});
+    const d = await r.json();
+    _cmpColumnsCache[side] = d.error ? null : d.column_names || null;
+  }catch(e){ _cmpColumnsCache[side] = null; }
+  refreshFuzzyFieldChips();
+}
+document.getElementById('cmp-f1')?.addEventListener('change', ()=>previewCmpFile('A','cmp-f1'));
+document.getElementById('cmp-f2')?.addEventListener('change', ()=>previewCmpFile('B','cmp-f2'));
+
+function refreshFuzzyFieldChips(){
+  const box = document.getElementById('cmp-fuzzy-chips');
+  if(!box) return;
+  const a = _cmpColumnsCache.A, b = _cmpColumnsCache.B;
+  let cols, hint;
+  if(a && b){ cols = a.filter(c=>b.includes(c)); hint = cols.length ? 'Columns common to both files:' : 'No matching column names between the two files &mdash; type field names manually below.'; }
+  else if(a || b){ cols = a || b; hint = `Columns in ${a?'Dataset A':'Dataset B'} (upload the other side to narrow to common columns):`; }
+  else { cols = []; hint = 'Upload both files to see their columns here, or type field names manually below.'; }
+  const selected = new Set((document.getElementById('cmp-fuzzy-fields').value||'').split(',').map(s=>s.trim()).filter(Boolean));
+  document.getElementById('cmp-fuzzy-chips-hint').textContent = hint;
+  box.innerHTML = cols.map(c=>`<label class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border-[1.5px] cursor-pointer ${selected.has(c)?'border-sky-400 bg-sky-50':'border-[var(--line)]'}">
+    <input type="checkbox" class="accent-sky-500 cmp-fuzzy-chip" value="${esc(c)}" ${selected.has(c)?'checked':''} onchange="onFuzzyChipToggle()">${esc(c)}</label>`).join(' ');
+}
+function onFuzzyChipToggle(){
+  const checked = [...document.querySelectorAll('.cmp-fuzzy-chip:checked')].map(cb=>cb.value);
+  document.getElementById('cmp-fuzzy-fields').value = checked.join(', ');
+  refreshFuzzyFieldChips();
+}
+function onFuzzyThresholdSlide(v){
+  document.getElementById('cmp-fuzzy-threshold').value = v;
+  document.getElementById('cmp-fuzzy-threshold-label').textContent = Math.round(v*100)+'%';
+}
+
 // ---------- Reconciliation: extra sources (N-way, 3+ files) ----------
 const _cmpExtraLabels = ['C','D','E','F']; // maps to files_c..files_f on the backend
+const _cmpExtraColors = ['#7c3aed','#0284c7','#059669','#dc2626'];
 let _cmpExtraCount = 0;
+function _cmpSourceCountLabel(){
+  const n = _cmpExtraCount + 2;
+  return `${n} of ${_cmpExtraLabels.length+2} sources`;
+}
 function addCmpSource(){
   if(_cmpExtraCount >= _cmpExtraLabels.length) return;
-  const label = _cmpExtraLabels[_cmpExtraCount];
-  const n = _cmpExtraCount + 3; // Dataset A=1, B=2, so extras start at 3
+  const idx = _cmpExtraCount;
+  const label = _cmpExtraLabels[idx];
+  const color = _cmpExtraColors[idx];
+  const n = idx + 3; // Dataset A=1, B=2, so extras start at 3
   _cmpExtraCount++;
   const box = document.getElementById('cmp-extra-sources');
   const row = document.createElement('div');
   row.id = `cmp-source-row-${n}`;
+  row.style.cssText = 'opacity:0;transform:translateY(-6px);transition:opacity .25s ease,transform .25s ease';
   row.innerHTML = `
-    <div class="text-xs text-gray-400 uppercase tracking-wide mb-2 flex items-center justify-between">
-      <span>Dataset ${label}</span>
+    <div class="text-xs uppercase tracking-wide mb-2 flex items-center justify-between">
+      <span class="inline-flex items-center gap-2">
+        <span class="inline-flex items-center justify-center rounded-full text-white font-bold" style="width:20px;height:20px;font-size:11px;background:${color}">${label}</span>
+        <span class="text-gray-400">Dataset ${label}</span>
+      </span>
       <button type="button" onclick="removeCmpSource(${n})" class="text-red-400 hover:text-red-300 normal-case font-normal">&times; remove</button>
     </div>
     <div class="flex gap-2 items-stretch">
-      <div id="cmp-zone${n}" class="dropzone flex-1">Drag &amp; drop or click</div>
+      <div id="cmp-zone${n}" class="dropzone flex-1" style="border-color:${color}55">Drag &amp; drop or click</div>
       <span class="upload-or">or</span>
       <select id="cmp-conn${n}" class="inp text-xs conn-select" style="width:180px"><option value="">&#128268; Saved Connector</option></select>
     </div>
@@ -748,14 +812,23 @@ function addCmpSource(){
   box.appendChild(row);
   wireDropzone(`cmp-zone${n}`, `cmp-f${n}`, `cmp-chip${n}`);
   loadConnDropdowns();
+  requestAnimationFrame(()=>{ row.style.opacity='1'; row.style.transform='translateY(0)'; });
+  document.getElementById('cmp-source-count').textContent = _cmpSourceCountLabel();
+  document.getElementById('cmp-source-count').classList.remove('hidden');
   if(_cmpExtraCount >= _cmpExtraLabels.length){
     document.getElementById('cmp-add-source-btn').classList.add('hidden');
   }
 }
 function removeCmpSource(n){
-  document.getElementById(`cmp-source-row-${n}`)?.remove();
+  const row = document.getElementById(`cmp-source-row-${n}`);
+  if(row){
+    row.style.opacity='0'; row.style.transform='translateY(-6px)';
+    setTimeout(()=>row.remove(), 200);
+  }
   _cmpExtraCount--;
   document.getElementById('cmp-add-source-btn').classList.remove('hidden');
+  const countEl = document.getElementById('cmp-source-count');
+  if(_cmpExtraCount > 0){ countEl.textContent = _cmpSourceCountLabel(); } else { countEl.classList.add('hidden'); }
 }
 function cmpExtraFileInputs(){
   // [field, fileInputId, connField, connSelectId] entries for every currently-added
