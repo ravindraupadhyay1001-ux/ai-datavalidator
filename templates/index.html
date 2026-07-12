@@ -636,6 +636,8 @@
       <button data-help="governance" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Governance</button>
       <button data-help="parse" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Parse</button>
       <button data-help="xref" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Cross Reference</button>
+      <button data-help="memory" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Dataset Memory</button>
+      <button data-help="workspace" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Workspace</button>
       <button data-help="who" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Who Uses This</button>
       <button data-help="ask" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">&#129302; Ask AI</button>
       <button onclick="closeHelpModal()" class="mt-auto text-left px-3 py-1.5 rounded-lg btn-ghost">&times; Close</button>
@@ -1912,6 +1914,49 @@ const HELP_CONTENT = {
     <p>Matches an identifier (ISIN, CUSIP, LEI, trade_id, etc.) across 2&ndash;5 sources, producing a coverage
     matrix and a conflicts list with a recommended "golden" value per field (majority-wins, or your chosen
     authoritative source). Leave the identifier key blank to let the AI auto-detect it.</p>`,
+  memory: `<h3 class="font-semibold text-sky-300 mb-2">Dataset Memory</h3>
+    <p>Every schema you upload gets a fingerprint from its column names, so plain-English rules you teach the
+    AI Copilot are remembered and reload automatically next time you upload a matching file pair &mdash; even
+    in a brand new session, with no manual setup.</p>
+    <p class="mt-2 text-gray-400">Teach a rule by typing <code>remember: ...</code> in any AI Copilot chat, or
+    add one directly in the <b>Dataset Memory</b> panel on the results screen. Rules cover:</p>
+    <ul class="mt-1 ml-4 list-disc text-gray-400 space-y-0.5">
+      <li>Keys &mdash; <code>remember: use trade_id as the key</code></li>
+      <li>Excludes &mdash; <code>remember: exclude the load_date column</code></li>
+      <li>Mappings &mdash; <code>remember: map src_amt to amount</code></li>
+      <li>Transforms &mdash; <code>remember: strip commas from the notional column</code></li>
+    </ul>
+    <p class="mt-2 text-gray-400">Rules are scoped per module &mdash; reconciliation rules only apply to
+    Reconciliation-family screens, Data Quality's "Dataset Controls" rules only apply to Data Quality, and
+    general rules apply everywhere for that schema.</p>
+    <p class="mt-2 text-gray-400"><b>Rule Templates</b> (in the AI Copilot's Dataset Memory panel, Reconciliation
+    only) let you browse every schema that has saved rules and apply one schema's rule set onto a different one
+    in a single click &mdash; useful when a new file pair has the same shape as one you've already tuned.
+    Duplicate rules are skipped automatically, so re-applying a template is always safe.</p>
+    <p class="mt-2 text-gray-400">Delete any rule with the &times; next to it; deleting only affects that
+    schema.</p>`,
+  workspace: `<h3 class="font-semibold text-sky-300 mb-2">Workspace</h3>
+    <p>Save reusable data sources and automate recurring analysis instead of re-uploading files by hand every
+    time.</p>
+    <p class="mt-2 font-semibold text-sky-300">Connections</p>
+    <p class="text-gray-400">Store credentials/config once for SFTP, FTP, S3, MSSQL, Postgres, MySQL, Oracle,
+    Snowflake, Azure Blob, GCS, Kafka, Salesforce, SharePoint or Databricks, then pick it from the "Saved
+    Connector" dropdown anywhere a file upload is accepted.</p>
+    <p class="mt-2 font-semibold text-sky-300">Rulesets</p>
+    <p class="text-gray-400">Named, reusable Data Quality rule sets (JSON) that a scheduled job can apply
+    without redefining rules on every run.</p>
+    <p class="mt-2 font-semibold text-sky-300">Jobs</p>
+    <p class="text-gray-400">Run any action (Reconciliation, Data Quality, Profile, Governance, Lineage, Parse,
+    Cross Reference) on demand or on a cron schedule against saved connections. Use the 1m/5m/15m presets for
+    near-real-time polling &mdash; pair a fast schedule with a Kafka connection (set a <code>group_id</code> in
+    its config) for continuous streaming reconciliation. Turn on <b>Bulk (fan-out)</b> to run the same compare
+    across many connection pairs at once (e.g. one per branch) on a single schedule, aggregated into one run.
+    Add a notify email to get a report after every run.</p>
+    <p class="mt-2 font-semibold text-sky-300">Saved Runs</p>
+    <p class="text-gray-400">Persist a completed analysis session for later download (Excel) without rerunning
+    it.</p>
+    <p class="mt-2 font-semibold text-sky-300">Audit</p>
+    <p class="text-gray-400">Live activity feed of every action taken in the workspace, for traceability.</p>`,
   who: `<h3 class="font-semibold text-sky-300 mb-2">Who Uses This</h3>
     <p>Built for Trade Operations, Risk/Quant, Compliance, Data Engineering, Middle Office, Fund Administration,
     and UAT/QA teams working with financial services data across trade, position, payments, and reference-data
