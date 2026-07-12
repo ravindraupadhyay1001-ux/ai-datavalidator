@@ -591,7 +591,7 @@ def _ask_llm(messages: list[dict], system: str = "",
     ]
     providers = [LLM_PROVIDER] + [p for p in ("groq", "gemini", "bedrock", "openai", "anthropic") if p != LLM_PROVIDER]
 
-    last_err: Exception = RuntimeError("No LLM provider configured.")
+    errors: list[str] = []
     for provider in providers:
         try:
             if provider == "bedrock":
@@ -605,9 +605,9 @@ def _ask_llm(messages: list[dict], system: str = "",
             elif provider == "anthropic":
                 return _ask_anthropic(plain_messages, system)
         except Exception as exc:
-            last_err = exc
+            errors.append(f"{provider}: {exc}")
             continue
-    raise last_err
+    raise RuntimeError("All LLM providers failed -- " + "; ".join(errors) if errors else "No LLM provider configured.")
 
 
 # ---------------------------------------------------------------------
