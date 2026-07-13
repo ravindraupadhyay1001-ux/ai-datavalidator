@@ -49,8 +49,8 @@
       -webkit-background-clip:text; background-clip:text; color:transparent; animation:gradShift 5s ease infinite;
       filter:drop-shadow(0 1px 12px rgba(124,58,237,.18)); }
     @keyframes gradShift{ 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
-    @keyframes glowPulse{ 0%,100%{ box-shadow:0 4px 18px -2px rgba(37,99,235,.6), 0 0 0 4px rgba(37,99,235,.12), 0 0 30px -2px rgba(124,58,237,.45); }
-      50%{ box-shadow:0 4px 26px 0 rgba(37,99,235,.8), 0 0 0 7px rgba(37,99,235,.18), 0 0 42px 2px rgba(124,58,237,.65); } }
+    @keyframes glowPulse{ 0%,100%{ box-shadow:0 4px 16px -2px rgba(19,26,43,.5), 0 0 0 4px rgba(79,209,168,.14), 0 0 22px -4px rgba(79,209,168,.35); }
+      50%{ box-shadow:0 4px 22px 0 rgba(19,26,43,.65), 0 0 0 6px rgba(79,209,168,.22), 0 0 30px -2px rgba(79,209,168,.5); } }
     .btn{ position:relative; overflow:hidden; background:linear-gradient(90deg,#2563eb,#4f46e5,#7c3aed,#4f46e5,#2563eb);
       background-size:300% auto; transition:filter .15s, transform .12s, box-shadow .2s, background-position .4s;
       color:#fff; border-radius:11px; box-shadow:0 3px 14px -3px rgba(37,99,235,.55); font-weight:700; letter-spacing:.01em; }
@@ -67,9 +67,9 @@
     .inp{ background:#fff; border:1.5px solid var(--line); border-radius:9px; padding:7px 11px; color:var(--txt-primary); transition:border-color .15s, box-shadow .15s; }
     .inp:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 3.5px var(--primary-dim); }
     .logo-mark{ width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center;
-      background:linear-gradient(135deg,#2563eb,#7c3aed); transform:rotate(45deg); flex-shrink:0;
+      background:#131a2b; flex-shrink:0; position:relative; overflow:hidden;
       animation:glowPulse 3.5s ease-in-out infinite; }
-    .logo-mark svg{ transform:rotate(-45deg); }
+    .logo-wordmark{ color:var(--txt-primary); }
     pre{ white-space:pre-wrap; word-break:break-word; font-family:var(--font-mono); }
     code, .font-mono{ font-family:var(--font-mono) !important; }
     ::-webkit-scrollbar{width:10px;height:10px} ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:6px}
@@ -141,15 +141,13 @@
     <div class="px-5 pt-7 pb-6 flex items-center gap-3.5 border-b border-[var(--line)] mb-2">
       <div class="logo-mark" style="width:54px;height:54px;border-radius:15px;">
         <svg viewBox="0 0 24 24" width="28" height="28" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 2.3 4.5 5.4v5.8c0 5.1 3.3 8.9 7.5 10.2 4.2-1.3 7.5-5.1 7.5-10.2V5.4L12 2.3Z"
-                fill="white" fill-opacity=".16" stroke="white" stroke-width="1.3" stroke-linejoin="round"/>
-          <path d="M8.6 12.1 11 14.5l4.6-5" stroke="white" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
-          <circle cx="12" cy="2.3" r=".9" fill="white"/>
-          <circle cx="4.5" cy="5.9" r=".7" fill="white" fill-opacity=".7"/>
-          <circle cx="19.5" cy="5.9" r=".7" fill="white" fill-opacity=".7"/>
+          <line x1="4" y1="7.5" x2="20" y2="7.5" stroke="#3a4666" stroke-width="1"/>
+          <line x1="4" y1="12" x2="20" y2="12" stroke="#3a4666" stroke-width="1"/>
+          <line x1="4" y1="16.5" x2="20" y2="16.5" stroke="#3a4666" stroke-width="1"/>
+          <path d="M7 12.5 10.2 15.7 18 8" stroke="#4fd1a8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </div>
-      <div><div class="text-2xl font-extrabold grad-text leading-none uppercase tracking-wide">AI Agent</div>
+      <div><div class="text-2xl font-extrabold logo-wordmark leading-none uppercase tracking-wide">AI Agent</div>
         <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500 mt-1.5">Data Validation</div></div>
     </div>
     <nav class="flex flex-col gap-1.5 px-3 text-sm">
