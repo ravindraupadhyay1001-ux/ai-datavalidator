@@ -16228,17 +16228,22 @@ async def xref_analyze(request: Request):
         "xref":       xr,
         "proc_logs":  proc_logs,
         "elapsed":    total_elapsed,
-
-
-
-# ==== SOURCE PAGE 0707 ====
-
+        # Kept for /xref/run-llm/{session_id} (AI Copilot re-run with saved
+        # rules) -- every other module already stores its dataframes for
+        # rerun purposes, xref just never needed to until now.
+        "dataframes": [{"name": n, "df": df} for n, df in sources],
     }
 
     # Build AI-summary context
     _dataset_fingerprint = _fp_resolve(
         _fp_compute([c for s in sources for c in s[1].columns], []),
     )
+    # Persist so /dataset-controls/*, /rules/*, and /xref/run-llm can resolve
+    # it later -- without this, every "remember: ..." rule saved from the
+    # xref Copilot was silently written under an empty-string fingerprint
+    # instead of this schema's real one (results_store.get(...,"") in every
+    # rule endpoint), so saved rules never actually reloaded on a later run.
+    _results_store[session_id]["dataset_fingerprint"] = _dataset_fingerprint
     _saved_rules_text = _fp_rules_text(_dataset_fingerprint)
 
     _summary = xr.get("summary", {})
@@ -16273,6 +16278,147 @@ async def xref_analyze(request: Request):
         "dataset_fingerprint": _dataset_fingerprint,
         "elapsed": total_elapsed,
         "logs": proc_logs,
+    }))
+
+
+def _parse_xref_rules_to_params(rules: list[dict], source_names: list[str], common_cols: list[str]) -> dict:
+    """Ask the LLM to read saved Cross Reference rules and turn them into
+    analyze_cross_reference() execution parameters. Mirrors
+    _parse_recon_rules_to_params in spirit but with xref's smaller parameter
+    set. Falls back to {} on no rules, {"_llm_error": ...} on LLM failure --
+    same "surface the failure, don't run silently" convention as recon."""
+    rule_text = "\n".join(
+        f" [{r['category'].upper()}] {r['rule']}"
+        for r in rules if r.get("category") not in ("recon_hints",)
+    )
+    if not rule_text.strip():
+        return {}
+
+    prompt = f"""You are a data cross-reference parameter extractor.
+
+Given the user rules and the common columns shared across {len(source_names)} sources
+({', '.join(source_names)}), produce ONLY a JSON object with execution parameters.
+
+Common columns: {common_cols}
+
+JSON schema (omit any key that is not needed):
+{{
+  "key_col": "col_name",           // the identifier column to match rows on across sources
+  "compare_fields": ["col_a","col_b"],  // columns to compare for conflicts (all common columns if omitted)
+  "exclude_cols": ["col_c"],       // columns to exclude entirely
+  "golden_source": "Source Name"   // which source is authoritative on conflicts (majority-wins if omitted)
+}}
+
+Key rules:
+- key_col and every entry in compare_fields/exclude_cols must be one of the common columns listed above.
+- golden_source must exactly match one of: {source_names}.
+- Only include what you are confident about. Reply with ONLY valid JSON, no commentary."""
+
+    try:
+        raw = _ask_llm([{"role": "user", "content": [{"text": prompt}]}])
+        raw = re.sub(r"^```[a-z]*\n?", "", raw.strip(), flags=re.MULTILINE)
+        raw = re.sub(r"```$", "", raw.strip())
+        return json.loads(raw)
+    except Exception as exc:
+        return {"_llm_error": str(exc)}
+
+
+@app.post("/xref/run-llm/{session_id}")
+async def xref_run_llm(session_id: str):
+    """AI Copilot's "Run Cross Reference" -- reads saved rules for this
+    schema, has the LLM turn them into key_col/compare_fields/exclude_cols/
+    golden_source, reruns analyze_cross_reference() with them applied, and
+    returns the same response shape /xref uses so the frontend can render it
+    with the identical results UI."""
+    stored = _results_store.get(session_id, {})
+    if not stored or "dataframes" not in stored:
+        raise HTTPException(404, "Session not found or missing stored sources -- please re-run Cross Reference.")
+
+    _t0 = time.time()
+    proc_logs: list[dict] = []
+    def _log(msg: str, level: str = "INFO") -> None:
+        proc_logs.append({"elapsed": round(time.time() - _t0, 3), "level": level, "message": msg})
+
+    sources: list[tuple[str, pd.DataFrame]] = [(item["name"], item["df"]) for item in stored["dataframes"]]
+    common_cols = list(set.intersection(*(set(df.columns) for _, df in sources))) if sources else []
+
+    fingerprint = stored.get("dataset_fingerprint") or _fp_resolve(
+        _fp_compute([c for s in sources for c in s[1].columns], []),
+    )
+    saved_rules = _fp_get_rules(fingerprint, module="xref")
+    params = _parse_xref_rules_to_params(saved_rules, [s[0] for s in sources], common_cols)
+    llm_error = params.pop("_llm_error", None)
+
+    key_col = params.get("key_col")
+    compare_fields = params.get("compare_fields") or None
+    exclude_cols = set(params.get("exclude_cols") or [])
+    if exclude_cols:
+        sources = [(n, df.drop(columns=[c for c in exclude_cols if c in df.columns])) for n, df in sources]
+    golden_source = params.get("golden_source")
+    if golden_source and golden_source not in [s[0] for s in sources]:
+        golden_source = None  # LLM hallucinated a source name -- fall back to auto
+
+    _log(f"AI Copilot re-run: key={key_col or 'auto'}, golden={golden_source or 'auto'}, "
+         f"{len(exclude_cols)} excluded col(s)")
+
+    try:
+        xr = await asyncio.to_thread(
+            analyze_cross_reference, sources, key_col=key_col, compare_fields=compare_fields,
+            golden_source=golden_source, conflicts_only=False, show_coverage=True,
+        )
+    except Exception as exc:
+        raise HTTPException(500, f"Cross Reference failed: {exc}")
+
+    total_elapsed = round(time.time() - _t0, 3)
+    for c in xr.get("conflicts", []):
+        if "values" in c and "source_values" not in c:
+            c["source_values"] = c.pop("values")
+    xr["summary"].setdefault("coverage_gap_count", sum(len(v) for v in xr.get("only_in", {}).values()))
+    xr["summary"].setdefault("golden_source", xr.get("golden_source", "auto"))
+
+    new_session_id = str(uuid.uuid4())
+    xr["session_id"] = new_session_id
+    _results_store[new_session_id] = {
+        "action": "xref", "file_names": [s[0] for s in sources], "xref": xr,
+        "proc_logs": proc_logs, "elapsed": total_elapsed,
+        "dataframes": [{"name": n, "df": df} for n, df in sources],
+        "dataset_fingerprint": fingerprint,
+    }
+
+    _summary = xr.get("summary", {})
+    _cov = xr.get("coverage_matrix", {})
+    _cov_sources = _cov.get("source_names", [s[0] for s in sources])
+    _cov_rows = [
+        {"identifier": row["key"], **{s: (s in row["present_in"]) for s in _cov_sources}}
+        for row in _cov.get("rows", [])
+    ]
+    _conflicts = [
+        {
+            "identifier": c["key"], "field": c["field"], "values": c.get("source_values", c.get("values", {})),
+            "conflict_type": c.get("conflict_type", ""),
+            "golden_value": c.get("golden_value", ""),
+            "sources_agree": c.get("sources_agree", []),
+            "sources_differ": c.get("sources_differ", []),
+        }
+        for c in xr.get("conflicts", [])
+    ]
+    return JSONResponse(_sanitize_json({
+        "session_id": new_session_id,
+        "counts": {
+            "total_identifiers": _summary.get("total_keys", 0),
+            "in_all_sources": _summary.get("matched_in_all", 0),
+            "conflicts": _summary.get("conflict_count", 0),
+        },
+        "identifier_key": xr.get("key_col_used", ""),
+        "golden_source": xr.get("golden_source", "auto (majority-wins)"),
+        "sources": _cov_sources,
+        "coverage_matrix": _cov_rows,
+        "conflicts": _conflicts,
+        "dataset_fingerprint": fingerprint,
+        "elapsed": total_elapsed,
+        "logs": proc_logs,
+        "llm_error": llm_error,
+        "rules_applied": len(saved_rules),
     }))
 
 

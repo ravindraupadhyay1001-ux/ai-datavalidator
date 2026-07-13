@@ -957,6 +957,7 @@ function copilotPanelHTML(prefix, context, chips){
         </div>
         <div id="${prefix}-dc-feedback" class="text-xs mb-1"></div>
         <div id="${prefix}-dc-rules" class="text-xs space-y-1"><span class="text-gray-500">No saved rules yet.</span></div>
+        ${context==='xref' ? `<button onclick="runXrefAI()" class="btn-ghost rounded-lg px-2 py-1 text-xs mt-2 w-full">&#128260; Re-run with saved rules applied</button>` : ''}
       </div>
       <div class="card rounded-xl p-4 mt-3">
         <div class="flex items-center justify-between mb-2 cursor-pointer" onclick="toggleRuleTemplates('${prefix}','${context}')">
@@ -1657,7 +1658,11 @@ async function runQuality(){
       <div class="space-y-1 text-xs">${data.ai_rule_results.map(r=>`<div>${esc(r.rule_name||r.rule_type||'')} &middot; ${esc(r.column_name||'')}: <span class="${r.status==='PASS'?'text-emerald-300':'text-red-300'}">${esc(r.status||'')}</span></div>`).join('')}</div>
     </div>` : ''}
     <div class="text-sm text-gray-400 mb-2">Rule failures: <span class="text-red-400 font-semibold">${failedRules.length}</span> of ${(data.rule_results||[]).length}</div>
-    ${failedRules.length ? `<div class="card rounded-xl p-3 text-xs space-y-1">${failedRules.map(r=>`<div><b class="text-sky-300">${esc(r.column_name||r.column||'')}</b> &middot; ${esc(r.rule_name||r.rule_type||'')}: <span class="text-red-400">${esc(r.reason||r.status)}</span></div>`).join('')}</div>` : '<div class="text-sm text-gray-500">No rule failures.</div>'}`;
+    ${failedRules.length ? `<div class="card rounded-xl p-3 text-xs space-y-1">${failedRules.map(r=>`<div><b class="text-sky-300">${esc(r.column_name||r.column||'')}</b> &middot; ${esc(r.rule_name||r.rule_type||'')}: <span class="text-red-400">${esc(r.reason||r.status)}</span></div>`).join('')}</div>` : '<div class="text-sm text-gray-500">No rule failures.</div>'}
+    ${failedRules.length ? `<div class="mt-3">
+      <button onclick="runDqAutofix('${esc(data.name)}')" class="btn rounded-lg px-3 py-1.5 text-xs">&#128295; Auto-fix common issues &amp; download corrected CSV</button>
+      <div id="q-autofix-result" class="text-xs text-gray-400 mt-2"></div>
+    </div>` : ''}`;
 
   out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('q', [
     {key:'summary', label:'Summary', content: summaryHTML},
@@ -1702,6 +1707,39 @@ async function runQualityAI(){
   chatInput.focus();
 }
 
+async function runDqAutofix(fileName){
+  if(!SESSION){ alert('Run Data Quality first.'); return; }
+  const box = document.getElementById('q-autofix-result');
+  if(box) box.innerHTML = 'Fixing&hellip;';
+  try{
+    const r = await fetch(`/api/dq/autofix/${SESSION}`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({file_name: fileName}),
+    });
+    if(!r.ok){
+      const err = await r.json().catch(()=>({}));
+      if(box) box.innerHTML = `<span class="text-red-400">${esc(err.detail||'Auto-fix failed.')}</span>`;
+      return;
+    }
+    const fixCount = +(r.headers.get('X-Fix-Count')||0);
+    let fixes = [];
+    try{ fixes = JSON.parse(r.headers.get('X-Fixes-Applied')||'[]'); }catch(e){}
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${fileName.replace(/\.[^.]+$/,'')}_fixed.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    if(box){
+      box.innerHTML = fixCount
+        ? `<div class="text-emerald-400 mb-1">&check; ${fixCount} fix(es) applied &mdash; corrected CSV downloaded.</div>` +
+          fixes.map(f=>`<span class="badge mr-1 mb-1 inline-block" style="background:rgba(5,150,105,.12);color:#059669">${esc(f.col)}: ${esc(f.fix)} (${f.rows_fixed} row${f.rows_fixed===1?'':'s'})</span>`).join('')
+        : '<span class="text-gray-500">No common issues (whitespace, date formats, case, null sentinels) found to fix.</span>';
+    }
+  }catch(e){
+    if(box) box.innerHTML = `<span class="text-red-400">Auto-fix failed: ${esc(e.message||e)}</span>`;
+  }
+}
 async function setDqBaseline(fileName){
   if(!SESSION){ alert('Run Data Quality first.'); return; }
   const r = await J('POST', `/api/dq/baseline/${SESSION}/${encodeURIComponent(fileName)}`);
@@ -1872,27 +1910,17 @@ async function runGovernance(){
 }
 
 // ---------- Cross Reference ----------
-async function runCrossReference(){
-  const out=document.getElementById('xref-out'); out.innerHTML='<span class="text-gray-400">Cross-referencing&hellip;</span>';
-  const t0 = performance.now();
-  const key=document.getElementById('xref-key').value.trim();
-  const fd=new FormData(); if(key) fd.append('xref_key_col',key);
-  const fileIds=['xref-f1','xref-f2','xref-f3','xref-f4'];
-  const connIds=['xref-conn1','xref-conn2','xref-conn3','xref-conn4'];
-  let sourceCount=0;
-  fileIds.forEach((id,i)=>{
-    const f=document.getElementById(id).files[0];
-    const cv=document.getElementById(connIds[i])?.value;
-    if(f){ fd.append(`xref_files_${i+1}`,f); sourceCount=i+1; }
-    if(cv){ fd.append(`xref_conn_ids_${i+1}`,cv); sourceCount=i+1; }
-  });
-  if(sourceCount<2){ out.innerHTML='<div class="text-red-400">Provide at least 2 source files or connections.</div>'; return; }
-  fd.append('xref_source_count', sourceCount);
-  const r=await fetch('/xref',{method:'POST',body:fd}); const data=await r.json();
-  if(!r.ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
+function renderXrefResult(data, t0){
+  const out=document.getElementById('xref-out');
   setSession(data.session_id); const c=data.counts||{};
 
-  const summaryHTML = `<div class="grid grid-cols-3 gap-3 mb-4">
+  const llmBanner = data.llm_error ? `<div class="card rounded-xl p-3 mb-4 text-xs" style="background:rgba(220,38,38,.06);border-color:rgba(220,38,38,.3)">
+    &#9888;&#65039; <b>${data.rules_applied||0} saved rule(s) for this schema were NOT applied</b> &mdash; the LLM call to convert
+    them into parameters failed: <code>${esc(data.llm_error)}</code>. This run used the auto-detected identifier key with no
+    overrides. Configure an LLM provider under <b>Settings &rarr; LLM Provider</b> and try again.
+  </div>` : '';
+
+  const summaryHTML = `${llmBanner}<div class="grid grid-cols-3 gap-3 mb-4">
     ${stat('Total identifiers', c.total_identifiers??0, '#38bdf8')}
     ${stat('In all sources', c.in_all_sources??0, '#10b981')}
     ${stat('Conflicts', c.conflicts??0, '#dc2626')}</div>
@@ -1914,13 +1942,47 @@ async function runCrossReference(){
     {label:'Explain the conflicts and which value to trust', q:'Explain the conflicts found and which value you would trust as golden, and why.'},
     {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
   ];
-  out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('xref', [
+  out.innerHTML = actionBar(data.session_id, t0!=null?((performance.now()-t0)/1000).toFixed(3):data.elapsed) + resultTabsShell('xref', [
     {key:'summary', label:'Summary', content: summaryHTML},
     {key:'exceptions', label:`Conflicts (${(data.conflicts||[]).length})`, content: exceptionsHTML},
     {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('xref','xref', chips)},
     {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
   ], 'summary');
   loadDatasetControlRules('xref','xref');
+}
+async function runCrossReference(){
+  const out=document.getElementById('xref-out'); out.innerHTML='<span class="text-gray-400">Cross-referencing&hellip;</span>';
+  const t0 = performance.now();
+  const key=document.getElementById('xref-key').value.trim();
+  const fd=new FormData(); if(key) fd.append('xref_key_col',key);
+  const fileIds=['xref-f1','xref-f2','xref-f3','xref-f4'];
+  const connIds=['xref-conn1','xref-conn2','xref-conn3','xref-conn4'];
+  let sourceCount=0;
+  fileIds.forEach((id,i)=>{
+    const f=document.getElementById(id).files[0];
+    const cv=document.getElementById(connIds[i])?.value;
+    if(f){ fd.append(`xref_files_${i+1}`,f); sourceCount=i+1; }
+    if(cv){ fd.append(`xref_conn_ids_${i+1}`,cv); sourceCount=i+1; }
+  });
+  if(sourceCount<2){ out.innerHTML='<div class="text-red-400">Provide at least 2 source files or connections.</div>'; return; }
+  fd.append('xref_source_count', sourceCount);
+  const r=await fetch('/xref',{method:'POST',body:fd}); const data=await r.json();
+  if(!r.ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
+  renderXrefResult(data, t0);
+}
+async function runXrefAI(){
+  if(!SESSION){ alert('Run Cross Reference first.'); return; }
+  const out=document.getElementById('xref-out');
+  const t0 = performance.now();
+  out.innerHTML = '<span class="text-gray-400">Applying saved rules and re-running Cross Reference&hellip;</span>';
+  try{
+    const r = await fetch(`/xref/run-llm/${SESSION}`, {method:'POST'});
+    const data = await r.json();
+    if(!r.ok){ out.innerHTML = `<div class="text-red-400">${esc(data.detail||'Error')}</div>`; return; }
+    renderXrefResult(data, t0);
+  }catch(e){
+    out.innerHTML = `<div class="text-red-400">Re-run failed: ${esc(e.message||e)}</div>`;
+  }
 }
 
 // ---------- Parse ----------
