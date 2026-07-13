@@ -7,7 +7,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&family=Fira+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Sora:wght@600;700;800&family=Fira+Mono:wght@400;500;700&family=Michroma&display=swap" rel="stylesheet">
   <style>
     /* Light workspace theme */
     :root{
@@ -69,7 +69,11 @@
     .logo-mark{ width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center;
       background:#ffffff; border:3px solid var(--primary); flex-shrink:0; position:relative; overflow:hidden;
       animation:glowPulse 3.5s ease-in-out infinite; }
-    .logo-wordmark{ color:var(--txt-primary); }
+    .logo-wordmark{ font-family:'Michroma', var(--font-display); font-size:14.5px; letter-spacing:.045em;
+      line-height:1.2; white-space:nowrap;
+      background:linear-gradient(100deg,#1c1f25 0%,#4c515a 20%,#8b919a 40%,#4c515a 60%,#22252b 80%,#1c1f25 100%);
+      -webkit-background-clip:text; background-clip:text; color:transparent;
+      filter:drop-shadow(0 1px 0 rgba(255,255,255,.4)) drop-shadow(0 1.5px 2px rgba(15,23,42,.3)); }
     pre{ white-space:pre-wrap; word-break:break-word; font-family:var(--font-mono); }
     code, .font-mono{ font-family:var(--font-mono) !important; }
     ::-webkit-scrollbar{width:10px;height:10px} ::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:6px}
@@ -151,7 +155,7 @@
           <line x1="19.5" y1="10.5" x2="21.4" y2="10.5" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round"/>
         </svg>
       </div>
-      <div><div class="text-2xl font-extrabold logo-wordmark leading-none uppercase tracking-wide">AI Agent</div>
+      <div><div class="logo-wordmark uppercase">AI Agent</div>
         <div class="text-[11px] font-bold uppercase tracking-[0.18em] text-gray-500 mt-1.5">Data Validation</div></div>
     </div>
     <nav class="flex flex-col gap-1.5 px-3 text-sm">
