@@ -26,6 +26,37 @@ _TIER_LIMITS = {
     "enterprise": {"max_jobs": 0, "max_users": 0, "max_file_mb": 0},  # 0 = unlimited
 }
 
+# Public aliases + upgrade-modal metadata -- /api/license/status imports these
+# by these exact names to build its "all_tiers"/"all_limits"/"tier_pricing"/
+# "feature_labels" response fields, but they never existed here (only the
+# module-private _TIER_FEATURES/_TIER_LIMITS did), so every call to that
+# endpoint raised ImportError and 500'd -- on every page load, since it's
+# fetched unconditionally on init, not just when a user opens Settings.
+FEATURE_TIERS = _TIER_FEATURES
+TIER_LIMITS = _TIER_LIMITS
+
+# No fabricated price points -- this app doesn't have a public price list, so
+# claiming specific numbers here would be actively misleading if this ever
+# reaches a real upgrade UI. "Contact sales" is honest until real pricing exists.
+TIER_PRICING = {
+    "starter": {"label": "Starter", "price_monthly": None, "note": "Contact sales for pricing"},
+    "professional": {"label": "Professional", "price_monthly": None, "note": "Contact sales for pricing"},
+    "enterprise": {"label": "Enterprise", "price_monthly": None, "note": "Contact sales for pricing"},
+}
+
+FEATURE_LABELS = {
+    "compare": "Reconciliation",
+    "quality": "Data Quality",
+    "profile": "Data Profile",
+    "parse": "Unstructured Parser",
+    "governance": "Governance & PII",
+    "mapping": "Column Mapping",
+    "lineage": "Lineage / Cross Reference",
+    "workspace": "Workspace (connections, jobs, scheduling)",
+    "api": "API Access",
+    "sso": "SSO / SAML / OIDC",
+}
+
 _state = {
     "valid": False,
     "dev_mode": False,
