@@ -713,11 +713,23 @@ async function postForm(action, fileInputs, extra, refDocInputId){
   const fd = new FormData(); fd.append('action', action);
   for (const spec of fileInputs){
     const [field, id, connField, connId] = spec;
-    const f = document.getElementById(id)?.files[0];
-    if (f) fd.append(field, f);
+    // Fields wired via wireMultiDropzone/wireMultiConnSelect accumulate into
+    // _multiFiles/_multiConns instead of the input's own .files -- the backend
+    // already accepts multiple UploadFiles under the same field name
+    // (form.getlist) for these, so send them all rather than just files[0].
+    if(_multiFiles[field] && _multiFiles[field].length){
+      for(const f of _multiFiles[field]) fd.append(field, f);
+    } else {
+      const f = document.getElementById(id)?.files[0];
+      if (f) fd.append(field, f);
+    }
     if (connField && connId){
-      const cv = document.getElementById(connId)?.value;
-      if (cv) fd.append(connField, cv);
+      if(_multiConns[connField] && _multiConns[connField].length){
+        fd.append(connField, _multiConns[connField].map(c=>c.id).join(','));
+      } else {
+        const cv = document.getElementById(connId)?.value;
+        if (cv) fd.append(connField, cv);
+      }
     }
   }
   for (const [k,v] of Object.entries(extra||{})) { if(v) fd.append(k,v); }
@@ -760,10 +772,83 @@ function wireDropzone(zoneId, inputId, chipId){
     if(e.dataTransfer.files.length){ input.files = e.dataTransfer.files; updateChip(); }
   };
 }
-['cmp-zone1|cmp-f1|cmp-chip1','cmp-zone2|cmp-f2|cmp-chip2','q-zone1|q-f1|q-chip1',
+['q-zone1|q-f1|q-chip1',
  'prof-zone1|prof-f1|prof-chip1','gov-zone1|gov-f1|gov-chip1','par-zone1|par-f1|par-chip1',
  'xref-zone1|xref-f1|xref-chip1','xref-zone2|xref-f2|xref-chip2','xref-zone3|xref-f3|xref-chip3','xref-zone4|xref-f4|xref-chip4'
 ].forEach(spec=>wireDropzone(...spec.split('|')));
+
+// ---------- Multi-file drag-and-drop + multi-select saved connectors ----------
+// For sources where the backend concatenates/combines everything sent under
+// one field name (Dataset A/B in Compare, and each N-way extra source C-F):
+// dropping or picking more than one file adds to the set instead of
+// replacing it, each shown as its own removable chip, and the "Saved
+// Connector" picker works the same way -- pick one, it becomes a chip, pick
+// again to add another. State lives here rather than in the DOM because a
+// native <input type=file multiple> replaces its FileList on every new
+// picker/drop interaction, which can't accumulate across separate drops.
+// A chip strip can hold both file chips and connector chips at once, so
+// every render rebuilds the whole strip from both field/connField together
+// rather than each kind clobbering the other's chips.
+const _multiFiles = {};   // field name -> File[]
+const _multiConns = {};   // field name -> {id, name}[]
+
+function _renderMultiChips(chipId, field, connField){
+  const box = document.getElementById(chipId);
+  if(!box) return;
+  const fileChips = (_multiFiles[field]||[]).map((f,i)=>
+    `<span class="file-chip">&#128196; ${esc(f.name)} <button type="button" onclick="removeMultiFile('${field}',${i},'${chipId}','${connField||''}')">&times;</button></span>`
+  ).join('');
+  const connChips = connField ? (_multiConns[connField]||[]).map((c,i)=>
+    `<span class="file-chip">&#128268; ${esc(c.name)} <button type="button" onclick="removeMultiConn('${connField}',${i},'${chipId}','${field}')">&times;</button></span>`
+  ).join('') : '';
+  box.innerHTML = fileChips + connChips;
+}
+function wireMultiDropzone(zoneId, chipId, field, connField){
+  const zone = document.getElementById(zoneId);
+  if(!zone) return;
+  _multiFiles[field] = _multiFiles[field] || [];
+  const addFiles = (fileList) => {
+    for(const f of fileList) _multiFiles[field].push(f);
+    _renderMultiChips(chipId, field, connField);
+  };
+  zone.onclick = () => {
+    const picker = document.createElement('input');
+    picker.type = 'file'; picker.multiple = true; picker.style.display = 'none';
+    picker.onchange = () => { if(picker.files.length) addFiles(picker.files); picker.remove(); };
+    document.body.appendChild(picker); picker.click();
+  };
+  zone.ondragover = e => { e.preventDefault(); zone.classList.add('dragover'); };
+  zone.ondragleave = () => zone.classList.remove('dragover');
+  zone.ondrop = e => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    if(e.dataTransfer.files.length) addFiles(e.dataTransfer.files);
+  };
+}
+function removeMultiFile(field, idx, chipId, connField){
+  _multiFiles[field].splice(idx, 1);
+  _renderMultiChips(chipId, field, connField);
+}
+function wireMultiConnSelect(selectId, chipId, field, fileField){
+  const sel = document.getElementById(selectId);
+  if(!sel) return;
+  _multiConns[field] = _multiConns[field] || [];
+  sel.onchange = () => {
+    const id = sel.value, name = sel.selectedOptions[0]?.textContent || id;
+    if(id && !_multiConns[field].some(c=>c.id===id)){
+      _multiConns[field].push({id, name});
+      _renderMultiChips(chipId, fileField, field);
+    }
+    sel.value = '';
+  };
+}
+function removeMultiConn(field, idx, chipId, fileField){
+  _multiConns[field].splice(idx, 1);
+  _renderMultiChips(chipId, fileField, field);
+}
+[['cmp-zone1','cmp-chip1','files_a','conn_a_ids'],['cmp-zone2','cmp-chip2','files_b','conn_b_ids']]
+  .forEach(([zoneId,chipId,field,connField])=>wireMultiDropzone(zoneId,chipId,field,connField));
+[['cmp-conn1','cmp-chip1','conn_a_ids','files_a'],['cmp-conn2','cmp-chip2','conn_b_ids','files_b']]
+  .forEach(([selectId,chipId,field,fileField])=>wireMultiConnSelect(selectId,chipId,field,fileField));
 
 // ---------- Reconciliation: live column preview -> fuzzy-match field chips ----------
 // /preview is a lightweight single-file parse (columns + sample rows + inferred key)
@@ -851,7 +936,8 @@ function addCmpSource(){
     <input id="cmp-f${n}" type="file" class="hidden">
     <div id="cmp-chip${n}" class="mt-2"></div>`;
   box.appendChild(row);
-  wireDropzone(`cmp-zone${n}`, `cmp-f${n}`, `cmp-chip${n}`);
+  wireMultiDropzone(`cmp-zone${n}`, `cmp-chip${n}`, `files_${label.toLowerCase()}`, `conn_${label.toLowerCase()}_ids`);
+  wireMultiConnSelect(`cmp-conn${n}`, `cmp-chip${n}`, `conn_${label.toLowerCase()}_ids`, `files_${label.toLowerCase()}`);
   loadConnDropdowns();
   requestAnimationFrame(()=>{ row.style.opacity='1'; row.style.transform='translateY(0)'; });
   document.getElementById('cmp-source-count').textContent = _cmpSourceCountLabel();
@@ -866,6 +952,8 @@ function removeCmpSource(n){
     row.style.opacity='0'; row.style.transform='translateY(-6px)';
     setTimeout(()=>row.remove(), 200);
   }
+  const label = _cmpExtraLabels[n-3];
+  if(label){ delete _multiFiles[`files_${label.toLowerCase()}`]; delete _multiConns[`conn_${label.toLowerCase()}_ids`]; }
   _cmpUsedSlots.delete(n-3);
   document.getElementById('cmp-add-source-btn').classList.remove('hidden');
   const countEl = document.getElementById('cmp-source-count');
