@@ -49,8 +49,8 @@
       -webkit-background-clip:text; background-clip:text; color:transparent; animation:gradShift 5s ease infinite;
       filter:drop-shadow(0 1px 12px rgba(124,58,237,.18)); }
     @keyframes gradShift{ 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
-    @keyframes glowPulse{ 0%,100%{ box-shadow:0 4px 16px -2px rgba(19,26,43,.5), 0 0 0 4px rgba(79,209,168,.14), 0 0 22px -4px rgba(79,209,168,.35); }
-      50%{ box-shadow:0 4px 22px 0 rgba(19,26,43,.65), 0 0 0 6px rgba(79,209,168,.22), 0 0 30px -2px rgba(79,209,168,.5); } }
+    @keyframes glowPulse{ 0%,100%{ box-shadow:0 4px 18px -2px rgba(37,99,235,.55), 0 0 0 4px rgba(37,99,235,.16), 0 0 30px -2px rgba(37,99,235,.4); }
+      50%{ box-shadow:0 4px 26px 0 rgba(37,99,235,.75), 0 0 0 7px rgba(37,99,235,.24), 0 0 42px 2px rgba(37,99,235,.6); } }
     .btn{ position:relative; overflow:hidden; background:linear-gradient(90deg,#2563eb,#4f46e5,#7c3aed,#4f46e5,#2563eb);
       background-size:300% auto; transition:filter .15s, transform .12s, box-shadow .2s, background-position .4s;
       color:#fff; border-radius:11px; box-shadow:0 3px 14px -3px rgba(37,99,235,.55); font-weight:700; letter-spacing:.01em; }
@@ -67,7 +67,7 @@
     .inp{ background:#fff; border:1.5px solid var(--line); border-radius:9px; padding:7px 11px; color:var(--txt-primary); transition:border-color .15s, box-shadow .15s; }
     .inp:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 3.5px var(--primary-dim); }
     .logo-mark{ width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center;
-      background:#131a2b; flex-shrink:0; position:relative; overflow:hidden;
+      background:#ffffff; border:3px solid var(--primary); flex-shrink:0; position:relative; overflow:hidden;
       animation:glowPulse 3.5s ease-in-out infinite; }
     .logo-wordmark{ color:var(--txt-primary); }
     pre{ white-space:pre-wrap; word-break:break-word; font-family:var(--font-mono); }
@@ -140,11 +140,8 @@
   <aside class="w-60 flex flex-col border-r border-[var(--line)]" style="background:linear-gradient(180deg,#ffffff,#f3f6fb); box-shadow:4px 0 24px -12px rgba(15,23,42,.15);">
     <div class="px-5 pt-7 pb-6 flex items-center gap-3.5 border-b border-[var(--line)] mb-2">
       <div class="logo-mark" style="width:54px;height:54px;border-radius:15px;">
-        <svg viewBox="0 0 24 24" width="28" height="28" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <line x1="4" y1="7.5" x2="20" y2="7.5" stroke="#3a4666" stroke-width="1"/>
-          <line x1="4" y1="12" x2="20" y2="12" stroke="#3a4666" stroke-width="1"/>
-          <line x1="4" y1="16.5" x2="20" y2="16.5" stroke="#3a4666" stroke-width="1"/>
-          <path d="M7 12.5 10.2 15.7 18 8" stroke="#4fd1a8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M7 12.5 10.2 15.7 18 8" stroke="#2563eb" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
       </div>
       <div><div class="text-2xl font-extrabold logo-wordmark leading-none uppercase tracking-wide">AI Agent</div>
