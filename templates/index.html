@@ -1496,7 +1496,12 @@ function renderFuzzyResult(data, t0){
   const f1=data.files?.file1||{}, f2=data.files?.file2||{};
   const scoreColor = s => s>=0.9?'#059669':(s>=0.8?'#0284c7':'#b45309');
 
+  const llmBanner = data.llm_error ? `<div class="card rounded-xl p-3 mb-4 text-xs" style="background:rgba(220,38,38,.06);border-color:rgba(220,38,38,.3)">
+    &#9888;&#65039; <b>${data.rules_applied||0} saved rule(s) for this schema were NOT fully applied</b> &mdash; the LLM call to convert
+    them into parameters failed: <code>${esc(data.llm_error)}</code>. Configure an LLM provider under <b>Settings &rarr; LLM Provider</b> and try again.
+  </div>` : '';
   const summaryHTML = `
+    ${llmBanner}
     <div class="text-sm text-gray-400 mb-3">${esc(f1.name||'File 1')} &rarr; ${esc(f2.name||'File 2')}</div>
     <div class="mb-4 flex flex-wrap items-center gap-2">
       <span class="badge" style="background:rgba(31,111,107,.12);color:#1f6f6b">&#128269; Fuzzy match</span>
@@ -1577,6 +1582,11 @@ async function runCompareAI(){
     if(r.ok) finalData = await r.json();
   }catch(e){ /* fall back to the plain compare result below */ }
   _pendingChatPrefill = `Look at these reconciliation results and tell me what's driving the breaks, and whether the key/exclusions should change.`;
+  // A saved rule like "fuzzy match on customer_name" routes the AI Copilot's
+  // run-llm pipeline to the probabilistic engine instead of the exact-key
+  // one -- render with the matching UI rather than forcing it through the
+  // exact-match report.
+  if(finalData.fuzzy){ renderFuzzyResult(finalData, t0); return; }
   await renderCompareResult(finalData, t0, 'ai');
 }
 // ---------- Quality / Profile / Governance -- AI Copilot mode ----------

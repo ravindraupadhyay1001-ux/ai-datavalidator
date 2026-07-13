@@ -19578,11 +19578,22 @@ JSON schema (omit any key that is not needed):
                                           to compare (when it has a different name from the target value col)
   "tgt_value_col": "borrowReqNet",       // the single value column from TARGET to
                                           compare (set this when target has aggregation or a renamed value col)
-  "exclude": ["col1", "col2"]
+  "exclude": ["col1", "col2"],
+  "fuzzy_fields": ["customer_name", "address"],  // set ONLY when the user describes an approximate/
+                                          // probabilistic match (typos, formatting drift, no clean
+                                          // shared key) -- column name(s) to match by similarity
+                                          // instead of exact key equality. Omit entirely for a normal
+                                          // exact-key reconciliation.
+  "fuzzy_threshold": 0.75                // 0-1 minimum similarity score to count as a match (default
+                                          // 0.75) -- only meaningful together with fuzzy_fields.
 }}
 
 Key rules:
 - If a composite key is needed (e.g. InstrumentID + Side), list ALL parts in key_cols.
+- Set fuzzy_fields (not key_cols) when the user asks for "fuzzy match", "approximate match", "similar
+  values", "no exact key available", or names a field known to have typos/formatting differences
+  across the two sources (e.g. "match on customer name even if spelled slightly differently").
+  fuzzy_fields and key_cols are mutually exclusive -- fuzzy matching does not use a join key.
 - parse_cols runs BEFORE key resolution and aggregation -- use it to create derived columns from free text.
 - col_map renames columns so both sides share identical names; apply after parse_cols.
 - key_cols / key_col must reference column names that will exist AFTER parse_cols and col_map are applied.
@@ -20052,6 +20063,56 @@ def _run_llm_recon_full(session_id: str) -> dict | None:
     src_df, tgt_df, manual_keys, exclude, key_warning, force_data_cols = _prepare_recon(
         base_df.copy(), cmp_df.copy(), params
     )
+
+    # A saved rule like "fuzzy match on customer_name" routes to the
+    # probabilistic engine instead of the exact-key one -- same transforms
+    # applied above (parse_cols/col_map/transforms via _prepare_recon), just
+    # matched by similarity score instead of exact key equality.
+    fuzzy_fields = [f for f in (params.get("fuzzy_fields") or [])
+                     if f in src_df.columns and f in tgt_df.columns]
+    if fuzzy_fields:
+        threshold = float(params.get("fuzzy_threshold") or 0.75)
+        try:
+            fr = fuzzy_match_dataframes(src_df, tgt_df, fuzzy_fields, threshold=threshold, exclude_cols=exclude)
+        except HTTPException as exc:
+            fr = None
+            llm_error = (llm_error + " " if llm_error else "") + f"Fuzzy match failed: {exc.detail}"
+        if fr is not None:
+            new_session_id = str(uuid.uuid4())
+            _chat_contexts[new_session_id] = {
+                **context,
+                "action": "compare",
+                "mode": "recon",
+                "dataset_fingerprint": fingerprint,
+                "comparisons": [{"pair": f"{base_name}→{cmp_name}",
+                                  "matched": fr["counts"]["matched"], "modified": fr["counts"]["modified"]}],
+            }
+            _results_store[new_session_id] = {
+                **stored,
+                "dataframes": stored["dataframes"],
+                "dataset_fingerprint": fingerprint,
+                "recon_params_applied": params,
+                "recon_key_warning": key_warning,
+            }
+            return {
+                "session_id": new_session_id,
+                "fuzzy": True,
+                "fuzzy_fields": fr["fuzzy_fields"],
+                "threshold": fr["threshold"],
+                "counts": fr["counts"],
+                "files": {
+                    "file1": {"name": base_name, "rows": len(src_df), "columns": len(src_df.columns)},
+                    "file2": {"name": cmp_name, "rows": len(tgt_df), "columns": len(tgt_df.columns)},
+                },
+                "matched_rows": fr["matched_rows"],
+                "modified_rows": fr["modified_rows"],
+                "only_in_file1": fr["file1_only"],
+                "only_in_file2": fr["file2_only"],
+                "fingerprint": fingerprint,
+                "rules_applied": len(recon_rules),
+                "llm_error": llm_error,
+            }
+
     diff = compare_dataframes(src_df, tgt_df, manual_keys, True, exclude, force_data_cols=force_data_cols)
     mapping = analyze_mapping(src_df, tgt_df, base_name, cmp_name, None)
 
