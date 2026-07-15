@@ -426,9 +426,13 @@
             <option value="azure_sql">Azure SQL</option><option value="db2">DB2</option>
             <option value="bloomberg">Bloomberg</option><option value="refinitiv">Refinitiv</option>
             <option value="murex">Murex (MX.3)</option><option value="calypso">Calypso</option>
+            <option value="redshift">Redshift</option><option value="teradata">Teradata</option>
+            <option value="bigquery">BigQuery</option><option value="mongodb">MongoDB</option>
           </select>
           <div id="cn-fields" class="col-span-2 grid grid-cols-2 gap-2"></div>
           <p class="col-span-2 text-[11px] text-gray-500 -mt-1">&#128197; Any path/query field supports date tokens for daily feeds: <code>{YYYYMMDD}</code>, <code>{D-1}</code> (yesterday), <code>{D+1}</code>, <code>{YYYYMMDD-2}</code>, <code>{YYYY}</code>, or <code>{strftime:%Y-%m-%d}</code> &mdash; e.g. <code>"remote_path": "/feeds/trades_{YYYYMMDD}.csv"</code>.</p>
+          <p class="col-span-2 text-[11px] text-gray-500 -mt-1">&#128274; Any password/secret field supports <code>${ENV:VAR_NAME}</code> to pull a credential from the server environment instead of storing it here &mdash; e.g. <code>"password": "${ENV:PROD_DB_PASSWORD}"</code>.</p>
+          <p class="col-span-2 text-[11px] text-gray-500 -mt-1">&#8635; SQL/BigQuery sources support incremental fetch: set <code>incremental_column</code> (e.g. <code>updated_at</code>) and <code>since</code> (a value or date token like <code>{YYYYMMDD-1}</code>) to pull only new/changed rows on each run.</p>
           <details class="col-span-2 text-xs">
             <summary class="cursor-pointer text-gray-400">Advanced: raw JSON overrides (merged on top of the fields above &mdash; use for things like custom headers)</summary>
             <textarea id="cn-config-adv" rows="2" placeholder='{"headers":{"Authorization":"Bearer ..."}}' class="inp w-full mt-1 font-mono text-xs"></textarea>
@@ -1595,6 +1599,60 @@ async function runCompareAI(){
 // returns (a chat-card shape, not the full standard-report shape), since that
 // endpoint already existed for the "run quality"-style chat command but was
 // never called directly on load the way recon's run-llm is.
+// Shared anomaly/drift panel -- normalizes the two slightly different field
+// names used by the standard /quality response (anomaly_results, categorical_drift,
+// raw numeric_clusters) vs the AI Copilot /rerun-quality-json response (anomalies,
+// cat_drift, renamed cluster fields), so one renderer covers both entry points.
+function _sevColor(sev){ return sev==='CRITICAL'?'#dc2626':sev==='WARN'?'#b45309':'#64748b'; }
+function _sevBadge(sev){ return `<span class="badge" style="background:${_sevColor(sev)}22;color:${_sevColor(sev)}">${esc(sev||'INFO')}</span>`; }
+function renderAnomaliesHTML(data){
+  if(!data) return '';
+  const perCol = data.anomaly_results || data.anomalies || [];
+  const catDrift = data.categorical_drift || data.cat_drift || [];
+  const clusters = data.numeric_clusters || [];
+  const mv = data.multivariate_anomalies || {};
+  const trend = data.trend_anomalies || [];
+  const domainAnoms = perCol.filter(a=>a.domain_hint !== false);
+  const genericAnoms = perCol.filter(a=>a.domain_hint === false);
+  const totalCount = perCol.length + catDrift.length + (mv.anomaly_count||0) + trend.length;
+  if(!totalCount) return `<div class="card rounded-xl p-4 text-sm text-gray-400">No statistical anomalies, drift, or joint-column outliers detected.</div>`;
+
+  const colRow = a => `<tr class="border-t border-[var(--line)]"><td class="p-2">${esc(a.column||a.col||'')}</td>
+    <td class="text-center">${(a.anomaly_pct??a.pct??0)}%</td><td class="text-center">${a.max_z??'&mdash;'}</td>
+    <td class="text-center text-gray-500">${esc(a.method||'')}</td>
+    <td class="text-center">${_sevBadge(a.severity)}</td>
+    <td class="text-xs text-gray-400">${(a.samples||[]).slice(0,3).map(esc).join(', ')}</td></tr>`;
+
+  return `
+  ${mv.anomaly_count ? `<div class="card rounded-xl p-4 mb-4">
+    <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Multi-variate (joint-column) anomalies ${_sevBadge(mv.severity)}</div>
+    <div class="text-xs text-gray-400 mb-2">${esc(mv.detail||'')} &mdash; checked jointly across ${(mv.checked_columns||[]).map(esc).join(', ')}</div>
+    <div class="overflow-auto"><table class="w-full text-xs"><thead class="text-gray-500"><tr>
+      <th class="text-left p-1">Row</th>${(mv.checked_columns||[]).map(c=>`<th class="p-1">${esc(c)}</th>`).join('')}<th class="p-1">Distance (z)</th></tr></thead><tbody>
+      ${(mv.rows||[]).map(r=>`<tr class="border-t border-[var(--line)]"><td class="p-1">${r.row_index}</td>${(mv.checked_columns||[]).map(c=>`<td class="text-center p-1">${r[c]??''}</td>`).join('')}<td class="text-center p-1 text-red-300">${r.distance_z}</td></tr>`).join('')}
+    </tbody></table></div>
+  </div>` : ''}
+  ${trend.length ? `<div class="card rounded-xl p-4 mb-4">
+    <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Trend / time-aware anomalies</div>
+    <div class="space-y-1 text-xs">${trend.map(t=>`<div>${_sevBadge(t.severity)} <b class="text-sky-300">${esc(t.column)}</b> &mdash; ${esc(t.detail)}</div>`).join('')}</div>
+  </div>` : ''}
+  ${domainAnoms.length ? `<div class="card rounded-xl p-3 mb-4 overflow-auto">
+    <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">BFSI-critical column outliers (robust z-score)</div>
+    <table class="w-full text-xs"><thead class="text-gray-500"><tr><th class="text-left p-2">Column</th><th>%</th><th>Max z</th><th>Method</th><th>Severity</th><th class="text-left">Samples</th></tr></thead>
+    <tbody>${domainAnoms.map(colRow).join('')}</tbody></table>
+  </div>` : ''}
+  ${genericAnoms.length ? `<details class="card rounded-xl p-3 mb-4 overflow-auto text-xs"><summary class="cursor-pointer text-gray-400">Other numeric columns (IQR coverage pass) &mdash; ${genericAnoms.length}</summary>
+    <table class="w-full text-xs mt-2"><thead class="text-gray-500"><tr><th class="text-left p-2">Column</th><th>%</th><th>Max</th><th>Method</th><th>Severity</th><th class="text-left">Samples</th></tr></thead>
+    <tbody>${genericAnoms.map(colRow).join('')}</tbody></table>
+  </details>` : ''}
+  ${catDrift.length ? `<div class="card rounded-xl p-3 mb-4 text-xs">
+    <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Categorical distribution drift</div>
+    <div class="space-y-1">${catDrift.map(c=>`<div>${_sevBadge(c.severity)} <b class="text-sky-300">${esc(c.column||c.col||'')}</b> &mdash; ${esc(c.detail||'')}</div>`).join('')}</div>
+  </div>` : ''}
+  ${clusters.length ? `<details class="card rounded-xl p-3 text-xs"><summary class="cursor-pointer text-gray-400">Natural value clusters &mdash; ${clusters.length} column(s)</summary>
+    <div class="space-y-1 mt-2">${clusters.map(c=>`<div>${_sevBadge(c.severity)} <b class="text-sky-300">${esc(c.column||c.col||'')}</b> &mdash; ${esc(c.detail||'')}</div>`).join('')}</div>
+  </details>` : ''}`;
+}
 function _llmErrorBanner(data){
   if(!data || !data.ai_summary_error) return '';
   const noConn = /no llm connection/i.test(data.ai_summary_error);
@@ -1618,7 +1676,10 @@ function renderAiReportCard(context, data){
       <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Dimensions</div>
       <div class="grid grid-cols-3 gap-2">${dims.map(k=>`<div><span class="text-gray-500">${esc(k)}:</span> <b>${(+data[k]).toFixed(1)}</b></div>`).join('')}</div>
     </div>`:''}
-    ${data.ai_summary?`<div class="card rounded-xl p-4 mb-4 text-sm text-gray-300">&#9889; ${esc(data.ai_summary)}</div>`:''}`;
+    ${data.ai_summary?`<div class="card rounded-xl p-4 mb-4 text-sm text-gray-300">&#9889; ${esc(data.ai_summary)}</div>`:''}
+    <details class="mb-4"><summary class="cursor-pointer text-xs text-sky-300 mb-2">&#128269; Anomalies &amp; drift</summary>
+      <div class="mt-2">${renderAnomaliesHTML(data)}</div>
+    </details>`;
   }
   if(context === 'profile'){
     return `${_llmErrorBanner(data)}<div class="grid grid-cols-4 gap-3 mb-4">
@@ -1768,9 +1829,12 @@ async function runQuality(){
       <div id="q-autofix-result" class="text-xs text-gray-400 mt-2"></div>
     </div>` : ''}`;
 
+  const anomalyCount = (data.anomaly_results||[]).length + (data.categorical_drift||[]).length
+    + (data.multivariate_anomalies?.anomaly_count||0) + (data.trend_anomalies||[]).length;
   out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('q', [
     {key:'summary', label:'Summary', content: summaryHTML},
     {key:'exceptions', label:`Exceptions (${failedRules.length})`, content: exceptionsHTML},
+    {key:'anomalies', label:`Anomalies (${anomalyCount})`, content: renderAnomaliesHTML(data)},
     {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('q','quality', qualityChips(data.name))},
     {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
   ], 'summary');
@@ -2376,6 +2440,8 @@ async function loadConnections(){ const rows=await fetch('/api/ws/connections').
 // ---------- Connection config: per-type form fields (instead of raw JSON) ----------
 const _TABLE_OR_QUERY = [
   {k:'table', label:'Table (or use Query below)', type:'text'},
+  {k:'incremental_column', label:'Incremental column (optional, Table mode only)', type:'text', placeholder:'updated_at'},
+  {k:'since', label:'Since (optional, pairs with Incremental column)', type:'text', placeholder:'{YYYYMMDD-1} or a fixed value'},
   {k:'query', label:'Query (optional, overrides Table)', type:'textarea', wide:true},
 ];
 const CN_FIELD_SPECS = {
@@ -2517,6 +2583,35 @@ const CN_FIELD_SPECS = {
     {k:'api_key', label:'API key (or use Username/Password below)', type:'password'},
     {k:'username', label:'Username (if not using API key)', type:'text'},
     {k:'password', label:'Password (if not using API key)', type:'password'},
+  ],
+  redshift: [
+    {k:'host', label:'Host', type:'text', required:true}, {k:'port', label:'Port', type:'number', default:5439},
+    {k:'database', label:'Database', type:'text', required:true},
+    {k:'username', label:'Username', type:'text'}, {k:'password', label:'Password', type:'password'},
+    ..._TABLE_OR_QUERY,
+  ],
+  teradata: [
+    {k:'host', label:'Host', type:'text', required:true},
+    {k:'database', label:'Database (optional)', type:'text'},
+    {k:'username', label:'Username', type:'text'}, {k:'password', label:'Password', type:'password'},
+    ..._TABLE_OR_QUERY,
+  ],
+  bigquery: [
+    {k:'project', label:'GCP Project ID', type:'text', required:true},
+    {k:'dataset', label:'Dataset (or use Query below)', type:'text'},
+    {k:'table', label:'Table (with Dataset above, or use Query below)', type:'text'},
+    {k:'incremental_column', label:'Incremental column (optional, Dataset+Table mode only)', type:'text', placeholder:'updated_at'},
+    {k:'since', label:'Since (optional, pairs with Incremental column)', type:'text', placeholder:'{YYYYMMDD-1} or a fixed value'},
+    {k:'query', label:'Query (optional, overrides Dataset+Table)', type:'textarea', wide:true},
+    {k:'credentials_json', label:'Credentials JSON (optional)', type:'textarea', wide:true, placeholder:'path or inline service-account JSON'},
+  ],
+  mongodb: [
+    {k:'connection_string', label:'Connection string (or use Host/Port below)', type:'password', wide:true, placeholder:'mongodb+srv://user:pass@cluster/'},
+    {k:'host', label:'Host', type:'text', default:'localhost'}, {k:'port', label:'Port', type:'number', default:27017},
+    {k:'username', label:'Username', type:'text'}, {k:'password', label:'Password', type:'password'},
+    {k:'database', label:'Database', type:'text', required:true}, {k:'collection', label:'Collection', type:'text', required:true},
+    {k:'query', label:'Filter (JSON, optional)', type:'textarea', wide:true, placeholder:'{"status": "active"}'},
+    {k:'limit', label:'Row limit', type:'number', default:10000},
   ],
 };
 function _cnFieldVisible(f, snapshot, specs){

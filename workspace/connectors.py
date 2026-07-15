@@ -17,11 +17,33 @@ detecting the format from magic bytes when the extension is unknown.
 
 import io
 import json
+import os
 import re as _re
 from abc import ABC, abstractmethod
 from datetime import date as _date, timedelta as _timedelta
 
 import pandas as pd
+
+
+# ==========================================================================
+# Secret resolution -- ${ENV:VAR_NAME} in any config string value resolves
+# from the process environment at connect time instead of being stored in
+# the saved connection's plaintext config. Lets a saved connection reference
+# credentials injected by the deployment platform (Railway/K8s secrets, a
+# vault-backed env, etc.) rather than persisting a password in the workspace
+# DB. Applied uniformly in BaseConnector.__init__ like the date-token
+# substitution below, so every connector type supports it with no per-class
+# code. A referenced variable that isn't set resolves to "" rather than
+# raising, matching _resolve_date_tokens' fail-open behaviour -- the
+# downstream connect() call will surface a clear auth error instead.
+# ==========================================================================
+_SECRET_TOKEN_RE = _re.compile(r"\$\{ENV:([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+def _resolve_secret_tokens(value: str) -> str:
+    if not isinstance(value, str) or "${ENV:" not in value:
+        return value
+    return _SECRET_TOKEN_RE.sub(lambda m: os.environ.get(m.group(1), ""), value)
 
 
 # ==========================================================================
@@ -59,6 +81,11 @@ def _resolve_date_tokens(value: str) -> str:
 
 def _resolve_config_date_tokens(config: dict) -> dict:
     return {k: (_resolve_date_tokens(v) if isinstance(v, str) else v)
+            for k, v in (config or {}).items()}
+
+
+def _resolve_config_secrets(config: dict) -> dict:
+    return {k: (_resolve_secret_tokens(v) if isinstance(v, str) else v)
             for k, v in (config or {}).items()}
 
 
@@ -130,7 +157,7 @@ def _parse_bytes(raw: bytes, hint: str = "", delimiter: str = None) -> pd.DataFr
 # ==========================================================================
 class BaseConnector(ABC):
     def __init__(self, config: dict):
-        self.config = _resolve_config_date_tokens(config or {})
+        self.config = _resolve_config_date_tokens(_resolve_config_secrets(config or {}))
 
     @abstractmethod
     def fetch(self) -> pd.DataFrame:
@@ -157,6 +184,9 @@ class BaseConnector(ABC):
             "db2": DB2Connector,
             "bloomberg": BloombergConnector, "refinitiv": RefinitivConnector,
             "murex": MurexConnector, "calypso": CalypsoConnector,
+            "redshift": RedshiftConnector, "teradata": TeradataConnector,
+            "bigquery": BigQueryConnector,
+            "mongodb": MongoDBConnector, "mongo": MongoDBConnector,
         }
         if st not in registry:
             raise ValueError(f"Unknown source type '{source_type}'.")
@@ -431,12 +461,25 @@ class _SQLConnector(BaseConnector):
         raise NotImplementedError
 
     def _query_sql(self) -> str:
+        # Incremental/watermark fetch: when both 'incremental_column' and
+        # 'since' are set (table mode only -- a hand-written 'query' is left
+        # untouched, since we can't safely graft a WHERE clause onto
+        # arbitrary user SQL), only rows newer than the watermark are
+        # pulled. 'since' commonly comes from the {YYYYMMDD-1}-style date
+        # tokens BaseConnector already resolves, so a daily delta job needs
+        # no manual editing between runs -- same pattern as the SFTP/S3
+        # remote_path date tokens, applied to SQL sources instead of paths.
         c = self.config
         if c.get("query"):
             return c["query"]
         table = c.get("table")
         if not table:
             raise ValueError("Provide either 'query' or 'table'.")
+        incremental_col = c.get("incremental_column")
+        since = c.get("since")
+        if incremental_col and since:
+            since_escaped = str(since).replace("'", "''")
+            return f"SELECT * FROM {table} WHERE {incremental_col} > '{since_escaped}'"
         return f"SELECT * FROM {table}"
 
     def fetch(self) -> pd.DataFrame:
@@ -537,6 +580,127 @@ class SnowflakeConnector(_SQLConnector):
             warehouse=c.get("warehouse"), database=c.get("database"),
             schema=c.get("schema"),
         )
+
+
+class RedshiftConnector(_SQLConnector):
+    """config: host, port (default 5439), database, username, password, plus
+    'query' or 'table' (+ optional incremental_column/since) like the other
+    SQL connectors. Redshift speaks the Postgres wire protocol, so this
+    reuses psycopg2 rather than pulling in a separate Redshift driver --
+    the only differences from PostgresConnector are the default port and
+    Redshift's mandatory SSL for non-VPC connections."""
+    def _connect(self):
+        import psycopg2
+        c = self.config
+        return psycopg2.connect(
+            host=c["host"], port=int(c.get("port", 5439)), dbname=c["database"],
+            user=c.get("username"), password=c.get("password"),
+            sslmode=c.get("sslmode", "require"),
+        )
+
+
+class TeradataConnector(_SQLConnector):
+    """config: host, username, password, database (optional), plus 'query'
+    or 'table' (+ optional incremental_column/since) like the other SQL
+    connectors. Uses Teradata's own teradatasql DB-API driver."""
+    def _connect(self):
+        import teradatasql
+        c = self.config
+        kw = {"host": c["host"], "user": c.get("username"), "password": c.get("password")}
+        if c.get("database"):
+            kw["database"] = c["database"]
+        return teradatasql.connect(**kw)
+
+
+class BigQueryConnector(BaseConnector):
+    """config: project, query (SQL) or dataset+table, credentials_json (path
+    or inline JSON, optional -- falls back to Application Default
+    Credentials if omitted), max_results (optional row cap)."""
+    def _client(self):
+        from google.cloud import bigquery
+        c = self.config
+        if c.get("credentials_json"):
+            from google.oauth2 import service_account
+            info = c["credentials_json"]
+            if isinstance(info, str):
+                info = json.loads(info) if info.strip().startswith("{") else info
+            creds = (service_account.Credentials.from_service_account_info(info)
+                     if isinstance(info, dict)
+                     else service_account.Credentials.from_service_account_file(info))
+            return bigquery.Client(project=c.get("project"), credentials=creds)
+        return bigquery.Client(project=c.get("project"))
+
+    def _sql(self) -> str:
+        c = self.config
+        if c.get("query"):
+            return c["query"]
+        table = c.get("table")
+        if not table:
+            raise ValueError("Provide either 'query' or 'dataset'+'table'.")
+        full_table = f"{c['dataset']}.{table}" if c.get("dataset") else table
+        incremental_col = c.get("incremental_column")
+        since = c.get("since")
+        if incremental_col and since:
+            since_escaped = str(since).replace("'", "''")
+            return f"SELECT * FROM `{full_table}` WHERE {incremental_col} > '{since_escaped}'"
+        return f"SELECT * FROM `{full_table}`"
+
+    def fetch(self) -> pd.DataFrame:
+        client = self._client()
+        job = client.query(self._sql())
+        max_results = self.config.get("max_results")
+        rows = job.result(max_results=int(max_results)) if max_results else job.result()
+        return rows.to_dataframe().astype(str)
+
+    def test_connection(self) -> bool:
+        client = self._client()
+        job = client.query("SELECT 1")
+        job.result()
+        return True
+
+
+class MongoDBConnector(BaseConnector):
+    """config: connection_string (or host/port/username/password), database,
+    collection, query (filter dict, optional), projection (dict, optional),
+    limit (optional row cap, default 10000)."""
+    def _client(self):
+        from pymongo import MongoClient
+        c = self.config
+        if c.get("connection_string"):
+            return MongoClient(c["connection_string"], serverSelectionTimeoutMS=10000)
+        return MongoClient(
+            host=c.get("host", "localhost"), port=int(c.get("port", 27017)),
+            username=c.get("username"), password=c.get("password"),
+            serverSelectionTimeoutMS=10000,
+        )
+
+    def fetch(self) -> pd.DataFrame:
+        c = self.config
+        client = self._client()
+        try:
+            coll = client[c["database"]][c["collection"]]
+            query_filter = c.get("query") or {}
+            if isinstance(query_filter, str):
+                query_filter = json.loads(query_filter) if query_filter.strip() else {}
+            projection = c.get("projection")
+            if isinstance(projection, str):
+                projection = json.loads(projection) if projection.strip() else None
+            cursor = coll.find(query_filter, projection)
+            cursor = cursor.limit(int(c.get("limit", 10000)))
+            docs = list(cursor)
+            for d in docs:
+                d["_id"] = str(d.get("_id", ""))
+            return pd.json_normalize(docs).astype(str) if docs else pd.DataFrame()
+        finally:
+            client.close()
+
+    def test_connection(self) -> bool:
+        client = self._client()
+        try:
+            client.admin.command("ping")
+            return True
+        finally:
+            client.close()
 
 
 class DatabricksConnector(_SQLConnector):

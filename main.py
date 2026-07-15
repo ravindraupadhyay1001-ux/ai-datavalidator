@@ -2585,16 +2585,32 @@ def _df_from_connection(conn_id: str, username: str) -> tuple[str, pd.DataFrame]
     if not rec:
         raise HTTPException(404, f"Workspace connection '{conn_id}' not found for this user.")
 
-    try:
-        connector = _ws_connectors.BaseConnector.from_type(rec["source_type"], rec["config"])
-        df = connector.fetch()
-        df.attrs["_format"] = rec["source_type"]
-        df.attrs["_delimiter"] = ""
-        return rec["name"], df
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(502, f"Failed to fetch data from '{rec['name']}': {exc}") from exc
+    # Retry with backoff on transient failures (network blips, momentary DB
+    # unavailability, rate limits) -- enterprise connectors expect this;
+    # without it a single dropped packet fails an entire scheduled job.
+    # Config errors (bad table name, missing field) fail the same way on
+    # every attempt, so they still surface promptly after the retries.
+    _max_attempts = 3
+    _last_exc: Exception | None = None
+    for _attempt in range(1, _max_attempts + 1):
+        try:
+            connector = _ws_connectors.BaseConnector.from_type(rec["source_type"], rec["config"])
+            df = connector.fetch()
+            df.attrs["_format"] = rec["source_type"]
+            df.attrs["_delimiter"] = ""
+            return rec["name"], df
+        except HTTPException:
+            raise
+        except Exception as exc:
+            _last_exc = exc
+            if _attempt < _max_attempts:
+                _log(f"Connection '{rec['name']}' fetch attempt {_attempt}/{_max_attempts} failed "
+                     f"({exc}) -- retrying...", level="WARN")
+                time.sleep(0.5 * (2 ** (_attempt - 1)))
+
+    raise HTTPException(
+        502, f"Failed to fetch data from '{rec['name']}' after {_max_attempts} attempts: {_last_exc}"
+    ) from _last_exc
 
 
 # ==== SOURCE PAGE 0112 ====
@@ -9028,6 +9044,42 @@ def check_volume_and_freshness(
 # Per-field z-score anomaly detection (Informatica CLAIRE-style)
 # -----------------------------------------------------------------------
 
+# BFSI analytics / trading field name hints -- module-level so the
+# multi-variate and trend-anomaly detectors below can share the same
+# "which columns are domain-critical" definition as the per-column detector.
+_ANOMALY_COL_HINTS = {
+    "notional", "nominal", "face_value", "principal",
+    "price", "rate", "coupon", "yield", "strike", "premium",
+    "pnl", "p_l", "mtm", "mark_to_market", "market_value", "npv",
+    "delta", "gamma", "vega", "theta", "dv01", "cs01",
+    "var", "cvar", "exposure", "stress", "fee", "commission",
+    "amount", "amt", "quantity", "qty",
+}
+
+
+def _numeric_columns(df: pd.DataFrame, threshold: float = 0.9) -> dict[str, pd.Series]:
+    # _load_file() loads every column as string, so a plain is_numeric_dtype
+    # check never matches real uploaded data -- every anomaly/cluster/drift
+    # detector in this module needs the same coerce-and-check-hit-rate
+    # fallback already used by the column-profiling stats (see analyze_quality_full's
+    # per-column stats loop): a column counts as numeric if it's genuinely
+    # numeric-dtype OR at least `threshold` of its non-null values parse as
+    # numbers. Returns {column: coerced_numeric_series} for qualifying columns
+    # only, so callers can just iterate the dict instead of re-deriving this.
+    out: dict[str, pd.Series] = {}
+    for col in df.columns:
+        s = df[col]
+        if pd.api.types.is_numeric_dtype(s):
+            out[col] = s
+            continue
+        non_null = s.notna().sum()
+        if not non_null:
+            continue
+        coerced = pd.to_numeric(s, errors="coerce")
+        if coerced.notna().sum() / non_null >= threshold:
+            out[col] = coerced
+    return out
+
 
 def detect_numeric_anomalies(df: pd.DataFrame, z_threshold: float = 3.0) -> list[dict]:
     # Flag values that are statistical outliers (|z-score| > z_threshold) on
@@ -9047,60 +9099,73 @@ def detect_numeric_anomalies(df: pd.DataFrame, z_threshold: float = 3.0) -> list
     #   "severity":   "CRITICAL" | "WARN" | "INFO",
     # }
     #
-    # Only checks columns matching BFSI analytics / trading field names.
-    _ANOMALY_COL_HINTS = {
-        "notional", "nominal", "face_value", "principal",
-        "price", "rate", "coupon", "yield", "strike", "premium",
-        "pnl", "p_l", "mtm", "mark_to_market", "market_value", "npv",
-        "delta", "gamma", "vega", "theta", "dv01", "cs01",
-        "var", "cvar", "exposure", "stress", "fee", "commission",
-        "amount", "amt", "quantity", "qty",
-    }
-
+    # Checks BFSI-hinted columns with a z-score/MAD combo (sensitive,
+    # severity-scored) and every other numeric column with a plain IQR
+    # coverage pass (capped at INFO) -- see _score_column below.
     results: list[dict] = []
+    _MOD_Z_THRESHOLD = 3.5  # standard modified-z-score cutoff (Iglewicz & Hoaglin)
 
-    for col in df.columns:
-        col_lc = col.lower().replace("-", "_").replace(" ", "_")
-        if not any(h in col_lc for h in _ANOMALY_COL_HINTS):
-            # ==== SOURCE PAGE 0388 ====
-            continue
-
-        if not pd.api.types.is_numeric_dtype(df[col]):
-            continue
-
-        clean = df[col].dropna()
+    def _score_column(col: str, clean: pd.Series, method: str, default_severity_cap: str | None):
+        # Shared scorer used for both the BFSI-hint pass (classic + robust
+        # z-score combined) and the generic pass (IQR only, since columns with
+        # no domain hint shouldn't get the same z-score sensitivity/severity).
         if len(clean) < 10:
-            continue
+            return None
 
         mean = float(clean.mean())
         std  = float(clean.std())
-        if std == 0:
-            continue
+        median = float(clean.median())
+        mad = float((clean - median).abs().median())
 
-        z_scores     = ((clean - mean) / std).abs()
-        anomaly_mask = z_scores > z_threshold
+        if method == "zscore":
+            if std == 0:
+                return None
+            z_scores = ((clean - mean) / std).abs()
+            # Modified (MAD-based) z-score catches outliers that a mean/std
+            # z-score misses when the outliers themselves have already
+            # inflated std -- classic z-score is not robust to its own
+            # anomalies, MAD is. Union of both flags anything either method
+            # would catch.
+            mod_z = ((clean - median) / mad).abs() * 0.6745 if mad else pd.Series(0.0, index=clean.index)
+            anomaly_mask = (z_scores > z_threshold) | (mod_z > _MOD_Z_THRESHOLD)
+            if not anomaly_mask.any():
+                return None
+            max_z = round(float(max(z_scores[anomaly_mask].max(), mod_z[anomaly_mask].max())), 2)
+        else:  # IQR (Tukey) -- distribution-shape-agnostic, used for generic (non-hinted) columns
+            q1, q3 = float(clean.quantile(0.25)), float(clean.quantile(0.75))
+            iqr = q3 - q1
+            if iqr == 0:
+                return None
+            lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
+            anomaly_mask = (clean < lo) | (clean > hi)
+            if not anomaly_mask.any():
+                return None
+            # express as an IQR-multiple "z-like" score for a consistent severity scale
+            max_z = round(float(max(
+                (clean[anomaly_mask] - hi).clip(lower=0).max(),
+                (lo - clean[anomaly_mask]).clip(lower=0).max(),
+            ) / (iqr or 1)), 2)
+
         anomaly_count = int(anomaly_mask.sum())
-        if anomaly_count == 0:
-            continue
-
         anomaly_pct = round(anomaly_count / len(clean) * 100, 2)
-        max_z    = round(float(z_scores[anomaly_mask].max()), 2)
-        samples  = clean[anomaly_mask].head(5).round(4).tolist()
+        samples = clean[anomaly_mask].head(5).round(4).tolist()
 
         confidence = (
-            # ==== SOURCE PAGE 0389 ====
             "Low"    if anomaly_pct > 10
             else "Medium" if anomaly_pct > 2
             else "High"
         )
 
-        severity = (
-            "CRITICAL" if max_z > 6 or anomaly_pct > 5
-            else "WARN" if max_z > 4
-            else "INFO"
-        )
+        if default_severity_cap == "INFO":
+            severity = "INFO"  # generic (non-domain) columns never auto-escalate to CRITICAL/WARN
+        else:
+            severity = (
+                "CRITICAL" if max_z > 6 or anomaly_pct > 5
+                else "WARN" if max_z > 4
+                else "INFO"
+            )
 
-        results.append({
+        return {
             "column":  col,
             "mean":    round(mean, 4),
             "std":     round(std, 4),
@@ -9110,7 +9175,179 @@ def detect_numeric_anomalies(df: pd.DataFrame, z_threshold: float = 3.0) -> list
             "samples": samples,
             "confidence": confidence,
             "severity": severity,
-            # ==== SOURCE PAGE 0390 ====
+            "method":  "robust z-score" if method == "zscore" else "IQR (Tukey)",
+            "domain_hint": default_severity_cap != "INFO",
+        }
+
+    numeric_cols = _numeric_columns(df)
+
+    hinted_cols = []
+    for col, series in numeric_cols.items():
+        col_lc = col.lower().replace("-", "_").replace(" ", "_")
+        if not any(h in col_lc for h in _ANOMALY_COL_HINTS):
+            continue
+        hinted_cols.append(col)
+        clean = series.dropna()
+        r = _score_column(col, clean, "zscore", None)
+        if r:
+            results.append(r)
+
+    # Generic pass -- BFSI-named columns get the sensitive z-score/severity
+    # treatment above, but every other numeric column still gets a coverage
+    # check (IQR, capped at INFO) rather than being silently skipped entirely
+    # just because its name didn't match a domain hint.
+    for col, series in numeric_cols.items():
+        if col in hinted_cols:
+            continue
+        clean = series.dropna()
+        r = _score_column(col, clean, "iqr", "INFO")
+        if r:
+            results.append(r)
+
+    return results
+
+
+# -----------------------------------------------------------------------
+# Multi-variate anomaly detection -- robust Mahalanobis distance across the
+# BFSI-critical numeric columns jointly. A row can be individually in-range
+# on every single column (so the per-column z-score pass above finds
+# nothing) and still be jointly inconsistent -- e.g. quantity and price are
+# each normal, but their combination breaks the usual notional relationship.
+# This is the kind of "ML-native" multi-column check that dedicated data
+# observability platforms (Monte Carlo, Collibra, Ataccama) lead on; done
+# here with plain numpy (covariance + pseudo-inverse), no sklearn dependency.
+# -----------------------------------------------------------------------
+
+
+def detect_multivariate_anomalies(df: pd.DataFrame, max_cols: int = 6, threshold: float = 3.5) -> dict:
+    numeric_cols = list(_numeric_columns(df).keys())
+    if len(numeric_cols) < 2:
+        return {"checked_columns": [], "anomaly_count": 0, "rows": []}
+
+    hinted = [c for c in numeric_cols
+              if any(h in c.lower().replace("-", "_").replace(" ", "_") for h in _ANOMALY_COL_HINTS)]
+    cols = (hinted if len(hinted) >= 2 else numeric_cols)[:max_cols]
+
+    sub = df[cols].apply(pd.to_numeric, errors="coerce").dropna()
+    if len(sub) < 30 or len(cols) < 2:
+        return {"checked_columns": cols, "anomaly_count": 0, "rows": []}
+
+    X = sub.to_numpy(dtype=float)
+    # drop columns with zero variance -- singular covariance otherwise
+    keep = X.std(axis=0) > 0
+    if keep.sum() < 2:
+        return {"checked_columns": cols, "anomaly_count": 0, "rows": []}
+    X = X[:, keep]
+    cols = [c for c, k in zip(cols, keep) if k]
+
+    mean = X.mean(axis=0)
+    cov = np.cov(X, rowvar=False)
+    inv_cov = np.linalg.pinv(cov)
+    diff = X - mean
+    m_dist = np.sqrt(np.clip(np.einsum('ij,jk,ik->i', diff, inv_cov, diff), 0, None))
+
+    # Robust (MAD-based) threshold on the distance itself, rather than a
+    # fixed chi-square critical value -- keeps behaviour consistent with the
+    # rest of this module's threshold-free philosophy.
+    d_median = float(np.median(m_dist))
+    d_mad = float(np.median(np.abs(m_dist - d_median))) or 1e-9
+    mod_z_dist = 0.6745 * (m_dist - d_median) / d_mad
+    mask = mod_z_dist > threshold
+
+    anomaly_count = int(mask.sum())
+    rows = []
+    if anomaly_count:
+        order = np.argsort(-mod_z_dist)
+        for pos in order[:10]:
+            if not mask[pos]:
+                continue
+            row_idx = sub.index[pos]
+            row = {c: round(float(v), 4) for c, v in zip(cols, X[pos])}
+            row["row_index"] = int(row_idx)
+            row["distance_z"] = round(float(mod_z_dist[pos]), 2)
+            rows.append(row)
+
+    anomaly_pct = round(anomaly_count / len(sub) * 100, 2) if len(sub) else 0.0
+    return {
+        "checked_columns": cols,
+        "row_count_checked": int(len(sub)),
+        "anomaly_count": anomaly_count,
+        "anomaly_pct": anomaly_pct,
+        "rows": rows,
+        "severity": "CRITICAL" if anomaly_pct > 5 else "WARN" if anomaly_count else "INFO",
+        "detail": (
+            f"{anomaly_count} row(s) are jointly anomalous across {', '.join(cols)} even though "
+            f"no single column crossed its own threshold." if anomaly_count else ""
+        ),
+    }
+
+
+# -----------------------------------------------------------------------
+# Trend / time-aware anomaly detection -- buckets rows by day (or week, if
+# too few distinct days) using the first date-like column found, then flags
+# BFSI-critical numeric columns whose most recent period mean deviates from
+# the trailing rolling baseline. A flat global z-score across the whole file
+# would average a gradual drift or a sudden regime shift away; this catches
+# it. Lightweight stand-in for the seasonality-aware checks dedicated data
+# observability platforms (Monte Carlo, Collibra) run as their core product.
+# -----------------------------------------------------------------------
+
+
+def detect_trend_anomalies(df: pd.DataFrame, min_periods: int = 6) -> list[dict]:
+    date_col = None
+    dates = None
+    for c in df.columns:
+        cl = c.lower().replace("-", "_").replace(" ", "_")
+        if any(h in cl for h in ("date", "as_of", "trade_date", "value_date", "timestamp", "settlement_date")):
+            parsed = pd.to_datetime(df[c], errors="coerce")
+            if parsed.notna().mean() > 0.8:
+                date_col = c
+                dates = parsed
+                break
+    if date_col is None:
+        return []
+
+    n_days = dates.dt.normalize().nunique()
+    period = dates.dt.to_period("D" if n_days >= min_periods else "W")
+
+    numeric_cols = _numeric_columns(df)
+    results = []
+    for col, series in numeric_cols.items():
+        col_lc = col.lower().replace("-", "_").replace(" ", "_")
+        if not any(h in col_lc for h in _ANOMALY_COL_HINTS):
+            continue
+
+        tmp = pd.DataFrame({"period": period, "val": series}).dropna()
+        grp = tmp.groupby("period")["val"].mean().sort_index()
+        if len(grp) < min_periods:
+            continue
+
+        rolling_mean = grp.shift(1).expanding().mean()
+        rolling_std = grp.shift(1).expanding().std()
+        base_mean = rolling_mean.iloc[-1]
+        base_std = rolling_std.iloc[-1]
+        if pd.isna(base_std) or base_std == 0:
+            continue
+
+        latest_val = float(grp.iloc[-1])
+        z = abs((latest_val - float(base_mean)) / float(base_std))
+        if z < 2.5:
+            continue
+
+        severity = "CRITICAL" if z > 4 else "WARN"
+        results.append({
+            "column": col,
+            "date_column": date_col,
+            "period": str(grp.index[-1]),
+            "latest_value": round(latest_val, 4),
+            "baseline_mean": round(float(base_mean), 4),
+            "baseline_std": round(float(base_std), 4),
+            "z_score": round(float(z), 2),
+            "severity": severity,
+            "detail": (
+                f"Most recent period ({grp.index[-1]}) mean for '{col}' is {z:.1f} std "
+                f"from the trailing baseline -- possible regime shift or data issue."
+            ),
         })
 
     return results
@@ -9139,8 +9376,8 @@ def detect_numeric_clusters(df: pd.DataFrame, max_k: int = 5) -> list[dict]:
     # - Erroneous data mixing two populations (e.g. USD and JPY amounts)
     results = []
 
-    for col in df.select_dtypes(include="number").columns:
-        clean = df[col].dropna()
+    for col, series in _numeric_columns(df).items():
+        clean = series.dropna()
         n = len(clean)
         if n < 20:
             continue
@@ -9274,11 +9511,15 @@ def detect_categorical_drift(
                 baseline_cols[bc["name"]] = bc["value_counts"]
 
 
+    _numeric_cols_for_exclusion = _numeric_columns(df)
     for col in df.columns:
         s = df[col]
 
-        # Skip numeric columns and very high cardinality (IDs)
-        if pd.api.types.is_numeric_dtype(s):
+        # Skip numeric columns and very high cardinality (IDs). _load_file()
+        # loads every column as string, so a plain is_numeric_dtype check
+        # would never exclude anything -- use the same coerce-and-check-rate
+        # fallback as the other detectors in this module.
+        if col in _numeric_cols_for_exclusion:
             continue
 
         n_unique = int(s.nunique(dropna=True))
@@ -17215,6 +17456,20 @@ async def analyze(request: Request):
         except Exception:
           q["numeric_clusters"] = []
 
+        # -- Multi-variate (Mahalanobis) + trend/time-aware anomaly detection --
+        try:
+          q["multivariate_anomalies"] = await asyncio.to_thread(
+            detect_multivariate_anomalies, df
+          )
+        except Exception:
+          q["multivariate_anomalies"] = {"checked_columns": [], "anomaly_count": 0, "rows": []}
+        try:
+          q["trend_anomalies"] = await asyncio.to_thread(
+            detect_trend_anomalies, df
+          )
+        except Exception:
+          q["trend_anomalies"] = []
+
 
 
       # ==== SOURCE PAGE 0741 ====
@@ -18077,6 +18332,11 @@ async def analyze(request: Request):
             "ai_rule_results": q.get("ai_rule_results", []),
             "ai_dq_score": q.get("ai_dq_score", {}),
             "rule_results": q.get("rule_results", []),
+            "anomaly_results": q.get("anomaly_results", []),
+            "categorical_drift": q.get("categorical_drift", []),
+            "numeric_clusters": q.get("numeric_clusters", []),
+            "multivariate_anomalies": q.get("multivariate_anomalies", {}),
+            "trend_anomalies": q.get("trend_anomalies", []),
             "elapsed": total_elapsed,
             "logs": proc_logs,
         }
@@ -18404,6 +18664,10 @@ async def dq_ai_results_get(session_id: str, request: Request):
       except: q["anomaly_results"] = []
       try: q["categorical_drift"] = await _asyncio.to_thread(detect_categorical_drift, df)
       except: q["categorical_drift"] = []
+      try: q["multivariate_anomalies"] = await _asyncio.to_thread(detect_multivariate_anomalies, df)
+      except: q["multivariate_anomalies"] = {"checked_columns": [], "anomaly_count": 0, "rows": []}
+      try: q["trend_anomalies"] = await _asyncio.to_thread(detect_trend_anomalies, df)
+      except: q["trend_anomalies"] = []
       try: q["numeric_clusters"] = await _asyncio.to_thread(detect_numeric_clusters, df)
 
 
@@ -18540,6 +18804,16 @@ async def rerun_quality_json(session_id: str, request: Request):
             q["numeric_clusters"] = await _asyncio.to_thread(detect_numeric_clusters, df)
         except Exception:
             q["numeric_clusters"] = []
+
+        try:
+            q["multivariate_anomalies"] = await _asyncio.to_thread(detect_multivariate_anomalies, df)
+        except Exception:
+            q["multivariate_anomalies"] = {"checked_columns": [], "anomaly_count": 0, "rows": []}
+
+        try:
+            q["trend_anomalies"] = await _asyncio.to_thread(detect_trend_anomalies, df)
+        except Exception:
+            q["trend_anomalies"] = []
 
         # ==== SOURCE PAGE 0785 ====
         fails = [r for r in q.get("rule_results", []) if r.get("status") == "FAIL"]
@@ -18747,6 +19021,8 @@ async def rerun_quality_json(session_id: str, request: Request):
                 "consistency_issues": consistency_data,
                 "drift_alerts": drift_data,
                 "numeric_clusters": cluster_data,
+                "multivariate_anomalies": q.get("multivariate_anomalies", {}),
+                "trend_anomalies": q.get("trend_anomalies", []),
                 "ai_hints_used": list(_hints.keys()),
                 "ai_rules":     ai_rules,
                 "ai_summary":   _exec_summary,
@@ -18887,6 +19163,14 @@ async def rerun_quality(session_id: str, request: Request):
                 q["numeric_clusters"] = await _asyncio.to_thread(detect_numeric_clusters, df)
             except Exception:
                 q["numeric_clusters"] = []
+            try:
+                q["multivariate_anomalies"] = await _asyncio.to_thread(detect_multivariate_anomalies, df)
+            except Exception:
+                q["multivariate_anomalies"] = {"checked_columns": [], "anomaly_count": 0, "rows": []}
+            try:
+                q["trend_anomalies"] = await _asyncio.to_thread(detect_trend_anomalies, df)
+            except Exception:
+                q["trend_anomalies"] = []
 
             _log(f"DQ complete: Score {q['dq_score']['score']} ({q['dq_score']['grade']})")
 
@@ -21726,6 +22010,8 @@ async def ws_save_connection(request: Request):
       "azure_blob","azure_sql","db2","sharepoint","databricks","gcs","bloomberg",
 
       "refinitiv","murex","calypso","kafka","salesforce",
+
+      "redshift","teradata","bigquery","mongodb",
 
     }
 

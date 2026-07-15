@@ -39,6 +39,10 @@ google-cloud-storage             # Google Cloud Storage
 kafka-python                     # Kafka
 simple-salesforce                # Salesforce
 databricks-sql-connector         # Databricks SQL warehouses
+teradatasql                      # Teradata
+google-cloud-bigquery            # Google BigQuery
+pymongo                          # MongoDB
+# Redshift reuses psycopg2-binary above -- wire-compatible with Postgres
 ldap3                            # LDAP / Active Directory auth (SSO)
 authlib                          # OIDC SSO (Authorization Code flow)
 itsdangerous                     # required by Starlette's SessionMiddleware (OIDC state)
