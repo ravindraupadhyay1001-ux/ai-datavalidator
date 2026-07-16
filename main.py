@@ -89,6 +89,7 @@ from agent.feedback_store import (
     get_dataset_label as _fp_get_label,
     resolve_fingerprint as _fp_resolve,
     list_all_datasets as _fp_list_datasets,
+    _STORE_PATH as _feedback_store_path,
     copy_rules as _fp_copy_rules,
 )
 
@@ -8289,8 +8290,7 @@ def analyze_quality_full(
   _gov_hints = dict(user_hints or {})
   try:
     import json as _json_gov
-    _fb_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-"feedback_rules.json")
+    _fb_path = _feedback_store_path
     _all_saved: dict = {}
     if os.path.exists(_fb_path):
       with open(_fb_path, encoding="utf-8") as _fb:
@@ -17118,7 +17118,7 @@ async def analyze(request: Request):
     # They must be applied here so every fresh run respects them automatically.
     try:
       import json as _json_dc
-      _fb_dc_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "feedback_rules.json")
+      _fb_dc_path = _feedback_store_path
       if os.path.exists(_fb_dc_path):
         _dc_cat_prefix = f"dc_{action}_exclude"
 
@@ -17743,7 +17743,7 @@ async def analyze(request: Request):
         _gov_hints_sa = dict(user_hints or {})
         try:
           import json as _json_gov2
-          _fb_path2 = os.path.join(os.path.dirname(os.path.abspath(__file__)), "feedback_rules.json")
+          _fb_path2 = _feedback_store_path
           _all2: dict = {}
           if os.path.exists(_fb_path2):
             with open(_fb_path2, encoding="utf-8") as _fb2:

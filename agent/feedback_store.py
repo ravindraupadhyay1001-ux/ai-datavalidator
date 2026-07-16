@@ -16,7 +16,7 @@ import threading
 from datetime import date
 from typing import Optional
 
-_STORE_PATH = os.path.join(
+_STORE_PATH = os.getenv("FEEDBACK_STORE_PATH") or os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     "feedback_rules.json",
 )
