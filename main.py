@@ -277,9 +277,38 @@ async def get_usage(request: Request):
     })
 
 
+def _require_settings_admin(request: Request) -> None:
+    """Block Settings & License access to everyone except the admin role --
+    but only once real login is actually enforced. With no login mechanism
+    active there is only one implicit operator and no other user to protect
+    this from, so access is left open (matches the fallback used throughout
+    the rest of the app for the no-auth-configured case)."""
+    try:
+        from workspace.local_auth import LOCAL_AUTH_ENABLED
+        from workspace.sso import LDAP_ENABLED as _LDAP_ENABLED
+    except Exception:
+        LOCAL_AUTH_ENABLED = False
+        _LDAP_ENABLED = False
+    if not (LOCAL_AUTH_ENABLED or _LDAP_ENABLED):
+        return
+    try:
+        username = _ws_resolve_username(request) or ""
+    except Exception:
+        username = ""
+    role = "analyst"
+    if username:
+        try:
+            role = getattr(request.state, "role", None) or _ws_db.get_user_role(username)
+        except Exception:
+            role = "analyst"
+    if role != "admin":
+        raise HTTPException(403, "Admin access required to view or change Settings.")
+
+
 @app.post("/api/license/activate")
 async def license_activate(request: Request):
-    """Activate a new license key. Client pastes their key into Settings UI."""
+    """Activate a new license key. Client pastes their key into Settings UI. Admin only."""
+    _require_settings_admin(request)
     body  = await request.json()
     token = body.get("license_key", "").strip()
     if not token:
@@ -298,15 +327,17 @@ async def license_activate(request: Request):
 
 
 @app.post("/api/license/heartbeat")
-async def license_heartbeat_manual():
-    """Trigger an immediate heartbeat check (called from Settings UI 'Check Now' button)."""
+async def license_heartbeat_manual(request: Request):
+    """Trigger an immediate heartbeat check (called from Settings UI 'Check Now' button). Admin only."""
+    _require_settings_admin(request)
     ok = _lic_heartbeat()
     return JSONResponse({"ok": ok, "state": _lic_state()})
 
 
 @app.get("/api/settings")
-async def get_settings():
-    """Return non-secret runtime config that clients can adjust."""
+async def get_settings(request: Request):
+    """Return non-secret runtime config that clients can adjust. Admin only."""
+    _require_settings_admin(request)
     provider = os.getenv("LLM_PROVIDER", "bedrock").strip().lower()
 
 
@@ -354,6 +385,8 @@ async def save_settings(request: Request):
 
     # Persist config changes to .env file.
     # Client controls their own LLM keys, DB, storage -- none sent to provider.
+    # Admin only -- these include API keys, SMTP password, and DB connection details.
+    _require_settings_admin(request)
 
 
 

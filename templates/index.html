@@ -3081,6 +3081,10 @@ const roleColor = {admin:'#f59e0b', analyst:'#38bdf8', readonly:'#94a3b8'};
   badge.innerHTML = `<span class="badge" style="background:${roleColor[CURRENT_ROLE]}22;color:${roleColor[CURRENT_ROLE]}">${esc(me.display_name||me.username)} &middot; ${esc(CURRENT_ROLE)}</span>`;
   document.getElementById('licbar').before(badge);
   if (CURRENT_ROLE === 'readonly') applyReadonlyUI();
+  if (CURRENT_ROLE !== 'admin') {
+    const settingsTab = document.querySelector('button[data-tab="settings"]');
+    if (settingsTab) settingsTab.style.display = 'none';
+  }
 }catch(e){} })();
 
 function applyReadonlyUI(){
