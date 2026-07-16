@@ -1,4 +1,3 @@
-# ==== SOURCE PAGE 0001 ====
 
 
 # Data Validation AGENT - Enhanced FastAPI application.
@@ -19,9 +18,6 @@ from datetime import datetime
 from pathlib import Path
 
 
-
-# ==== SOURCE PAGE 0002 ====
-
 import smtplib
 import time
 import uuid
@@ -30,7 +26,7 @@ from difflib import SequenceMatcher
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from itertools import combinations
-from typing import List, Optional
+from typing import Optional
 import xml.etree.ElementTree as ET
 
 # Thread-pool for CPU-bound analysis work -- keeps the async event loop free
@@ -40,9 +36,6 @@ import boto3
 import chardet
 
 
-
-# ==== SOURCE PAGE 0003 ====
-
 import numpy as np
 import pdfplumber
 import openpyxl
@@ -50,7 +43,7 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 import pandas as pd
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.templating import Jinja2Templates
@@ -59,9 +52,6 @@ load_dotenv()
 
 # -- License system
 
-
-
-# ==== SOURCE PAGE 0004 ====
 
 from license.license_manager import (
     load_license as _lic_load,
@@ -82,9 +72,6 @@ from agent.feedback_store import (
     delete_rule as _fp_delete,
 
 
-
-# ==== SOURCE PAGE 0005 ====
-
     update_rule as _fp_update,
     get_dataset_label as _fp_get_label,
     resolve_fingerprint as _fp_resolve,
@@ -101,7 +88,6 @@ templates = Jinja2Templates(directory="templates")
 import json as _json
 # NOTE (reconstruction): the source pages here duplicated this block twice (a
 # page-repeat artifact seen elsewhere in this file) -- kept one occurrence.
-# ==== SOURCE PAGE 0006 ====
 if "tojson" not in templates.env.filters:
     templates.env.filters["tojson"] = lambda v: _json.dumps(v, ensure_ascii=False, default=str)
 
@@ -125,9 +111,6 @@ try:
         sso_mode as _sso_mode,
 
 
-
-# ==== SOURCE PAGE 0007 ====
-
         saml_login_redirect_url as _saml_login_url,
         saml_process_response as _saml_process,
         oidc_login_redirect_url as _oidc_login_url,
@@ -150,9 +133,6 @@ try:
     app.add_middleware(WorkspaceAuthMiddleware)
 
 
-
-# ==== SOURCE PAGE 0008 ====
-
     @app.on_event("startup")
     async def _workspace_startup():
         _lic_load()  # validate license before anything else starts
@@ -174,9 +154,6 @@ try:
     @app.on_event("shutdown")
 
 
-
-# ==== SOURCE PAGE 0009 ====
-
     async def _workspace_shutdown():
         _ws_stop_scheduler()
 
@@ -197,9 +174,6 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
     return JSONResponse(status_code=400, content={"detail": f"Validation error -- {detail}"})
 
 
-
-# ==== SOURCE PAGE 0012 ====
-
 # ---------------------------------------------------------------------
 # License helper -- gates features at the API level
 # ---------------------------------------------------------------------
@@ -217,9 +191,6 @@ def _require_feature(feature: str):
         raise HTTPException(
             status_code=402,
 
-
-
-# ==== SOURCE PAGE 0013 ====
 
             detail=f"Feature '{feature}' is not included in your '{state.get('tier','unknown')}' plan. "
             "Please upgrade.",
@@ -241,9 +212,6 @@ async def license_status():
         "tier":        s.get("tier"),
 
 
-
-# ==== SOURCE PAGE 0014 ====
-
         "features":     s.get("features", []),
         "expires_at":   s.get("expires_at"),
         "error":        s.get("error"),
@@ -264,9 +232,6 @@ async def get_usage(request: Request):
     except Exception:
         username = "default"
 
-
-
-# ==== SOURCE PAGE 0015 ====
 
     from workspace.db import get_token_usage_summary, get_token_usage_month_total
     from datetime import datetime as _dt
@@ -335,9 +300,6 @@ async def license_activate(request: Request):
     result = _lic_activate(token)
 
 
-
-# ==== SOURCE PAGE 0016 ====
-
     if result.get("valid"):
         return JSONResponse({"ok": True, "tier": result.get("tier"),
                     "expires_at": result.get("expires_at"),
@@ -360,9 +322,6 @@ async def get_settings(request: Request):
     provider = os.getenv("LLM_PROVIDER", "bedrock").strip().lower()
 
 
-
-# ==== SOURCE PAGE 0017 ====
-
     return JSONResponse({
         "llm": {
             "provider": provider,
@@ -382,9 +341,6 @@ async def get_settings(request: Request):
         "storage": {
             "backend":    os.getenv("WORKSPACE_DB", "sqlite"),
 
-
-
-# ==== SOURCE PAGE 0018 ====
 
             "sqlite_path": os.getenv("WORKSPACE_SQLITE_PATH", "workspace.db"),
             "mssql_server": os.getenv("MSSQL_SERVER", ""),
@@ -408,10 +364,6 @@ async def save_settings(request: Request):
     _require_settings_admin(request)
 
 
-
-
-# ==== SOURCE PAGE 0019 ====
-
     body = await request.json()
     env_path = Path(".env")
     lines: list[str] = []
@@ -433,9 +385,6 @@ async def save_settings(request: Request):
         if llm.get("provider"):    _set("LLM_PROVIDER",    llm["provider"])
 
 
-
-# ==== SOURCE PAGE 0020 ====
-
         # Bedrock
         if llm.get("model_id"):     _set("BEDROCK_MODEL_ID",  llm["model_id"])
         if llm.get("region"):       _set("AWS_DEFAULT_REGION", llm["region"])
@@ -454,9 +403,6 @@ async def save_settings(request: Request):
         if llm.get("anthropic_model_id"): _set("ANTHROPIC_MODEL_ID",
 llm["anthropic_model_id"])
 
-
-
-# ==== SOURCE PAGE 0021 ====
 
     # Storage settings (client's own DB)
     if "storage" in body:
@@ -478,9 +424,6 @@ llm["anthropic_model_id"])
     # License server URL
 
 
-
-# ==== SOURCE PAGE 0022 ====
-
     if "license_server" in body and body["license_server"]:
         _set("LICENSE_SERVER_URL", body["license_server"])
 
@@ -501,12 +444,6 @@ MODEL_ID = os.getenv(
 def _get_bedrock_client():
 
 
-
-
-
-
-# ==== SOURCE PAGE 0023 ====
-
     session = boto3.Session(
         profile_name=os.getenv("AWS_PROFILE", "claudecode"),
         region_name=os.getenv("AWS_DEFAULT_REGION", "us-east-1"),
@@ -526,7 +463,6 @@ def _sanitize_json(obj):
     # - pandas NA / NaT / Timestamp
     # - bytes (decoded as UTF-8, falling back to repr)
 
-    # ==== SOURCE PAGE 0024 ====
     # - sets (converted to sorted lists)
     # - any other non-serialisable type (converted to str)
 
@@ -565,7 +501,6 @@ def _sanitize_json(obj):
         import pandas as _pd
         if obj is _pd.NA or obj is _pd.NaT:
 
-            # ==== SOURCE PAGE 0026 ====
             return None
         if isinstance(obj, _pd.Timestamp):
             return obj.isoformat()
@@ -584,7 +519,6 @@ def _sanitize_json(obj):
     if isinstance(obj, (int, str)):
         return obj
 
-    # ==== SOURCE PAGE 0027 ====
     # -- bytes
     if isinstance(obj, (bytes, bytearray)):
         try:
@@ -800,7 +734,6 @@ def _repair_and_parse(text: str, sep: str, expected_cols: int) -> pd.DataFrame |
         return None
 
     def _try_parse(t: str, quotechar: str = '"') -> pd.DataFrame | None:
-        # ==== SOURCE PAGE 0036 ====
         try:
             kw = dict(
                 sep=sep, engine="python",
@@ -820,7 +753,6 @@ def _repair_and_parse(text: str, sep: str, expected_cols: int) -> pd.DataFrame |
         return df
 
     # -- Pass 2: try different quote chars
-    # ==== SOURCE PAGE 0037 ====
     for qc in ('"', "'", None):
         df = _try_parse(text, quotechar=qc or "")
         if df is not None and len(df) > 0:
@@ -841,7 +773,6 @@ def _repair_and_parse(text: str, sep: str, expected_cols: int) -> pd.DataFrame |
             df.attrs["_skipped_header_rows"] = header_idx
             return df
 
-    # ==== SOURCE PAGE 0038 ====
 
     # -- Pass 4: pad/truncate rows to match header column count
     if expected_cols > 1:
@@ -862,7 +793,6 @@ def _repair_and_parse(text: str, sep: str, expected_cols: int) -> pd.DataFrame |
         repaired = "\n".join(repaired_lines)
         df = _try_parse(repaired)
 
-        # ==== SOURCE PAGE 0039 ====
 
         if df is not None and len(df) > 0:
             df.attrs["_auto_repaired"] = True
@@ -884,9 +814,6 @@ def _read_delimited(text: str, sep: str) -> pd.DataFrame | None:
     return _repair_and_parse(text, sep, expected_cols)
 
 
-
-    # ==== SOURCE PAGE 0040 ====
-
 def _parse_txt(raw: bytes, encoding: str, delimiter: str | None = None) -> pd.DataFrame:
     # Parse any text/delimited file into a DataFrame.
     #
@@ -903,7 +830,6 @@ def _parse_txt(raw: bytes, encoding: str, delimiter: str | None = None) -> pd.Da
     #
     # Detection order:
     # 1. NDJSON
-    # ==== SOURCE PAGE 0041 ====
     # 2. User-supplied delimiter
     # 3. Robust count-and-confirm sniffer (all delimiters)
     # 4. Trial of every known delimiter with auto-repair
@@ -922,7 +848,6 @@ def _parse_txt(raw: bytes, encoding: str, delimiter: str | None = None) -> pd.Da
     all_lines = text.splitlines()
     lines = [ln for ln in all_lines if ln.strip()]
     if not lines:
-        # ==== SOURCE PAGE 0042 ====
         raise ValueError("Empty file -- no content after decoding")
 
     # -- Pre-strip comment/metadata lines before delimiter detection
@@ -942,7 +867,6 @@ def _parse_txt(raw: bytes, encoding: str, delimiter: str | None = None) -> pd.Da
     if not lines:
         raise ValueError("Empty file -- only comment lines found")
 
-    # ==== SOURCE PAGE 0043 ====
 
     def _mark(df: pd.DataFrame, sep: str) -> pd.DataFrame:
         df.attrs["_detected_delimiter"] = sep
@@ -960,7 +884,6 @@ def _parse_txt(raw: bytes, encoding: str, delimiter: str | None = None) -> pd.Da
         if all(isinstance(r, dict) for r in records):
             return _mark(pd.DataFrame(records), "json")
     except Exception:
-        # ==== SOURCE PAGE 0044 ====
         pass
 
     # -- 2. User-supplied delimiter
@@ -980,7 +903,6 @@ def _parse_txt(raw: bytes, encoding: str, delimiter: str | None = None) -> pd.Da
         if df is not None:
             return _mark(df, detected)
 
-    # ==== SOURCE PAGE 0045 ====
 
     # -- 4. Trial of ALL known delimiters with auto-repair
     tried = {delimiter or "", detected or ""}
@@ -1000,7 +922,6 @@ def _parse_txt(raw: bytes, encoding: str, delimiter: str | None = None) -> pd.Da
         if len(df.columns) > 1 and len(df) > 0:
             return _mark(df, "fixed-width")
     except Exception:
-        # ==== SOURCE PAGE 0046 ====
         pass
 
     try:
@@ -1018,7 +939,6 @@ def _parse_txt(raw: bytes, encoding: str, delimiter: str | None = None) -> pd.Da
 
 def _parse_xml(raw: bytes) -> pd.DataFrame:
     # Parse XML into a flat tabular DataFrame.
-    # ==== SOURCE PAGE 0047 ====
     # Strategy 1 -- Repeating same-tag children of root (most common tabular XML).
     # Uses full recursive dot-path flattening so 3+ level nesting works.
     # Strategy 2 -- Repeating same-tag elements found by BFS at any depth
@@ -1039,7 +959,6 @@ def _parse_xml(raw: bytes) -> pd.DataFrame:
         text = (elem.text or "").strip()
         children = list(elem)
 
-        # ==== SOURCE PAGE 0048 ====
 
         if children:
             for child in children:
@@ -1060,7 +979,6 @@ def _parse_xml(raw: bytes) -> pd.DataFrame:
             for k, v in child.attrib.items():
                 rec[f"{ctag}@{_strip_ns(k)}"] = v
             if sub:
-                # ==== SOURCE PAGE 0049 ====
                 # Recurse: flatten nested children with dot-path
                 for k, v in _elem_to_dict(child, "").items():
                     rec[k] = v
@@ -1081,7 +999,6 @@ def _parse_xml(raw: bytes) -> pd.DataFrame:
             # Search one level deeper (pick the child with most children)
             best = max(children, key=lambda c: len(list(c)), default=None)
 
-            # ==== SOURCE PAGE 0050 ====
 
             if best is not None:
                 return _find_repeating(best, depth + 1)
@@ -1102,7 +1019,6 @@ def _parse_xml(raw: bytes) -> pd.DataFrame:
                 return pd.DataFrame(records)
 
     # Strategy 2: BFS for repeating elements deeper in the tree
-    # ==== SOURCE PAGE 0051 ====
 
     # Skip root-level children -- Strategy 1 already tried those
     deeper_start = max(list(root), key=lambda c: len(list(c)), default=None)
@@ -1123,8 +1039,6 @@ def _parse_xml(raw: bytes) -> pd.DataFrame:
     row["tag"] = root_tag
     return pd.DataFrame([row])
 
-
-# ==== SOURCE PAGE 0052 ====
 
 # ---------------------------------------------------------------------
 # SWIFT MT message parser
@@ -1164,7 +1078,6 @@ _SWIFT_FIELD_NAMES: dict[str, str] = {
     "62M": "Intermediate Closing Balance",
     "70":  "Remittance Information",
 
-    # ==== SOURCE PAGE 0053 ====
 
     "71A": "Details of Charges",
     "71F": "Sender's Charges",
@@ -1185,7 +1098,6 @@ _MT_BLOCK_NAMES: dict[str, str] = {
 
 
 def _parse_swift_mt(raw: bytes, enc: str) -> pd.DataFrame:
-    # ==== SOURCE PAGE 0055 ====
     # Parse SWIFT MT messages into wide format: one row per message.
     #
     # Strategies (tried in order):
@@ -1204,7 +1116,6 @@ def _parse_swift_mt(raw: bytes, enc: str) -> pd.DataFrame:
     def _fields_from_text(content: str) -> dict:
         # Extract :TAG: value pairs from a block of text.
         rec: dict = {}
-        # ==== SOURCE PAGE 0056 ====
         field_re = re.compile(
             r"^:([0-9]{2}[A-Z]?):([ \t]*[^\n]*(?:\n(?![ \t]*:[0-9]|\-)[ \t]*[^\n]*)*)",  # OCR-UNCERTAIN: complex regex, exact escaping/brackets hard to verify from photo
             re.MULTILINE,
@@ -1225,7 +1136,6 @@ def _parse_swift_mt(raw: bytes, enc: str) -> pd.DataFrame:
     block_pat = re.compile(r"\{(\d):([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}", re.DOTALL)  # OCR-UNCERTAIN: regex braces/escaping hard to verify from photo
     msg_splits = re.split(r"(?=\{1:)", text.strip())
 
-    # ==== SOURCE PAGE 0057 ====
 
     msg_splits = [m.strip() for m in msg_splits if m.strip()]
 
@@ -1252,7 +1162,6 @@ def _parse_swift_mt(raw: bytes, enc: str) -> pd.DataFrame:
             if mt_m:
                 rec["mt_type"] = mt_m.group(1)
 
-        # ==== SOURCE PAGE 0058 ====
 
         if "3" in blocks:
             for sm in re.finditer(r"\{([A-Z0-9]+):([^}]*)\}", blocks["3"]):  # OCR-UNCERTAIN: brace/escape sequence hard to verify from photo
@@ -1277,7 +1186,6 @@ def _parse_swift_mt(raw: bytes, enc: str) -> pd.DataFrame:
     ]
     clean_text = "\n".join(clean_lines)
 
-    # ==== SOURCE PAGE 0059 ====
 
     # Split on message terminators: a line that is just '-'
     msg_blocks = re.split(r"(?m)^\s*-\s*$", clean_text)
@@ -1302,8 +1210,6 @@ def _parse_swift_mt(raw: bytes, enc: str) -> pd.DataFrame:
     return pd.DataFrame({"raw": [text]})
 
 
-# ==== SOURCE PAGE 0060 ====
-
 def _is_swift_mt(raw: bytes, enc: str) -> bool:
     # Heuristic: file looks like a SWIFT MT message.
     #
@@ -1321,7 +1227,6 @@ def _is_swift_mt(raw: bytes, enc: str) -> bool:
             return True
         # Require SWIFT field tags anchored at the start of a line, >=2 matches
 
-        # ==== SOURCE PAGE 0061 ====
 
         field_tags = re.findall(r"(?m)^\s*:[0-9]{2}[A-Z]?:", sample)  # OCR-UNCERTAIN: exact regex chars hard to verify from photo
         if len(field_tags) >= 2:
@@ -1343,7 +1248,6 @@ _FIX_TAG_NAMES: dict[str, str] = {
     "17": "ExecID", "150": "ExecType", "39": "OrdStatus",
     "55": "Symbol", "54": "Side", "38": "OrderQty",
 
-    # ==== SOURCE PAGE 0062 ====
 
     "44": "Price", "40": "OrdType", "58": "Text",
     "10": "CheckSum", "60": "TransactTime", "14": "CumQty",
@@ -1364,7 +1268,6 @@ def _parse_fix(raw: bytes, enc: str) -> pd.DataFrame:
 
     # -- Layout A: standard numeric FIX (SOH or pipe delimited) -------------
 
-    # ==== SOURCE PAGE 0063 ====
     has_soh = "\x01" in text
     has_pipe = "|" in text and re.search(r"\b\d+=", text)
 
@@ -1385,7 +1288,6 @@ def _parse_fix(raw: bytes, enc: str) -> pd.DataFrame:
                 rec[col] = val.strip()
             return rec
 
-        # ==== SOURCE PAGE 0064 ====
         raw_msgs = re.split(r"(?=8=FIX)", text)
         records = [r for m in raw_msgs if (r := _parse_fix_fields(m.strip()))]
         if records:
@@ -1406,7 +1308,6 @@ def _parse_fix(raw: bytes, enc: str) -> pd.DataFrame:
         if lines:
             content_blocks.append("\n".join(lines))
 
-    # ==== SOURCE PAGE 0065 ====
     if content_blocks:
         record_blocks = content_blocks
     else:
@@ -1426,7 +1327,6 @@ def _parse_fix(raw: bytes, enc: str) -> pd.DataFrame:
             key = key.strip()
             val = val.strip()
             if key:
-                # ==== SOURCE PAGE 0066 ====
                 rec[key] = val
         if rec:
             records.append(rec)
@@ -1450,9 +1350,6 @@ def _is_fix(raw: bytes, enc: str) -> bool:
         return False
 
 
-
-# ==== SOURCE PAGE 0067 ====
-
 # ----------------------------------------------------------------------
 # ISO 20022 / SWIFT MX XML parser
 # ----------------------------------------------------------------------
@@ -1473,7 +1370,6 @@ def _parse_iso20022(raw: bytes) -> pd.DataFrame:
     # Parse ISO 20022 / SWIFT MX XML messages.
     # Returns one row per leaf element with columns: path, element, value, attributes.
 
-    # ==== SOURCE PAGE 0068 ====
     def _strip_ns(tag: str) -> str:
         return re.sub(r"\{[^}]+\}", "", tag)
 
@@ -1494,7 +1390,6 @@ def _parse_iso20022(raw: bytes) -> pd.DataFrame:
     root = ET.fromstring(raw)
     rows: list[dict] = []
 
-    # ==== SOURCE PAGE 0069 ====
     _collect_leaves(root, "", rows)
     return pd.DataFrame(rows) if rows else pd.DataFrame({"tag": [_strip_ns(root.tag)]})
 
@@ -1514,7 +1409,6 @@ def _parse_json_nested(raw: bytes) -> pd.DataFrame:
     # are correctly flattened.
     obj = json.loads(raw)
 
-    # ==== SOURCE PAGE 0070 ====
 
     def _find_records(o, depth: int = 0) -> list | None:
         # BFS: return the first list-of-dicts found within *o*.
@@ -1536,7 +1430,6 @@ def _parse_json_nested(raw: bytes) -> pd.DataFrame:
                         and o[k] and isinstance(o[k][0], dict)]
             others = [k for k in o if k not in priority]
             for key in priority + others:
-                # ==== SOURCE PAGE 0071 ====
                 found = _find_records(o[key], depth + 1)
                 if found:
                     return found
@@ -1562,7 +1455,6 @@ def _parse_json_nested(raw: bytes) -> pd.DataFrame:
         try:
             return pd.json_normalize(obj, sep=".")
 
-        # ==== SOURCE PAGE 0072 ====
 
         except Exception:
             return pd.DataFrame({"value": [json.dumps(i) for i in obj]})
@@ -1585,9 +1477,6 @@ def _parse_fpml(raw: bytes) -> pd.DataFrame:
 
     # Each top-level trade / dataDocument child becomes one row.
 
-
-
-    # # ==== SOURCE PAGE 0073 ====
 
     # Leaf elements are flattened to dot-path column names (namespace-stripped).
 
@@ -1627,9 +1516,6 @@ def _parse_fpml(raw: bytes) -> pd.DataFrame:
                 result.update(_flatten(child, path))
 
 
-
-# ==== SOURCE PAGE 0074 ====
-
         return result
 
 
@@ -1660,9 +1546,6 @@ def _parse_fpml(raw: bytes) -> pd.DataFrame:
             rows.append(_flatten(root))
 
 
-
-# ==== SOURCE PAGE 0075 ====
-
     else:
 
         rows.append(_flatten(root))
@@ -1690,9 +1573,6 @@ def _parse_xbrl(raw: bytes) -> pd.DataFrame:
     # iXBRL: strip HTML wrapper and extract the xbrl portion
 
 
-
-# ==== SOURCE PAGE 0076 ====
-
     if re.search(r"<html", text, re.IGNORECASE):
 
         # Pull out ix:nonFraction / ix:nonNumeric tags for inline XBRL
@@ -1719,9 +1599,6 @@ def _parse_xbrl(raw: bytes) -> pd.DataFrame:
 
             return pd.DataFrame(rows)
 
-
-
-# ==== SOURCE PAGE 0077 ====
 
     # Standard XBRL: parse contexts then facts
     root = ET.fromstring(raw)
@@ -1756,9 +1633,6 @@ def _parse_xbrl(raw: bytes) -> pd.DataFrame:
 
                 elif t == "startDate":
 
-
-
-# ==== SOURCE PAGE 0078 ====
 
                     p_start = (child.text or "").strip()
 
@@ -1795,9 +1669,6 @@ def _parse_xbrl(raw: bytes) -> pd.DataFrame:
                 "context_id": ctx_ref,
 
 
-
-# ==== SOURCE PAGE 0079 ====
-
                 "entity": ctx_info.get("entity", ""),
                 "period_start": ctx_info.get("period_start", ""),
                 "period_end": ctx_info.get("period_end", ""),
@@ -1817,7 +1688,6 @@ def _parse_nacha(raw: bytes, enc: str) -> pd.DataFrame:
     # Returns one row per Entry Detail (record type 6) enriched with its
     # parent Batch Header (record type 5) fields for easy reconciliation.
 
-    # ==== SOURCE PAGE 0080 ====
     RECORD_SPECS: dict[str, dict] = {
         "1": {  # File Header
             "record_type": (0, 1), "priority_code": (1, 3),
@@ -1838,7 +1708,6 @@ def _parse_nacha(raw: bytes, enc: str) -> pd.DataFrame:
             "batch_number": (87, 94),
         },
 
-        # ==== SOURCE PAGE 0081 ====
         "6": {  # Entry Detail
             "record_type": (0, 1), "transaction_code": (1, 3),
             "rdfi_routing": (3, 11), "check_digit": (11, 12),
@@ -1859,7 +1728,6 @@ def _parse_nacha(raw: bytes, enc: str) -> pd.DataFrame:
             "company_id": (44, 54), "odfi_routing": (84, 92),  # OCR-UNCERTAIN: offset overlaps with batch_number below, exact numbers hard to verify from photo
             "batch_number": (87, 94),
 
-            # ==== SOURCE PAGE 0082 ====
         },
     }
 
@@ -1880,7 +1748,6 @@ def _parse_nacha(raw: bytes, enc: str) -> pd.DataFrame:
         elif rtype == "6":
             entry = {**current_batch, **record}
 
-            # ==== SOURCE PAGE 0083 ====
             # Convert amount to decimal (NACHA stores cents without decimal point)
             try:
                 entry["amount"] = int(entry.get("amount", "0")) / 100
@@ -1900,7 +1767,6 @@ def _parse_nacha(raw: bytes, enc: str) -> pd.DataFrame:
             if spec:
                 rows.append({f: line[s:e].strip() for f, (s, e) in spec.items()})
 
-    # ==== SOURCE PAGE 0084 ====
     return pd.DataFrame(rows)
 
 
@@ -1920,7 +1786,6 @@ def _parse_pdf(raw: bytes) -> tuple[pd.DataFrame, str]:
     # Tables with only 1 column are almost always layout artefacts (logos,
     # section headers) and are excluded from the structured output.
 
-    # ==== SOURCE PAGE 0085 ====
     tables_by_ncols: dict[int, list[pd.DataFrame]] = {}
     all_text_lines: list[str] = []
 
@@ -1941,7 +1806,6 @@ def _parse_pdf(raw: bytes) -> tuple[pd.DataFrame, str]:
                         seen[h] = 0
                         deduped.append(h)
 
-                    # ==== SOURCE PAGE 0086 ====
                 rows = [[str(c).strip() if c is not None else "" for c in row] for row in table[1:]]
                 if rows:
                     df_tbl = pd.DataFrame(rows, columns=deduped)
@@ -1961,7 +1825,6 @@ def _parse_pdf(raw: bytes) -> tuple[pd.DataFrame, str]:
 
     # No multi-column tables -- return empty DataFrame so caller uses LLM path
 
-    # ==== SOURCE PAGE 0087 ====
     return pd.DataFrame(), full_text
 
 
@@ -1981,7 +1844,6 @@ def _parse_bloomberg_dlx(raw: bytes, enc: str) -> pd.DataFrame:
     in_fields = False
     in_data = False
 
-    # ==== SOURCE PAGE 0088 ====
     for line in lines:
         stripped = line.strip()
         if stripped == "START-OF-FIELDS":
@@ -2001,7 +1863,6 @@ def _parse_bloomberg_dlx(raw: bytes, enc: str) -> pd.DataFrame:
         elif in_data and stripped:
             data_rows.append(stripped.split("|"))
 
-    # ==== SOURCE PAGE 0089 ====
     if not fields and not data_rows:
         # Fallback: plain pipe-delimited
         return pd.read_csv(io.BytesIO(raw), sep="|", encoding=enc,
@@ -2021,9 +1882,6 @@ def _parse_bloomberg_dlx(raw: bytes, enc: str) -> pd.DataFrame:
 def _parse_murex_mxml(raw: bytes) -> pd.DataFrame:
     # Parse Murex MXML trade export files into a flat DataFrame.
 
-
-
-    # # ==== SOURCE PAGE 0090 ====
 
     # MXML wraps trades in <TRADES><TRADE>...</TRADE></TRADES> or
     # <MXMLDocument><Trade>...</Trade></MXMLDocument> envelopes.
@@ -2057,9 +1915,6 @@ def _parse_murex_mxml(raw: bytes) -> pd.DataFrame:
 
         else:
 
-
-
-# ==== SOURCE PAGE 0091 ====
 
             for child in children:
 
@@ -2095,9 +1950,6 @@ def _parse_murex_mxml(raw: bytes) -> pd.DataFrame:
     if not rows:
 
 
-
-# ==== SOURCE PAGE 0092 ====
-
         rows.append(_flatten(root))
 
 
@@ -2119,9 +1971,6 @@ def _parse_markitwire(raw: bytes) -> pd.DataFrame:
 
     return _parse_xml(raw)
 
-
-
-# ==== SOURCE PAGE 0093 ====
 
 def _is_bloomberg_dlx(raw: bytes, enc: str) -> bool:
     # Return True if the file looks like a Bloomberg DL/BDL envelope.
@@ -2145,7 +1994,6 @@ def _parse_dtcc_gtr(raw: bytes, enc: str) -> pd.DataFrame:
     text = raw.decode(enc, errors="replace")
     first_line = text.split("\n")[0] if text else ""
 
-    # ==== SOURCE PAGE 0094 ====
     # Detect delimiter from header line
     pipe_count = first_line.count("|")
     tab_count = first_line.count("\t")
@@ -2164,7 +2012,6 @@ def _parse_reuters_ric(raw: bytes, enc: str) -> pd.DataFrame:
     text = raw.decode(enc, errors="replace")
     first_line = text.split("\n")[0] if text else ""
 
-    # ==== SOURCE PAGE 0095 ====
     # Detect delimiter
     pipe_count = first_line.count("|")
     tab_count = first_line.count("\t")
@@ -2277,7 +2124,6 @@ def _raise_if_looks_like_broken_xml(raw: bytes, enc: str, xml_exc: Exception) ->
 
 
 def _load_file(upload, delimiter=None) -> pd.DataFrame:
-    # ==== SOURCE PAGE 0096 ====
     # Load any supported file format into a DataFrame.
     #
     # Sets df.attrs['_format'] and df.attrs['_delimiter'] on the returned frame.
@@ -2298,7 +2144,6 @@ def _load_file(upload, delimiter=None) -> pd.DataFrame:
     # Bloomberg DLX (.bbg/.dlx/.bdl) - Murex MXML (.mxml)
     # MarkitWire (.mwire/.markitwire) - DTCC GTR/TRACE (.gtr/.trace)
     # Reuters RIC (.ric) - plain TXT
-    # ==== SOURCE PAGE 0097 ====
     # Text files without a recognised extension are auto-sniffed for
     # SWIFT MT -> FIX -> delimiter-separated -> single-value fallback.
     #
@@ -2339,7 +2184,6 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
     def _labelled(df: pd.DataFrame, fmt: str, delim: str = "") -> pd.DataFrame:
         df.attrs["_format"] = fmt
         df.attrs["_delimiter"] = delim
-        # ==== SOURCE PAGE 0098 ====
         # Surface any parse warnings -- _load_file() has no logger of its own, so
         # warnings are left on df.attrs for the caller's own _log() to pick up.
         df.attrs["_parse_warnings"] = df.attrs.pop("_parse_warnings", [])
@@ -2359,7 +2203,6 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
 
     def _csv_with_delim(fmt_label: str) -> pd.DataFrame:
         # Parse a CSV / delimited file with reliable auto-detection.
-        # ==== SOURCE PAGE 0099 ====
         # Uses the robust _sniff_delimiter (count-and-confirm + sniffer fallback)
         # so files like SmartLoan.csv that are actually pipe-delimited parse correctly
         # even when the extension says .csv.
@@ -2378,7 +2221,6 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
         text, used_enc = _decode_raw(raw)
 
         # -- Robust sniffer (handles pipe-delimited .csv, spaces in col names, etc.)
-        # ==== SOURCE PAGE 0100 ====
         sniffed = _sniff_delimiter(text)
         if sniffed:
             df = _read_delimited(text, sniffed)
@@ -2398,7 +2240,6 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
         # -- Single-column fallback
         try:
             df = pd.read_csv(io.StringIO(text), sep=",", on_bad_lines="skip", dtype=str)
-            # ==== SOURCE PAGE 0101 ====
             return _labelled(df, fmt_label, ",")
         except Exception:
             return _labelled(pd.DataFrame({"value": text.splitlines()}), fmt_label, "")
@@ -2436,7 +2277,6 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
             return _labelled(pd.read_parquet(io.BytesIO(raw)), "Parquet")
 
         # -- JSON (including nested / deeply-nested)
-        # ==== SOURCE PAGE 0102 ====
         if ext == ".json":
             return _labelled(_parse_json_nested(raw), "JSON")
 
@@ -2456,7 +2296,6 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
 
         # -- FIX protocol
         if ext == ".fix":
-            # ==== SOURCE PAGE 0103 ====
             return _labelled(_parse_fix(raw, enc), "FIX Protocol")
 
         # -- PDF: table extraction -> LLM fallback
@@ -2482,7 +2321,6 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
 
         # -- FpML (Financial products Markup Language)
         if ext == ".fpml":
-            # ==== SOURCE PAGE 0104 ====
             return _labelled(_parse_fpml(raw), "FpML")
 
         # -- XBRL instance documents (standard or inline)
@@ -2502,7 +2340,6 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
                 import fastavro
                 reader = fastavro.reader(io.BytesIO(raw))
                 records = list(reader)
-                # ==== SOURCE PAGE 0105 ====
                 return _labelled(pd.DataFrame(records), "Avro")
             except ImportError:
                 raise ImportError("fastavro is required for Avro files. Install it with: pip install fastavro")
@@ -2521,7 +2358,6 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
             return _labelled(_parse_bloomberg_dlx(raw, enc), "Bloomberg DLX")
 
         # -- Murex MXML trade exports
-        # ==== SOURCE PAGE 0106 ====
         if ext == ".mxml":
             return _labelled(_parse_murex_mxml(raw), "Murex MXML")
 
@@ -2541,7 +2377,6 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
         if ext in (".txt", ""):
             if not delimiter:
                 # Try JSON first -- catches .txt files containing JSON
-                # ==== SOURCE PAGE 0107 ====
                 try:
                     df = _parse_json_nested(raw)
                     if len(df.columns) > 1 or len(df) > 1:
@@ -2564,7 +2399,6 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
                     return _labelled(_parse_swift_mt(raw, enc), "SWIFT MT (auto-detected)")
 
                 if _is_fix(raw, enc):
-                    # ==== SOURCE PAGE 0108 ====
                     return _labelled(_parse_fix(raw, enc), "FIX Protocol (auto-detected)")
 
             df = _parse_txt(raw, enc, delimiter)
@@ -2586,7 +2420,6 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
 
         if not delimiter:
             # Try JSON/XML before SWIFT MT to avoid false-positive detection
-            # ==== SOURCE PAGE 0109 ====
             try:
                 df = _parse_json_nested(raw)
                 if len(df.columns) > 1 or len(df) > 1:
@@ -2611,7 +2444,6 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
         used_delim = df.attrs.pop("_detected_delimiter", delimiter or "")
         return _labelled(df, "Text", used_delim)
 
-    # ==== SOURCE PAGE 0110 ====
     # OCR-UNCERTAIN: exact enclosing try/function for this except block not visible on this page
     except HTTPException:
         raise
@@ -2656,7 +2488,6 @@ def _df_from_connection(conn_id: str, username: str) -> tuple[str, pd.DataFrame]
     # Raises HTTPException on failure so the user gets a clear error.
 
     if not _WS_ENABLED:
-        # ==== SOURCE PAGE 0111 ====
         raise HTTPException(503, "Workspace feature not available -- cannot load from saved connection.")
 
     rec = _ws_db.get_connection(conn_id, username)
@@ -2698,8 +2529,6 @@ def _df_from_connection(conn_id: str, username: str) -> tuple[str, pd.DataFrame]
     ) from _last_exc
 
 
-# ==== SOURCE PAGE 0112 ====
-
 # Column-name keyword sets used for auto-detection
 _DD_KEYS = {"description", "owner", "sensitivity", "data_type", "nullable",
             "is_pk", "format_pattern", "allowed_values", "business_term",
@@ -2715,13 +2544,10 @@ _MAP_KEYS = {"source_column", "source_field", "source_attribute",
              "transformation", "mapping", "src", "tgt"}
 
 
-
-
 def _classify_ref_doc(df: pd.DataFrame) -> str:
     # Auto-detect reference document type by scoring its column names.
     # Returns one of: 'data_dict' | 'rules' | 'mapping' | 'general'
 
-    # ==== SOURCE PAGE 0113 ====
 
     if df.empty:
         return "general"
@@ -2744,7 +2570,6 @@ def _classify_ref_doc(df: pd.DataFrame) -> str:
     if rules_score >= 1 and has_col_ref:
         return "rules"
 
-    # ==== SOURCE PAGE 0114 ====
 
     if rules_score >= 2:  # even without column ref (dataset-level rules)
         return "rules"
@@ -2760,12 +2585,9 @@ def _classify_ref_doc(df: pd.DataFrame) -> str:
     return "general"
 
 
-
-
 def _extract_kb_as_ref_doc(raw_bytes: bytes, filename: str) -> dict:
     # Knowledge Base extraction -- handles ANY file format as a reference document.
     # For structured/tabular files (CSV, Excel, JSON, XML, SWIFT, FIX, Parquet):
-    # ==== SOURCE PAGE 0115 ====
     # -> _load_file() -> DataFrame -> _classify_ref_doc() -> existing pipeline
     #
     # For unstructured files (PDF free-text, plain-text prose, Notepad, Word/HTML):
@@ -2785,7 +2607,6 @@ def _extract_kb_as_ref_doc(raw_bytes: bytes, filename: str) -> dict:
             self.file = _io.BytesIO(data)
 
     try:
-        # ==== SOURCE PAGE 0116 ====
         df = _load_file(_FakeUpload(filename, raw_bytes))
         doc_type = _classify_ref_doc(df)
         if doc_type != "general" or len(df.columns) > 1:
@@ -2805,7 +2626,6 @@ def _extract_kb_as_ref_doc(raw_bytes: bytes, filename: str) -> dict:
                     result["doc_type"] = "data_dict"
                     result["data_dict"] = dd
                 elif rls:
-                    # ==== SOURCE PAGE 0117 ====
                     result["doc_type"] = "rules"
                     result["rules"] = rls
             return result
@@ -2825,9 +2645,7 @@ def _extract_kb_as_ref_doc(raw_bytes: bytes, filename: str) -> dict:
     # Trim to 8000 chars -- enough for a full data dictionary
     text_sample = raw_text[:8000]
 
-    # ==== SOURCE PAGE 0118 ====
     # NOTE (reconstruction): this prompt string had lost its opening/closing
-    # triple-quotes and had "# ==== SOURCE PAGE NNNN ====" transcription
     # markers embedded mid-string during OCR assembly. Restored as an f-string
     # with the markers removed (they are pipeline artifacts, not original
     # content) -- verify against source in code review.
@@ -2889,7 +2707,6 @@ Return ONLY the JSON -- no explanation."""
             system="You are a data dictionary extraction engine. Output ONLY valid JSON."
         )
         import re as _re
-        # ==== SOURCE PAGE 0121 ====
         m = _re.search(r'\{.*\}', raw_llm, _re.DOTALL)
         parsed = json.loads(m.group(0)) if m else {}
     except Exception:
@@ -2909,7 +2726,6 @@ Return ONLY the JSON -- no explanation."""
                 "sensitivity":   entry.get("sensitivity", ""),
                 "owner":         entry.get("owner", ""),
                 "business_term": entry.get("business_term", ""),
-                # ==== SOURCE PAGE 0122 ====
                 "allowed_values": entry.get("allowed_values", ""),
                 "format_pattern": entry.get("format_pattern", ""),
                 "min_value":      entry.get("min_value", ""),
@@ -2930,7 +2746,6 @@ Return ONLY the JSON -- no explanation."""
                 "value":       r.get("value", ""),
             })
 
-    # ==== SOURCE PAGE 0123 ====
 
     # Store glossary terms in data_dict with a special marker so they
     # can be used for sensitivity/description enrichment
@@ -2950,9 +2765,7 @@ Return ONLY the JSON -- no explanation."""
         "rules":        rules_out,
         "mapping_spec": [],
         "raw_text":     text_sample[:500],  # for logging
-        # ==== SOURCE PAGE 0124 ====
     }
-
 
 
 def _load_and_classify_ref_docs(uploads: list, kb_raw: list | None = None) -> dict:
@@ -2970,7 +2783,6 @@ def _load_and_classify_ref_docs(uploads: list, kb_raw: list | None = None) -> di
     #     → LLM extraction (_extract_kb_as_ref_doc)
     #
     # Returns:
-    # ==== SOURCE PAGE 0125 ====
     # {
     #   'data_dict':       dict[str, dict],  # merged column-level metadata
     #   'rules':           list[dict],       # business rules
@@ -2989,7 +2801,6 @@ def _load_and_classify_ref_docs(uploads: list, kb_raw: list | None = None) -> di
 
     # 1. Local file uploads (UploadFile objects)
     for upload in (uploads or []):
-        # ==== SOURCE PAGE 0126 ====
         if not upload or not getattr(upload, "filename", None):
             continue
         try:
@@ -3009,7 +2820,6 @@ def _load_and_classify_ref_docs(uploads: list, kb_raw: list | None = None) -> di
         try:
             result = _extract_kb_as_ref_doc(raw_bytes, fname)
 
-            # ==== SOURCE PAGE 0127 ====
 
             doc_type = result.get("doc_type", "general")
 
@@ -3029,7 +2839,6 @@ def _load_and_classify_ref_docs(uploads: list, kb_raw: list | None = None) -> di
             if result.get("mapping_spec"):
                 merged_mapping.extend(result["mapping_spec"])
             if doc_type == "general" and not result.get("data_dict") and not result.get("rules"):
-                # ==== SOURCE PAGE 0128 ====
                 general_docs.append(fname)
 
         except Exception as exc:
@@ -3044,12 +2853,9 @@ def _load_and_classify_ref_docs(uploads: list, kb_raw: list | None = None) -> di
     }
 
 
-
-
 def _parse_data_dictionary(df: pd.DataFrame) -> dict[str, dict]:
     # Expects columns (case-insensitive):
     # column_name | description | owner | sensitivity | data_type |
-    # ==== SOURCE PAGE 0129 ====
     # nullable | is_pk | format_pattern | allowed_values | min_value | max_value | business_term
     #
     # Returns dict keyed by column_name.
@@ -3071,7 +2877,6 @@ def _parse_data_dictionary(df: pd.DataFrame) -> dict[str, dict]:
             "sensitivity": str(row.get("sensitivity", "") or ""),
             "data_type":   str(row.get("data_type", "") or ""),
             "nullable":    str(row.get("nullable", "true")).lower() not in ("false", "no", "0"),
-            # ==== SOURCE PAGE 0130 ====
             "is_pk":          str(row.get("is_pk", "false")).lower() in ("true", "yes", "1"),
             "format_pattern": str(row.get("format_pattern", "") or ""),
             "allowed_values": [v.strip() for v in str(row.get("allowed_values", "") or "").split("|") if v.strip()],  # OCR-UNCERTAIN: line ran off right edge of photo; split/filter pattern reconstructed from matching code seen on page 0134
@@ -3089,7 +2894,6 @@ def _parse_business_rules(df: pd.DataFrame) -> list[dict]:
     if df.empty:
         return []
 
-    # ==== SOURCE PAGE 0131 ====
     df.columns = [c.strip().lower().replace(" ", "_") for c in df.columns]
     rules = []
     for _, row in df.iterrows():
@@ -3108,7 +2912,6 @@ def _parse_mapping_spec(df: pd.DataFrame) -> list[dict]:
     # Reads extended mapping spec with full validation rule support.
     #
     # Required columns: source_column, target_column
-    # ==== SOURCE PAGE 0132 ====
     # Optional: data_type, mandatory, not_null, unique, value_in_list,
     # min_value, max_value, regex_pattern, condition,
     # transformation, business_rule, severity, description
@@ -3127,7 +2930,6 @@ def _parse_mapping_spec(df: pd.DataFrame) -> list[dict]:
     src = next((c for c in df.columns if "source" in c), df.columns[0] if len(df.columns) > 0 else None)
     tgt = next((c for c in df.columns if "target" in c), df.columns[1] if len(df.columns) > 1 else None)
 
-    # ==== SOURCE PAGE 0133 ====
 
     if not src or not tgt:
         return []
@@ -3148,7 +2950,6 @@ def _parse_mapping_spec(df: pd.DataFrame) -> list[dict]:
             return None
 
     def _str(val) -> str:
-        # ==== SOURCE PAGE 0134 ====
         # Return stripped string; treat NaN / None as empty string.
         if val is None or (isinstance(val, float) and math.isnan(val)):
             return ""
@@ -3168,7 +2969,6 @@ def _parse_mapping_spec(df: pd.DataFrame) -> list[dict]:
         specs.append({
             "source_column": source_col,
             "target_column": target_col,
-            # ==== SOURCE PAGE 0135 ====
             "data_type":      _str(row.get("data_type", "string")) or "string",
             "mandatory":      _bool(row.get("mandatory", True)),
             "not_null":       _bool(row.get("not_null", False)),
@@ -3188,7 +2988,6 @@ def _parse_mapping_spec(df: pd.DataFrame) -> list[dict]:
 
 # ------------------------------------------------------------------
 # Smart key inference -- multi-phase, domain-aware
-# ==== SOURCE PAGE 0136 ====
 # ------------------------------------------------------------------
 # Columns that look like system-generated surrogate keys or audit timestamps.
 # These are COMPLETELY excluded from key inference because:
@@ -3207,7 +3006,6 @@ _SYSTEM_GEN_EXACT = frozenset({
     "row_index", "index",
     # audit / ETL timestamps
     "created_at", "updated_at", "created_date", "modified_date",
-    # ==== SOURCE PAGE 0137 ====
     "insert_time", "update_time", "load_date", "etl_date",
     "created_ts", "updated_ts", "modified_ts", "last_updated",
     "inserted_at", "deleted_at",
@@ -3222,13 +3020,11 @@ _SYSTEM_GEN_EXACT = frozenset({
 # No domain-specific column names appear anywhere in this section.
 
 
-
 def _normalize_colname(col: str) -> str:
     # Lower-case + camelCase-to-snake, compress all non-alphanumeric runs to '_'.
     # e.g. 'UpdatedBy' -> 'updated_by', 'last-update' -> 'last_update'.
     s = col.strip()
 
-    # ==== SOURCE PAGE 0138 ====
     # camelCase / PascalCase -> snake
     s = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s)
     s = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", s)
@@ -3246,7 +3042,6 @@ _METADATA_PATTERNS: list = [
     re.compile(r"^(create|modify|update|delete|insert)_(date|time|ts|timestamp|dt)$"),
     re.compile(r"^(date|time|ts|timestamp)_(created|modified|updated|deleted|inserted)$"),
     # --- "last ..." audit patterns ---
-    # ==== SOURCE PAGE 0139 ====
     re.compile(r"^last_(updated?|modified?|changed?|refresh)(_(at|on|date|time|ts|by))?$"),
     re.compile(r"^(last|prev|previous)_(update|modify|change|refresh)_?(date|time|ts)?$"),
     # --- "modified by / created by / updated by" ---
@@ -3261,7 +3056,6 @@ _METADATA_PATTERNS: list = [
     # --- Row versioning / hash / soft-delete ---
     re.compile(r"^(row|record|rec)_(version|ver|hash|checksum|crc|fingerprint)$"),
     re.compile(r"^(is|flag)_(deleted|active|current|valid|latest|live)$"),
-    # ==== SOURCE PAGE 0140 ====
     re.compile(r"^(deleted|active|current|valid|latest|is_latest)$"),
     re.compile(r"^(effective|valid)_(from|to|start|end)$"),
     # --- Bare system names already in _SYSTEM_GEN_EXACT that also appear in comparisons ---
@@ -3281,7 +3075,6 @@ def _is_metadata_col(col: str, dtype=None) -> bool:
 
     norm = _normalize_colname(col)
 
-    # ==== SOURCE PAGE 0141 ====
 
     # Check 1 -- already a known system-gen name
     if norm in _SYSTEM_GEN_EXACT:
@@ -3302,7 +3095,6 @@ def _is_metadata_col(col: str, dtype=None) -> bool:
             "load", "etl", "changed", "last",
         }
 
-        # ==== SOURCE PAGE 0142 ====
 
         name_tokens = set(norm.split("_"))
         if name_tokens & audit_words:
@@ -3321,7 +3113,6 @@ def _metadata_score(col: str, df1: "pd.DataFrame", df2: "pd.DataFrame") -> tuple
     # S1  Disjoint integers, 100% unique in each file → surrogate/auto-increment key
     # S2  Datetime dtype with >80% divergence between files → audit timestamp
     # S3  String column parseable as datetime with >80% divergence → audit timestamp
-    # ==== SOURCE PAGE 0143 ====
     # String column with <15% value overlap and low cardinality → audit user/process
     # S4  Nearly identical value sets (>=90% overlap) → business dimension, NOT metadata
     #     (hard override -- protects any column whose values are stable across files)
@@ -3340,7 +3131,6 @@ def _metadata_score(col: str, df1: "pd.DataFrame", df2: "pd.DataFrame") -> tuple
     s1s = s1.head(_SAMPLE)
     s2s = s2.head(_SAMPLE)
 
-    # ==== SOURCE PAGE 0144 ====
     set1 = set(s1s.astype(str))
     set2 = set(s2s.astype(str))
     union = set1 | set2
@@ -3360,7 +3150,6 @@ def _metadata_score(col: str, df1: "pd.DataFrame", df2: "pd.DataFrame") -> tuple
     # S2 -- datetime dtype + high divergence + audit name → audit timestamp.
     # Name guard is required: business date columns (TradeDate, ExpiryDate,
     # MaturityDate) from different report periods will have high divergence but
-    # ==== SOURCE PAGE 0145 ====
     # are not metadata. Only flag when the name independently looks like an
     # audit/ETL timestamp (created_at, load_date, updated_on etc.).
     if pd.api.types.is_datetime64_any_dtype(s1):
@@ -3379,7 +3168,6 @@ def _metadata_score(col: str, df1: "pd.DataFrame", df2: "pd.DataFrame") -> tuple
                 divergence = 1.0 - overlap_ratio
                 # Same name guard as S2 -- string date columns like TradeDate / ExpiryDate
                 # stored as strings will also have high divergence across report periods.
-                # ==== SOURCE PAGE 0146 ====
                 if divergence > 0.80 and _is_metadata_col(col):
                     return True, f"audit timestamp (string datetime + name, {divergence*100:.0f}% values differ)"
             except Exception:
@@ -3398,7 +3186,6 @@ def _metadata_score(col: str, df1: "pd.DataFrame", df2: "pd.DataFrame") -> tuple
         return True, f"audit user/process ({total_distinct} distinct values, {overlap_ratio*100:.0f}% overlap)"
 
     # N1 -- name pattern only fires when values are highly divergent AND the column
-    # ==== SOURCE PAGE 0147 ====
     # passes the name check without relying on dtype (avoids false positives on
     # business date columns like TradeDate, ExpiryDate whose values naturally differ
     # across two different trade populations but are not audit/ETL metadata).
@@ -3410,8 +3197,6 @@ def _metadata_score(col: str, df1: "pd.DataFrame", df2: "pd.DataFrame") -> tuple
     return False, f"business (no metadata signal, {overlap_ratio*100:.0f}% value overlap)"
 
 
-
-
 def _split_meta_cols(
     cols: list[str],
     df1: "pd.DataFrame | None" = None,
@@ -3420,9 +3205,6 @@ def _split_meta_cols(
 
     # Partition *cols* into (business_cols, meta_cols).
 
-
-
-    # # ==== SOURCE PAGE 0148 ====
 
     # When both DataFrames are available, uses _metadata_score which detects
     # metadata purely from data behaviour -- works on any column name.
@@ -3443,9 +3225,6 @@ def _split_meta_cols(
 
         if is_meta:
 
-
-
-# ==== SOURCE PAGE 0149 ====
 
             meta.append(c)
         else:
@@ -3468,9 +3247,6 @@ _KEY_HINTS_EXACT = {
     # SWIFT
 
 
-
-# ==== SOURCE PAGE 0150 ====
-
     "txnref", "msgref", "swiftref", "transactionreference",
     # FIX
     "clordid", "execid",
@@ -3491,13 +3267,8 @@ _KEY_SUFFIX_RE = re.compile(
 # Rule: these are IDs that identify a system-internal event/transaction, not a
 
 
-
-# ==== SOURCE PAGE 0151 ====
-
 # real-world business entity (instrument, account, client) that exists in multiple
 # systems.
-
-
 
 
 def _col_uniqueness(series: pd.Series) -> float:
@@ -3518,8 +3289,6 @@ def _col_uniqueness(series: pd.Series) -> float:
 
     return non_null.nunique() / len(non_null)
 
-
-# ==== SOURCE PAGE 0152 ====
 
 _UNIQUENESS_SAMPLE = 5_000  # sample size for composite-key uniqueness checks
 
@@ -3542,7 +3311,6 @@ def _combined_uniqueness(df: pd.DataFrame, cols: list[str]) -> float:
 
 def _name_score(col: str) -> float:
     # Score a column name on how key-like it looks.
-    # ==== SOURCE PAGE 0153 ====
     # Returns a value in [0.0, 0.5] -- combined with uniqueness for final ranking.
     #
     # Uses _normalize_colname for PascalCase/camelCase splitting so compound names
@@ -3565,8 +3333,6 @@ def _name_score(col: str) -> float:
     return 0.0
 
 
-# ==== SOURCE PAGE 0154 ====
-
 def _dtype_bonus(series: pd.Series) -> float:
     # Small bonus for data types commonly used as keys.
     # Integers > strings > float (unless integer-valued) > other.
@@ -3585,7 +3351,6 @@ def _dtype_bonus(series: pd.Series) -> float:
                 if (non_null == non_null.astype("int64").astype("float64")).all():
                     return 0.02
             except Exception:
-                # ==== SOURCE PAGE 0155 ====
                 pass
         return 0.0
 
@@ -3604,7 +3369,6 @@ def _is_constant(series: pd.Series) -> bool:
 
 def _col_score(col: str, s1: pd.Series, s2: pd.Series) -> float:
     # Composite score for a single candidate key column.
-    # ==== SOURCE PAGE 0156 ====
     # Components (all in [0,1] range):
     # - uniqueness:  min(uniqueness_f1, uniqueness_f2)  -- most important
     # - name_score:  keyword / pattern match            -- secondary signal
@@ -3621,7 +3385,6 @@ def _cross_overlap(s1: pd.Series, s2: pd.Series) -> float:
     # Uses a sampled set intersection so it runs in O(sample) not O(n*m).
     #
     # Returns 0.0 when the two series share no values at all -- a strong signal that
-    # ==== SOURCE PAGE 0157 ====
     # the column is a system-generated surrogate key (e.g. TradeID, AlertID) whose
     # values have no cross-file join relationship even if the column name matches.
     # Returns 1.0 if every value in s1 appears in s2.
@@ -3645,8 +3408,6 @@ def _cross_overlap(s1: pd.Series, s2: pd.Series) -> float:
     return len(set1 & set2) / len(union)
 
 
-# ==== SOURCE PAGE 0158 ====
-
 def infer_keys(
     df1: pd.DataFrame,
     df2: pd.DataFrame,
@@ -3666,9 +3427,6 @@ def infer_keys(
     # a composite that is fully unique, avoiding duplicate-index issues.
 
 
-
-    # # ==== SOURCE PAGE 0159 ====
-
     # Phase 3 -- 3-column composite: same logic up to triples.
 
     # Phase 4 -- Best-effort single column (most unique available, even if
@@ -3687,10 +3445,6 @@ def infer_keys(
     # candidates are restricted to this set -- columns confirmed semantically
     # equivalent across both files. System-specific IDs that happen to share a
     # name but carry no cross-file join meaning are excluded as a result.
-
-
-
-    # # ==== SOURCE PAGE 0160 ====
 
 
     if not common_cols or len(df1) == 0 or len(df2) == 0:
@@ -3713,9 +3467,6 @@ def infer_keys(
     #                     because _combined_uniqueness treats NULLs as a distinct value
 
 
-
-# ==== SOURCE PAGE 0161 ====
-
     #
     # Zero-overlap exclusion: a column whose values share nothing between the two
     # files
@@ -3728,11 +3479,9 @@ def infer_keys(
     }
 
 
-
     def _not_meta_not_const(c):
         return (not _is_metadata_col(c, df1[c].dtype if c in df1.columns else None)
                 and not _is_constant(df1[c]) and not _is_constant(df2[c]))
-
 
 
     def _has_cross_overlap(c):
@@ -3740,9 +3489,6 @@ def infer_keys(
         # system-generated surrogates and would produce zero join matches.
         return _overlap_cache.get(c, 0.0) > 0.0
 
-
-
-# ==== SOURCE PAGE 0162 ====
 
     solo_candidates = [
         c for c in common_cols
@@ -3763,9 +3509,6 @@ def infer_keys(
             and _has_cross_overlap(c)
         ]
 
-
-
-# ==== SOURCE PAGE 0163 ====
 
     if not all_candidates:
         return [], "content-based (no candidate columns -- all share zero cross-file value overlap)"
@@ -3788,7 +3531,6 @@ def infer_keys(
         [(c, _name_score(c) + _dtype_bonus(df1[c])) for c in all_candidates],
         key=lambda x: x[1],
         reverse=True,
-        # ==== SOURCE PAGE 0164 ====
     )
 
     # -- Phase 1: perfect single-column key --
@@ -3810,9 +3552,6 @@ def infer_keys(
     # per combo (16ms → <1ms per combo).
     top_cols = [c for c, _ in ranked_all[:12]]
 
-
-
-# ==== SOURCE PAGE 0165 ====
 
     _PERFECT = 0.995
     _GOOD    = 0.95
@@ -3836,9 +3575,6 @@ def infer_keys(
         # Join col values with a separator char -- unique joined strings = unique combos
 
 
-
-    # ==== SOURCE PAGE 0166 ====
-
         sep = np.full(n, "\x00", dtype=object)
         combined = arrs[cols[0]].astype(object)
         for c in cols[1:]:
@@ -3861,9 +3597,6 @@ def infer_keys(
             u = min(_combo_uniqueness_fast(col_arrs1, combo, n1),
 
 
-
-    # ==== SOURCE PAGE 0167 ====
-
                     _combo_uniqueness_fast(col_arrs2, combo, n2))
             if u > best_combo_u:
                 best_combo_u, best_combo = u, combo
@@ -3885,9 +3618,6 @@ def infer_keys(
     u1 = round(_col_uniqueness(df1[best_col]) * 100, 1)
 
 
-
-    # ==== SOURCE PAGE 0168 ====
-
     u2 = round(_col_uniqueness(df2[best_col]) * 100, 1)
     if min(u1, u2) >= 50:      # at least half-unique -- still useful
         return [best_col], (
@@ -3903,15 +3633,11 @@ def infer_keys(
 # ------------------------------------------------------------------
 
 
-
 def _normalise(df: pd.DataFrame) -> pd.DataFrame:
     clean_cols = [str(c).strip() for c in df.columns]
     needs_copy = (list(df.columns) != clean_cols) or (df.index != pd.RangeIndex(len(df))).any()
     if not needs_copy:
 
-
-
-# ==== SOURCE PAGE 0169 ====
 
         return df
 
@@ -3934,7 +3660,6 @@ def _safe_str(v) -> str:
     # null is represented differently across file formats (e.g. 'NULL' in TXT vs
     # NaN in JSON/CSV).
 
-    # ==== SOURCE PAGE 0170 ====
     if v is None:
         return ""
     if isinstance(v, float) and math.isnan(v):
@@ -3954,9 +3679,6 @@ def _detect_null_column_exceptions(df1, df2, data_cols: list) -> list[dict]:
 
     exceptions = []
 
-
-
-    # ==== SOURCE PAGE 0171 ====
 
     for col in data_cols:
         in1 = col in df1.columns
@@ -3978,7 +3700,6 @@ def _detect_null_column_exceptions(df1, df2, data_cols: list) -> list[dict]:
                 "non_null_count": int(len(non_null)),
                 "sample_values": non_null.astype(str).head(5).tolist(),
 
-                # ==== SOURCE PAGE 0172 ====
 
             })
         else:
@@ -3995,14 +3716,11 @@ def _detect_null_column_exceptions(df1, df2, data_cols: list) -> list[dict]:
     return exceptions
 
 
-
-
 def _build_modified_rows(changed_df, keys, use_cols, make_kv, out_list):
     # Vectorised extraction of changed cell pairs -- avoids iterrows on the diff result.
     if changed_df.empty:
         return
 
-    # ==== SOURCE PAGE 0173 ====
     def _norm_col(series: pd.Series) -> pd.Series:
         # Normalise a data column for comparison: NaN + all null sentinels -> "".
         return (
@@ -4022,9 +3740,6 @@ def _build_modified_rows(changed_df, keys, use_cols, make_kv, out_list):
         v2 = _norm_col(changed_df[c2])
         mask = v1 != v2
 
-
-
-    # ==== SOURCE PAGE 0174 ====
 
         changed_df[f"_diff_{c}"] = mask
         # Store normalised values so _safe_str display is already clean
@@ -4048,15 +3763,10 @@ def _build_modified_rows(changed_df, keys, use_cols, make_kv, out_list):
                 "key_values":    make_kv(key_val),
 
 
-
-    # ==== SOURCE PAGE 0175 ====
-
                 "changes":       changes,
                 "changed_col_count": len(changes),
                 "break_type":    _classify_break(changes),
             })
-
-
 
 
 def _series_differs(v1: pd.Series, v2: pd.Series) -> pd.Series:
@@ -4102,7 +3812,6 @@ def _key_based_diff(df1, df2, keys, common_cols, force_data_cols: list[str] | No
     # Each row carries:
     #   key_values  {key_col: value, ...}
     #   row_data    {col: value, ...} (file1_only / file2_only)
-    # ==== SOURCE PAGE 0176 ====
     #   changes     {col: {file1, file2}, ...} (modified only)
     #
     # force_data_cols: when provided, skip _split_meta_cols entirely and use
@@ -4121,7 +3830,6 @@ def _key_based_diff(df1, df2, keys, common_cols, force_data_cols: list[str] | No
         return s.where(~s.str.lower().isin(_NULL_SENTINELS), "")
 
     for k in keys:
-        # ==== SOURCE PAGE 0177 ====
         df1[k] = _norm_key_col(df1[k])
         df2[k] = _norm_key_col(df2[k])
 
@@ -4141,7 +3849,6 @@ def _key_based_diff(df1, df2, keys, common_cols, force_data_cols: list[str] | No
 
     all_data_cols = [c for c in common_cols if c not in keys]
     if force_data_cols is not None:
-        # ==== SOURCE PAGE 0178 ====
         # Caller provided explicit value columns -- skip metadata classification entirely.
         # This is used when aggregated numeric columns would be wrongly classified as
         # surrogate keys by _metadata_score.
@@ -4161,7 +3868,6 @@ def _key_based_diff(df1, df2, keys, common_cols, force_data_cols: list[str] | No
         except Exception:
             return {}
 
-    # ==== SOURCE PAGE 0179 ====
 
     def make_kv(key):
         return dict(zip(keys, key)) if isinstance(key, tuple) else {keys[0]: key}
@@ -4184,7 +3890,6 @@ def _key_based_diff(df1, df2, keys, common_cols, force_data_cols: list[str] | No
     modified_rows = []
     _true_modified_count = 0  # real total, independent of the _MAX_DIFF_ROWS display cap
 
-    # ==== SOURCE PAGE 0180 ====
     if common_keys and data_cols:
         use_cols = data_cols[:_MAX_DATA_COLS]
         # Determine if key is truly unique in both files
@@ -4204,7 +3909,6 @@ def _key_based_diff(df1, df2, keys, common_cols, force_data_cols: list[str] | No
                     v1 = merged[c1].fillna("").astype(str).str.strip().apply(
                         lambda v: "" if v.lower() in _NULL_SENTINELS else v)
                     v2 = merged[c2].fillna("").astype(str).str.strip().apply(
-                        # ==== SOURCE PAGE 0181 ====
                         lambda v: "" if v.lower() in _NULL_SENTINELS else v)
                     diff_mask |= _series_differs(v1, v2)
 
@@ -4227,7 +3931,6 @@ def _key_based_diff(df1, df2, keys, common_cols, force_data_cols: list[str] | No
             diff_mask = pd.Series(False, index=merged.index)
             for c in use_cols:
                 c1, c2 = f"{c}__f1", f"{c}__f2"
-                # ==== SOURCE PAGE 0182 ====
                 if c1 in merged.columns and c2 in merged.columns:
                     v1 = merged[c1].fillna("").astype(str).str.strip().apply(
                         lambda v: "" if v.lower() in _NULL_SENTINELS else v)
@@ -4248,7 +3951,6 @@ def _key_based_diff(df1, df2, keys, common_cols, force_data_cols: list[str] | No
         "file2_only":      file2_only,
         "modified_rows":   modified_rows[:_MAX_DIFF_ROWS],
         "file1_only_count": len(only1_keys),
-        # ==== SOURCE PAGE 0183 ====
         "file2_only_count": len(only2_keys),
         "modified_count":   _true_modified_count,
         # aliases kept for Excel/email export backward-compat
@@ -4267,7 +3969,6 @@ def _content_based_diff(df1, df2, common_cols):
     # a Counter-based approach on the full row content.
     biz_cols, excluded_meta_cols = _split_meta_cols(common_cols, df1, df2)
 
-    # ==== SOURCE PAGE 0184 ====
     show_cols = biz_cols[:_MAX_DATA_COLS]
 
     # Cap rows before hashing to avoid OOM on very large DataFrames
@@ -4288,7 +3989,6 @@ def _content_based_diff(df1, df2, common_cols):
 
     file1_only = [to_entry(t) for t in f1_tuples[:_MAX_DIFF_ROWS]]
 
-    # ==== SOURCE PAGE 0185 ====
     file2_only = [to_entry(t) for t in f2_tuples[:_MAX_DIFF_ROWS]]
 
     result = {
@@ -4308,7 +4008,6 @@ def _content_based_diff(df1, df2, common_cols):
         "removed_rows":     file1_only,
     }
     if truncated:
-        # ==== SOURCE PAGE 0186 ====
         result["truncation_note"] = (
             f"Row hashing capped at {_ROW_HASH_CAP:,} rows per file to avoid OOM; "
             "results reflect sampled data only."
@@ -4329,9 +4028,6 @@ def _col_stats(df1: pd.DataFrame, df2: pd.DataFrame, common_cols: list[str]) -> 
         # Column-level match rate -- reset index so element-wise compare never raises
         _n1 = s1.fillna("").astype(str).str.strip().reset_index(drop=True)
 
-
-
-# ==== SOURCE PAGE 0187 ====
 
         _n2 = s2.fillna("").astype(str).str.strip().reset_index(drop=True)
         _denom  = min(len(_n1), len(_n2))
@@ -4354,9 +4050,6 @@ def _col_stats(df1: pd.DataFrame, df2: pd.DataFrame, common_cols: list[str]) -> 
             f1_sum = float(s1.sum())
 
 
-
-# ==== SOURCE PAGE 0188 ====
-
             f2_sum = float(s2.sum())
             row["f1_sum"]   = round(f1_sum, 4)
             row["f2_sum"]   = round(f2_sum, 4)
@@ -4377,9 +4070,6 @@ def _col_stats(df1: pd.DataFrame, df2: pd.DataFrame, common_cols: list[str]) -> 
             except Exception:
 
 
-
-# ==== SOURCE PAGE 0189 ====
-
                 pass
         stats.append(row)
     return stats
@@ -4396,14 +4086,9 @@ _AMT_COL_RE = re.compile(
 )
 
 
-
-
 def _classify_break(changes: dict) -> str:
     # Return break category: TIMING | AMOUNT | MISSING | VALUE.
 
-
-
-# ==== SOURCE PAGE 0190 ====
 
     if not changes:
         return "MISSING"
@@ -4423,7 +4108,6 @@ def _build_waterfall(file1_only_count: int, file2_only_count: int,
     # - Missing source (in target only)
     # - Missing target (in source only)
     # - Value breaks by type (TIMING / AMOUNT / VALUE)
-    # ==== SOURCE PAGE 0191 ====
     # - Per-column break counts for the top broken columns
     type_counts: dict[str, int] = {"TIMING": 0, "AMOUNT": 0, "VALUE": 0}
     col_break_counts: dict[str, int] = {}
@@ -4442,11 +4126,8 @@ def _build_waterfall(file1_only_count: int, file2_only_count: int,
         "timing_breaks":  type_counts.get("TIMING", 0),
         "amount_breaks":  type_counts.get("AMOUNT", 0),
         "other_breaks":  type_counts.get("VALUE", 0),
-        # ==== SOURCE PAGE 0192 ====
         "top_broken_cols": [{"col": c, "count": n} for c, n in top_cols],
     }
-
-
 
 
 def compare_dataframes(
@@ -4464,7 +4145,6 @@ def compare_dataframes(
     # Key selection priority:
     # 1. Manual keys supplied by user (comma-separated in UI)
     # 2. key_hints from user_hints (if no manual keys given)
-    # ==== SOURCE PAGE 0193 ====
     # 3. Auto-inferred keys via infer_keys() -- always attempted when no
     # manual keys are given, regardless of the auto_keys flag.
     # infer_keys() tries: 100% unique single col → 2-col composite
@@ -4495,7 +4175,6 @@ def compare_dataframes(
     common_cols = [c for c in df1.columns if c in df2.columns and c not in all_excludes]
     # ==== END GAP ====
 
-    # ==== SOURCE PAGE 0195 ====
     # just JSON serialising every value as a string -- not a meaningful schema diff.
     _fmt1 = df1.attrs.get("_format", "").upper()
     _fmt2 = df2.attrs.get("_format", "").upper()
@@ -4515,7 +4194,6 @@ def compare_dataframes(
         t1, t2 = str(df1[c].dtype), str(df2[c].dtype)
         if t1 != t2:
             type_mismatch[c] = {
-                # ==== SOURCE PAGE 0196 ====
                 "file1": t1,
                 "file2": t2,
                 "format_note": _is_format_artefact(t1, t2),
@@ -4535,7 +4213,6 @@ def compare_dataframes(
             raise HTTPException(400, f"Key column(s) not found in both files: {miss}")
         keys = manual_keys
         key_method = f"manual ({', '.join(manual_keys)})"
-    # ==== SOURCE PAGE 0197 ====
     else:
         # Always try to find a key automatically -- infer_keys() handles all phases.
         # Pass matched_cols so inference is restricted to semantically equivalent
@@ -4552,8 +4229,6 @@ def compare_dataframes(
     _DUP_MAX = 200
 
 
-
-
     def _collect_dups(df: pd.DataFrame) -> tuple[list, int]:
         # Return duplicate rows and count. Uses key cols only for the dup check on large files
         # to avoid O(n*cols) hashing cost; falls back to full-row check for small files.
@@ -4561,9 +4236,6 @@ def compare_dataframes(
         mask = df.duplicated(subset=check_cols, keep=False)
         count = int(mask.sum())
 
-
-
-# ==== SOURCE PAGE 0198 ====
 
         if count == 0:
             return [], 0
@@ -4598,9 +4270,6 @@ def compare_dataframes(
         "type_mismatches": type_mismatch,
 
 
-
-# ==== SOURCE PAGE 0199 ====
-
         "file1_rows": len(df1), "file2_rows": len(df2),
         "common_columns": common_cols,
         "file1_columns": list(df1.columns),
@@ -4621,8 +4290,6 @@ def compare_dataframes(
         ),
         "gross_break_total": round(sum(
 
-
-# ==== SOURCE PAGE 0200 ====
 
                 abs(c.get("net_break", 0) or 0) for c in _cs
                 if c.get("net_break") is not None
@@ -5118,8 +4785,6 @@ def fuzzy_match_dataframes_nway(
 _KNOWN_DOMAINS: dict[str, frozenset] = {
 
 
-# ==== SOURCE PAGE 0201 ====
-
     "currency_code": frozenset([
         "AED","AFN","ALL","AMD","ANG","AOA","ARS","AUD","AWG","AZN","BAM","BBD","BDT",
         "BGN","BHD","BIF","BMD","BND","BOB","BRL","BSD","BTN","BWP","BYN","BZD","CAD",
@@ -5142,8 +4807,6 @@ _KNOWN_DOMAINS: dict[str, frozenset] = {
         "BT","BV","BW","BY","BZ","CA","CC","CD","CF","CG","CH","CI","CK","CL","CM","CN",
 
 
-# ==== SOURCE PAGE 0202 ====
-
     "CO","CR","CU","CV","CW","CX","CY","CZ","DE","DJ","DK","DM","DO","DZ","EC","EE",
     "EG","EH","ER","ES","ET","FI","FJ","FK","FM","FO","FR","GA","GB","GD","GE","GF",
     "GG","GH","GI","GL","GM","GN","GP","GQ","GR","GS","GT","GU","GW","GY","HK","HM",
@@ -5165,8 +4828,6 @@ _KNOWN_DOMAINS: dict[str, frozenset] = {
     "DERIVATIVE","SWAP","FUTURE","OPTION","FORWARD","ETF","FUND","REPO",
     "SECURITISATION","STRUCTURED","FIXED_INCOME","MONEY_MARKET",
 
-
-# ==== SOURCE PAGE 0203 ====
 
     "EQ","FI","CMDTY","CRNCY","CRED","ALTINV",
   ]),
@@ -5191,9 +4852,6 @@ _ADDRESS_PARTS = re.compile(
 _DQ_FORMAT_PATTERNS: dict[str, re.Pattern] = {
 
 
-
-# ==== SOURCE PAGE 0204 ====
-
     "isin":   re.compile(r'^[A-Z]{2}[A-Z0-9]{9}[0-9]$'),
     "cusip":  re.compile(r'^[0-9A-Z]{9}$'),
     "sedol":  re.compile(r'^[0-9BCDFGHJKLMNPQRSTVWXYZ]{7}$'),
@@ -5216,9 +4874,6 @@ _DQ_FORMAT_PATTERNS: dict[str, re.Pattern] = {
     # German PLZ: 5 digits
 
 
-
-# ==== SOURCE PAGE 0205 ====
-
     "postcode_de": re.compile(r'^\d{5}$'),
     # French CP: 5 digits starting 01-95 or 97x
     "postcode_fr": re.compile(r'^(0[1-9]|[1-8]\d|9[0-5]|97[1-6])\d{3}$'),
@@ -5231,8 +4886,6 @@ _DQ_FORMAT_PATTERNS: dict[str, re.Pattern] = {
 }
 
 
-
-
 def _apply_rule(series: pd.Series, rule: dict) -> dict:
     # Apply a single business rule to a column. Returns pass/fail stats.
     rt       = rule.get("rule_type", "")
@@ -5241,9 +4894,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
     total    = len(series)
     passed   = failed = 0
 
-
-
-# ==== SOURCE PAGE 0206 ====
 
     failing_examples = []
 
@@ -5268,9 +4918,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
             failed = int(mask.sum())
 
 
-
-# ==== SOURCE PAGE 0207 ====
-
             passed = total - failed
             failing_examples = series[mask].head(5).astype(str).tolist()
 
@@ -5292,8 +4939,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
             failing_examples = series[mask].head(5).astype(str).tolist()
 
 
-# ==== SOURCE PAGE 0208 ====
-
         elif rt == "min_length":
             mask = series.astype(str).str.len() < int(val)
             failed = int(mask.sum())
@@ -5312,7 +4957,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
             passed = total - failed
             failing_examples = series[mask].head(5).astype(str).tolist()
 
-        # ==== SOURCE PAGE 0209 ====
         elif rt == "pattern":
             mask = ~series.astype(str).str.fullmatch(str(val), na=False)
             failed = int(mask.sum())
@@ -5332,7 +4976,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
             not_allowed = {v.strip() for v in str(val).split("|")}
             mask = series.astype(str).isin(not_allowed)
             failed = int(mask.sum())
-            # ==== SOURCE PAGE 0210 ====
             passed = total - failed
             failing_examples = series[mask].head(5).astype(str).tolist()
 
@@ -5352,7 +4995,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
             passed = total - failed
             failing_examples = series[mask].head(5).astype(str).tolist()
 
-        # ==== SOURCE PAGE 0211 ====
         elif rt == "date_range":
             # val = "YYYY-MM-DD|YYYY-MM-DD"
             parts = str(val).split("|")
@@ -5371,7 +5013,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
             passed = total - failed
             failing_examples = series[mask].head(5).astype(str).tolist()
 
-        # ==== SOURCE PAGE 0212 ====
         elif rt == "not_past_date":
             dates = pd.to_datetime(series, errors="coerce")
             mask = dates < pd.Timestamp.now()
@@ -5391,7 +5032,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
             mask = numeric.notna() & (numeric < 0)
             failed = int(mask.sum())
             passed = total - failed
-            # ==== SOURCE PAGE 0213 ====
             failing_examples = series[mask].head(5).astype(str).tolist()
 
         elif rt == "negative":
@@ -5411,7 +5051,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
         elif rt == "no_whitespace":
             mask = series.astype(str).str.contains(r'\s', regex=True)
             failed = int(mask.sum())
-            # ==== SOURCE PAGE 0214 ====
             passed = total - failed
             failing_examples = series[mask].head(5).astype(str).tolist()
 
@@ -5431,7 +5070,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
             mask = series.astype(str).str.lower() != series.astype(str)
             failed = int(mask.sum())
             passed = total - failed
-            # ==== SOURCE PAGE 0215 ====
             failing_examples = series[mask].head(5).astype(str).tolist()
 
         elif rt == "numeric_only":
@@ -5456,7 +5094,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
         # "sum_equals" kept below under Feature 3 (Control Totals). Since elif
         # chains match top-to-bottom, only one "sum_equals" branch can ever run;
         # verify against source if the original file becomes available.
-        # ==== SOURCE PAGE 0218 ====
         elif rt == "mean_range":
             # val = "lo|hi"
             parts = str(val).split("|")
@@ -5467,7 +5104,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
                 passed, failed = total, 0
             else:
                 passed, failed = 0, total
-            # ==== SOURCE PAGE 0219 ====
             failing_examples = [f"Mean={mean_val:.4f}, expected {lo_m}-{hi_m}"]  # OCR-UNCERTAIN
 
         elif rt == "std_max":
@@ -5487,7 +5123,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
                 passed, failed = total, 0
             else:
                 passed, failed = 0, total
-            # ==== SOURCE PAGE 0220 ====
             failing_examples = [f"Completeness={pct:.1f}%, required>={float(val):.1f}%"]
 
         elif rt == "uniqueness_pct":
@@ -5507,7 +5142,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
             try:
                 _custom_pat = re.compile(str(val))
             except re.error as _re_err:
-                # ==== SOURCE PAGE 0221 ====
                 return {"skipped": True, "reason": f"Invalid regex pattern: {_re_err}"}
             mask = ~series.astype(str).str.fullmatch(_custom_pat.pattern)
             failed = int(mask.sum())
@@ -5527,7 +5161,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
             failing_examples = series[mask].head(5).astype(str).tolist()
 
         elif rt == "decimal_places":
-            # ==== SOURCE PAGE 0222 ====
             # Vectorised: extract decimal part, strip trailing zeros, measure length
             max_dp = int(val)
             clean = series.dropna()
@@ -5546,7 +5179,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
             # Vectorised: format to 10 sig figs, strip non-digits, measure length
             max_sf = int(val)
             clean = series.dropna()
-            # ==== SOURCE PAGE 0223 ====
             sf = (clean.apply(lambda v: len(f"{float(v):.10g}".replace("-", "").replace(".", "").lstrip("0")) if str(v) not in ("nan", "") else 0))  # OCR-UNCERTAIN
             mask = sf > max_sf
             failed = int(mask.sum())
@@ -5565,7 +5197,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
         elif rt == "update_frequency_days":
             # Timeliness: the most recent value must be within N days of today
             dates = pd.to_datetime(series, errors="coerce")
-            # ==== SOURCE PAGE 0224 ====
             most_recent = dates.max()
             if pd.isna(most_recent):
                 passed, failed = 0, total
@@ -5585,7 +5216,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
         elif rt == "row_count_max":
             if total <= int(val):
                 passed, failed = total, 0
-            # ==== SOURCE PAGE 0225 ====
             else:
                 passed, failed = 0, total
 
@@ -5604,7 +5234,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
 
         elif rt == "sum_range":
             # Column sum must be within [min_value, max_value]
-            # ==== SOURCE PAGE 0228 ====
             numeric = pd.to_numeric(series, errors="coerce")
             actual = float(numeric.sum())
             lo = float(rule.get("min_value", val))
@@ -5624,7 +5253,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
                 passed, failed = total, 0
             else:
                 passed, failed = 0, total
-            # ==== SOURCE PAGE 0229 ====
             failing_examples = [f"Net={net:.6f} (tolerance={tol})"]
 
         # -- Feature 5: Business Day / Settlement Date Validation -------------------
@@ -5643,7 +5271,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
             # rule.get("trade_date_col") specifies the trade date column name
             trade_col = rule.get("trade_date_col", "")
             if not trade_col:
-                # ==== SOURCE PAGE 0230 ====
                 return {"skipped": True, "reason": "settlement_date_t2 requires trade_date_col"}
             # This rule is applied at the DataFrame level -- series is the settlement date
             # The check runs in _apply_cross_col_rules, not here
@@ -5662,7 +5289,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
             valid = dates.dropna()
             mask = valid.dt.dayofweek >= 5
             failed = int(mask.sum())
-            # ==== SOURCE PAGE 0231 ====
             passed = len(valid) - failed
             failing_examples = valid[mask].dt.date.head(5).astype(str).tolist()
 
@@ -5681,7 +5307,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
             if not ref_values:
                 return {"skipped": True, "reason": "ref_exists requires ref_values list"}
             ref_set = {str(v).strip().lower() for v in ref_values}
-            # ==== SOURCE PAGE 0232 ====
             clean = series.dropna().astype(str).str.strip().str.lower()
             mask = ~clean.isin(ref_set)
             failed = int(mask.sum())
@@ -5700,7 +5325,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
             mask = series.dropna().astype(str).apply(lambda v: not _is_valid_address(v))
             failed = int(mask.sum())
             passed = total - failed
-            # ==== SOURCE PAGE 0233 ====
             failing_examples = series[mask[mask].index].head(5).astype(str).tolist()
 
         elif rt == "address_parts_complete":
@@ -5717,7 +5341,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
             passed = total - failed
             failing_examples = series[mask].head(5).astype(str).tolist()
 
-        # ==== SOURCE PAGE 0236 ====
         # -- Known domain accuracy
         # ---------------------------------------------------------------------------
         elif rt == "domain_accuracy":
@@ -5735,7 +5358,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
         else:
             return {"skipped": True, "reason": f"Unknown rule type: {rt}"}
 
-    # ==== SOURCE PAGE 0237 ====
     except Exception as exc:
         return {"skipped": True, "reason": str(exc)}
 
@@ -5756,9 +5378,6 @@ def _apply_rule(series: pd.Series, rule: dict) -> dict:
 # BFSI identifier cross-mapping: columns that mean the same thing across systems
 
 
-
-# ==== SOURCE PAGE 0238 ====
-
 _XREF_ID_SYNONYMS: dict[str, list[str]] = {
     "isin":     ["isin", "isin_code", "security_id", "sec_id", "bond_isin"],
     "cusip":    ["cusip", "cusip_code", "cusip9"],
@@ -5778,9 +5397,6 @@ def _xref_normalise_key(series: "pd.Series") -> "pd.Series":
     # strip whitespace, uppercase, remove dashes/spaces (ISIN/CUSIP format variants).
     return (
 
-
-
-# ==== SOURCE PAGE 0239 ====
 
         series.fillna("")
         .astype(str)
@@ -5803,9 +5419,6 @@ def _xref_find_key_col(df: "pd.DataFrame", user_key: str) -> str | None:
             return cols_lc[user_key.lower()]
 
 
-
-# ==== SOURCE PAGE 0240 ====
-
         # Partial match
         for col_lc, col in cols_lc.items():
             if user_key.lower() in col_lc or col_lc in user_key.lower():
@@ -5827,12 +5440,7 @@ def _xref_find_key_col(df: "pd.DataFrame", user_key: str) -> str | None:
             best_ratio, best_col = ratio, col
 
 
-
-# ==== SOURCE PAGE 0241 ====
-
     return best_col if best_ratio > 0.5 else None
-
-
 
 
 def analyze_cross_reference(
@@ -5852,9 +5460,6 @@ def analyze_cross_reference(
     # compare_fields: columns to compare across sources (all common if None)
     # golden_source:  name of the authoritative source (majority-wins if None)
 
-
-
-    # # ==== SOURCE PAGE 0242 ====
 
     # conflicts_only: only return rows with conflicts
     # show_coverage:  include coverage matrix in output
@@ -5878,9 +5483,6 @@ def analyze_cross_reference(
     if len(sources) < 2:
 
 
-
-# ==== SOURCE PAGE 0243 ====
-
         raise ValueError("Cross Reference requires at least 2 sources.")
 
     source_names = [s[0] for s in sources]
@@ -5901,9 +5503,6 @@ def analyze_cross_reference(
         k = key_per_source[name]
         d = df.copy()
 
-
-
-# ==== SOURCE PAGE 0244 ====
 
         d["__xref_key__"] = _xref_normalise_key(d[k])
         d = d.drop_duplicates(subset=["__xref_key__"], keep="first")
@@ -5926,9 +5525,6 @@ def analyze_cross_reference(
             if col == key_per_source[name]:
 
 
-
-# ==== SOURCE PAGE 0245 ====
-
                 continue
             norm = col.lower().strip()
             col_map.setdefault(norm, {})[name] = col
@@ -5949,9 +5545,6 @@ def analyze_cross_reference(
     coverage_matrix: dict[str, dict[str, int]] = {}
     if show_coverage:
 
-
-
-# ==== SOURCE PAGE 0246 ====
 
         for norm_col in common_norm_fields:
             coverage_matrix[norm_col] = {}
@@ -5974,9 +5567,6 @@ def analyze_cross_reference(
     for name in source_names:
 
 
-
-# ==== SOURCE PAGE 0247 ====
-
         _other_key_sets = [keys_per_source[n] for n in source_names if n != name]
         exclusive = keys_per_source[name] - (set.union(*_other_key_sets) if _other_key_sets else set())
         only_in[name] = sorted(list(exclusive))[:500]
@@ -5997,9 +5587,6 @@ def analyze_cross_reference(
             present_vals = {v for v in values.values() if v not in (None, "")}
             if len(present_vals) < 2:
 
-
-
-# ==== SOURCE PAGE 0248 ====
 
                 continue
 
@@ -6022,9 +5609,6 @@ def analyze_cross_reference(
                         conflict_type = "ROUNDING_DIFFERENCE"
 
 
-
-# ==== SOURCE PAGE 0249 ====
-
                 else:
                     conflict_type = "VALUE_CONFLICT"
             except (ValueError, ZeroDivisionError):
@@ -6044,9 +5628,6 @@ def analyze_cross_reference(
                 "field":   norm_col,
                 "values":  values,
 
-
-
-# ==== SOURCE PAGE 0250 ====
 
                 "conflict_type": conflict_type,
                 "golden_value": golden_value,
@@ -6069,9 +5650,6 @@ def analyze_cross_reference(
     for name in source_names:
 
 
-
-# ==== SOURCE PAGE 0251 ====
-
         n_keys  = len(keys_per_source[name])
         n_match = len(keys_in_all & keys_per_source[name])
         n_conf  = sum(1 for c in conflicts if name in c.get("sources_differ", []))
@@ -6093,9 +5671,6 @@ def analyze_cross_reference(
             "total_keys":   len(all_keys),
 
 
-
-# ==== SOURCE PAGE 0252 ====
-
             "matched_in_all":  total_matched,
             "sources":     source_names,
             "source_count":   len(sources),
@@ -6115,11 +5690,6 @@ def analyze_cross_reference(
     }
 
 
-
-# ==== SOURCE PAGE 0253 ====
-
-
-
 def _apply_cross_col_rules(df: pd.DataFrame, rules: list[dict]) -> list[dict]:
     # Feature 1 -- Conditional / Cross-column Rules.
     # Feature 5 -- Settlement date T+2 validation.
@@ -6137,7 +5707,6 @@ def _apply_cross_col_rules(df: pd.DataFrame, rules: list[dict]) -> list[dict]:
         return results
 
     for rule in rules:
-        # ==== SOURCE PAGE 0254 ====
         rt     = rule.get("rule_type", "")
         severity = rule.get("severity", "major")
         try:
@@ -6157,7 +5726,6 @@ def _apply_cross_col_rules(df: pd.DataFrame, rules: list[dict]) -> list[dict]:
                 # Rows where condition is met
                 when_mask = df[when_col].astype(str).str.strip().str.lower() == when_val.lower()
 
-                # ==== SOURCE PAGE 0255 ====
                 subset   = df.loc[when_mask, then_col]
                 sub_total = int(when_mask.sum())
 
@@ -6178,7 +5746,6 @@ def _apply_cross_col_rules(df: pd.DataFrame, rules: list[dict]) -> list[dict]:
 
                 failed = int(fail_mask.sum())
 
-                # ==== SOURCE PAGE 0258 ====
                 passed = sub_total - failed
                 examples = subset[fail_mask].head(5).astype(str).tolist()
                 results.append({
@@ -6197,7 +5764,6 @@ def _apply_cross_col_rules(df: pd.DataFrame, rules: list[dict]) -> list[dict]:
                 settle_col = rule.get("settlement_col", "settlement_date")
                 min_days  = int(rule.get("min_business_days", 2))
 
-                # ==== SOURCE PAGE 0259 ====
                 if trade_col not in df.columns or settle_col not in df.columns:
                     results.append({"skipped": True, "reason": f"Columns not found: {trade_col}, {settle_col}",
                                      "rule_name": f"T+{min_days} settlement", "rule_type": rt})
@@ -6218,7 +5784,6 @@ def _apply_cross_col_rules(df: pd.DataFrame, rules: list[dict]) -> list[dict]:
 
                 fail_indices = []
 
-                # ==== SOURCE PAGE 0260 ====
                 for idx in df.index[both_valid]:
                     bd = _bus_days(trade_dt[idx], settle_dt[idx])
                     if bd < min_days:
@@ -6238,7 +5803,6 @@ def _apply_cross_col_rules(df: pd.DataFrame, rules: list[dict]) -> list[dict]:
                     "failing_examples": examples,
                     "status": "PASS" if failed == 0 else ("WARN" if sub_total > 0 and failed /
                                                             sub_total < 0.05 else "FAIL"),
-                    # ==== SOURCE PAGE 0261 ====
                 })
 
             elif rt == "referential_integrity":
@@ -6257,7 +5821,6 @@ def _apply_cross_col_rules(df: pd.DataFrame, rules: list[dict]) -> list[dict]:
                 examples = df.loc[col_vals.index[mask], col_a].head(5).astype(str).tolist()
                 results.append({
                     "skipped": False, "rule_type": rt, "severity": severity,
-                    # ==== SOURCE PAGE 0262 ====
                     "rule_name": rule.get("description", f"{col_a} values must exist in {col_b}"),
                     "column_name": col_a,
                     "total": len(col_vals), "passed": passed, "failed": failed,
@@ -6278,7 +5841,6 @@ def _dq_score(total_rows: int, dup_rows: int, cols: list[dict],
         accuracy: float | None = None) -> dict:
     # Compute a 0-100 DQ score across 8 dimensions with dynamic weights.
 
-    # ==== SOURCE PAGE 0263 ====
     # Timeliness, Precision, and Accuracy are opt-in:
     # - Timeliness only activates when at least one column has a user-configured
     # freshness threshold (col_config timeliness_days or timeliness_hints).
@@ -6296,7 +5858,6 @@ def _dq_score(total_rows: int, dup_rows: int, cols: list[dict],
     # Completeness 20% - Uniqueness 12% - Validity 18% - Consistency 12%
     # Conformity 8% - Precision 8% - Timeliness 5% - Accuracy 17%
 
-    # ==== SOURCE PAGE 0264 ====
     # ---- Completeness (base 25%) ----------------------------------------
     scorable = [c for c in cols if not c.get("hint_nullable")]
     completeness = (
@@ -6314,7 +5875,6 @@ def _dq_score(total_rows: int, dup_rows: int, cols: list[dict],
         weighted_passed = sum(r.get("passed", 0) * _SEV_WEIGHT.get(r.get("severity", "major"), 2.0) for r in non_skipped)
         validity = weighted_passed / weighted_total * 100 if weighted_total else 100.0
 
-    # ==== SOURCE PAGE 0265 ====
     else:
         validity = 100.0
 
@@ -6331,7 +5891,6 @@ def _dq_score(total_rows: int, dup_rows: int, cols: list[dict],
         failed_cons = sum(1 for c in consistency_issues if c.get("status") == "FAIL")
         consistency = max(0.0, 100.0 - (failed_cons / total_cons * 100))
     else:
-        # ==== SOURCE PAGE 0266 ====
         consistency = 100.0
 
     # ---- Conformity (10%) ------------------------------------------------
@@ -6350,7 +5909,6 @@ def _dq_score(total_rows: int, dup_rows: int, cols: list[dict],
     else:
         conformity = 100.0
 
-    # ==== SOURCE PAGE 0267 ====
     # ---- Precision (10%) -- opt-in -----------------------------------------
     # Only active when at least one column has actual decimal inconsistency
     # (dp_range > 0) or a user-declared decimal_places constraint exists.
@@ -6371,7 +5929,6 @@ def _dq_score(total_rows: int, dup_rows: int, cols: list[dict],
                 if avg <= 20 and c.get("cardinality") in ("low (enum-like)", "medium"):
                     prec_scores.append(max(0.0, 100.0 - min((mx - mn) * 5, 100)))
 
-                    # ==== SOURCE PAGE 0268 ====
                 else:
                     prec_scores.append(100.0)
             else:
@@ -6392,7 +5949,6 @@ def _dq_score(total_rows: int, dup_rows: int, cols: list[dict],
             threshold = c.get("freshness_threshold_days", 1)
             if fd <= threshold:
 
-                # ==== SOURCE PAGE 0269 ====
                 tim_scores.append(100.0)
             elif fd <= threshold * 30:
                 tim_scores.append(max(0.0, 100.0 - (fd - threshold) / (threshold * 29) * 20))
@@ -6412,7 +5968,6 @@ def _dq_score(total_rows: int, dup_rows: int, cols: list[dict],
     w_precision  = 0.08
     w_timeliness  = 0.05
 
-    # ==== SOURCE PAGE 0270 ====
     w_accuracy   = 0.17
 
     if precision is None:
@@ -6433,7 +5988,6 @@ def _dq_score(total_rows: int, dup_rows: int, cols: list[dict],
         conformity    * w_conformity +
         (precision or 100.0) * w_precision +
 
-        # ==== SOURCE PAGE 0271 ====
         (timeliness or 100.0) * w_timeliness +
         (accuracy or 100.0) * w_accuracy
     )
@@ -6455,9 +6009,6 @@ def _dq_score(total_rows: int, dup_rows: int, cols: list[dict],
         "precision_active": precision is not None,
 
 
-
-# ==== SOURCE PAGE 0272 ====
-
         "timeliness_active": timeliness is not None,
         "accuracy_active":  accuracy is not None,
         "severity_breakdown": severity_breakdown,
@@ -6474,13 +6025,10 @@ def _dq_score(total_rows: int, dup_rows: int, cols: list[dict],
     }
 
 
-
-
 def _detect_drift(cols: list[dict], baseline: dict | None) -> list[dict]:
     # Compare current column stats against a saved baseline snapshot.
     # Returns list of drift alerts: {column, metric, current, baseline, delta, severity, detail}
 
-    # ==== SOURCE PAGE 0273 ====
     if not baseline:
         return []
     alerts = []
@@ -6500,7 +6048,6 @@ def _detect_drift(cols: list[dict], baseline: dict | None) -> list[dict]:
             bas = b.get(metric)
             if cur is None or bas is None:
 
-                # ==== SOURCE PAGE 0274 ====
                 continue
             delta = abs(cur - bas)
             if delta >= fail_thresh:
@@ -6521,7 +6068,6 @@ def _detect_drift(cols: list[dict], baseline: dict | None) -> list[dict]:
                 })
         # Numeric mean drift
 
-        # ==== SOURCE PAGE 0275 ====
         if c.get("mean") is not None and b.get("mean") is not None:
             cur_m, bas_m = c["mean"], b["mean"]
             if bas_m != 0:
@@ -6538,16 +6084,10 @@ def _detect_drift(cols: list[dict], baseline: dict | None) -> list[dict]:
     return alerts
 
 
-
-
 def _dq_schema_fingerprint(df: pd.DataFrame) -> str:
     # Stable fingerprint from sorted column names + dtypes for DQ rule persistence.
     import hashlib
 
-
-
-
-# ==== SOURCE PAGE 0276 ====
 
     sig = "|".join(f"{c}:{str(df[c].dtype)}" for c in sorted(df.columns))
     return hashlib.md5(sig.encode()).hexdigest()[:12]
@@ -6568,9 +6108,6 @@ def _detect_schema_drift(df: pd.DataFrame, cols: list[dict], baseline_snapshot: 
         bas = baseline_cols[col]; cur = current_cols[col]
 
 
-
-# ==== SOURCE PAGE 0277 ====
-
         if bas.get("cardinality") and cur.get("cardinality") and bas["cardinality"] != cur["cardinality"]:
             changes.append({"type": "cardinality_change", "column": col, "severity": "warn",
                 "detail": f"Cardinality: {bas['cardinality']} -> {cur['cardinality']}"})
@@ -6589,7 +6126,6 @@ def _detect_duplicates(df: pd.DataFrame, cols: list[dict], hints: dict) -> dict:
     # Returns dict with keys: exact_count, exact_pct, subset_key_groups,
     # near_duplicate_count, near_duplicate_examples.
 
-    # ==== SOURCE PAGE 0278 ====
     total = len(df)
     result = {
         "exact_count": 0,
@@ -6608,7 +6144,6 @@ def _detect_duplicates(df: pd.DataFrame, cols: list[dict], hints: dict) -> dict:
     # Extrapolate to full dataset if sampled
     exact = int(exact_sample * total / len(_df_sample)) if total > _DUP_CAP else exact_sample
 
-    # ==== SOURCE PAGE 0279 ====
     result["exact_count"] = exact
     result["exact_pct"] = round(exact / total * 100, 1)
     if total > _DUP_CAP:
@@ -6627,7 +6162,6 @@ def _detect_duplicates(df: pd.DataFrame, cols: list[dict], hints: dict) -> dict:
             distinct_dup_keys = len(dup_keys)
             key_dups = df[df[key_col].isin(dup_keys.index.tolist()[:50])]
 
-            # ==== SOURCE PAGE 0280 ====
 
             result["subset_key_groups"].append({
                 "key_column": key_col,
@@ -6648,7 +6182,6 @@ def _detect_duplicates(df: pd.DataFrame, cols: list[dict], hints: dict) -> dict:
             tmp[ts_col] = pd.to_datetime(tmp[ts_col], errors="coerce")
             tmp = tmp.dropna(subset=[key_col, ts_col])
 
-            # ==== SOURCE PAGE 0281 ====
             if len(tmp) > 1:
                 tmp_sorted = tmp.sort_values([key_col, ts_col])
                 tmp_sorted["_ts_diff"] = tmp_sorted.groupby(key_col)[ts_col].diff().dt.total_seconds() / 60
@@ -6666,12 +6199,6 @@ def _detect_duplicates(df: pd.DataFrame, cols: list[dict], hints: dict) -> dict:
             pass
 
     return result
-
-
-
-
-# ==== SOURCE PAGE 0282 ====
-
 
 
 def analyze_quality(df: pd.DataFrame, name: str,
@@ -6694,9 +6221,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
     # ["isin_format:isin", "positive:notional", "email_format:contact_email"]
 
 
-
-# ==== SOURCE PAGE 0283 ====
-
     # For each entry, inject a col_config rule for that column if it exists in df.
     _bfsi_v_list = hints.get("bfsi_validators", [])
     if _bfsi_v_list:
@@ -6715,9 +6239,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                 _rule_type = "domain_accuracy"
                 _rule_value = _bv_rule[len("domain_accuracy_"):]
 
-
-
-# ==== SOURCE PAGE 0284 ====
 
             # Match case-insensitively against actual df columns
             _matched = next((c for c in df.columns if c.lower() == _bv_col_lower), None)
@@ -6739,9 +6260,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
     # Nullable columns named in hints are exempted from NOT-NULL checks and
 
 
-
-# ==== SOURCE PAGE 0285 ====
-
     # have their null_pct excluded from completeness scoring.
     # Must be defined before the col_config injection loop which references it.
     _hint_nullable = (
@@ -6761,9 +6279,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
     for cc in col_config_list:
         cname = cc.get("name", "")
 
-
-
-# ==== SOURCE PAGE 0286 ====
 
         if not cname or cc.get("exclude") or cname not in df.columns:
             continue
@@ -6787,9 +6302,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
         if cc.get("force_unique"):
 
 
-
-# ==== SOURCE PAGE 0287 ====
-
             rules.append({
                 "rule_type":  "unique",
                 "column_name":  cname,
@@ -6812,9 +6324,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                     "description": f"Completeness >= {required_pct:.0f}% (config table)",
 
 
-
-# ==== SOURCE PAGE 0288 ====
-
                     "severity":  _cc_severity,
                     "_hint_injected": True,
                 })
@@ -6836,9 +6345,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                     "_hint_injected": True,
 
 
-
-# ==== SOURCE PAGE 0289 ====
-
                 })
             except ValueError:
                 pass
@@ -6858,9 +6364,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
             except ValueError:
                 pass
 
-
-
-# ==== SOURCE PAGE 0290 ====
 
         # Timeliness / freshness
         td = cc.get("timeliness_days", "")
@@ -6883,9 +6386,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
             rules.append({
 
 
-
-# ==== SOURCE PAGE 0291 ====
-
                 "rule_type": "allowed_values",
                 "column_name": cname,
                 "value": av,
@@ -6907,9 +6407,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
             })
 
 
-
-# ==== SOURCE PAGE 0292 ====
-
         # Accuracy reference values -- "expected" lookup for spot-checking
         # Format: comma-separated known-good values. % matching = accuracy score
         # for that column.
@@ -6929,9 +6426,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                     "severity":  _cc_severity,
                     "_hint_injected": True,
 
-
-
-# ==== SOURCE PAGE 0293 ====
 
                 })
 
@@ -6954,9 +6448,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
     if _config_excluded:
 
 
-
-# ==== SOURCE PAGE 0294 ====
-
         df = df.drop(columns=[c for c in _config_excluded if c in df.columns])
 
     # Range hints: parse "col 0-100, price 0-9999" into synthetic range rules.
@@ -6977,9 +6468,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
 
     # Timeliness hints: parse "col_name N" -> freshness_days rule (max N days old).
 
-
-
-# ==== SOURCE PAGE 0295 ====
 
     # Format: "trade_date 1, settlement_date 3"
     for part in hints.get("timeliness_hints", "").split(","):
@@ -7002,10 +6490,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
         part = part.strip()
 
 
-
-
-# ==== SOURCE PAGE 0296 ====
-
         m = re.match(r'^(\S+)\s+(\d+)$', part)
         if m:
             col_h, decimals = m.group(1), int(m.group(2))
@@ -7027,9 +6511,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
     # From config table
 
 
-
-# ==== SOURCE PAGE 0297 ====
-
     for cc in col_config_list:
         cname = cc.get("name", "")
         if not cname or cc.get("exclude"):
@@ -7049,9 +6530,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
         if m and m.group(1) in df.columns:
             _user_precision_cols.add(m.group(1))
 
-
-
-# ==== SOURCE PAGE 0298 ====
 
     # ---- Column-level profiling ----
     cols = []
@@ -7074,9 +6552,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
             .head(5)
 
 
-
-# ==== SOURCE PAGE 0299 ====
-
             .reset_index()
             .rename(columns={"count": "count", col: "value", "index": "value"})
             .to_dict("records")
@@ -7097,9 +6572,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
             "dd_description":   dd.get("description", ""),
             "dd_owner":      dd.get("owner", ""),
 
-
-
-# ==== SOURCE PAGE 0300 ====
 
             "dd_sensitivity":   dd.get("sensitivity", ""),
             "dd_nullable":      dd.get("nullable", True),
@@ -7135,9 +6607,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                     "max":      round(float(clean.max()), 4),
 
 
-
-# ==== SOURCE PAGE 0301 ====
-
                     "mean":     round(float(clean.mean()), 4),
                     "median":   round(float(clean.median()), 4),
                     "std":      round(float(clean.std()), 4),
@@ -7159,9 +6628,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                 info["dp_range"] = int(_dp.max()) - int(_dp.min())
 
 
-
-# ==== SOURCE PAGE 0302 ====
-
         elif pd.api.types.is_datetime64_any_dtype(s):
             clean = s.dropna()
             if len(clean):
@@ -7182,9 +6648,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                 # Mixed-case: vectorised -- no Python apply
                 _upper = str_s_samp.str.upper()
 
-
-
-# ==== SOURCE PAGE 0303 ====
 
                 _lower = str_s_samp.str.lower()
                 # OCR-UNCERTAIN: this intermediate formula looks like a stray/duplicated
@@ -7209,9 +6672,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                     info["non_ascii_pct"]  = round(non_ascii_n / len(str_s_samp) * 100, 1)
 
 
-
-# ==== SOURCE PAGE 0304 ====
-
                 # BOM marker detection (first row only)
                 if len(str_s_samp) > 0:
                     first_val = str(str_s_samp.iloc[0])
@@ -7231,9 +6691,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                 if _numeric_rate < 0.8:
                     sample_upper = _samp100.str.upper()
 
-
-
-# ==== SOURCE PAGE 0305 ====
 
                     for fmt_name, pat in _DQ_FORMAT_PATTERNS.items():
                         match_rate = sample_upper.str.fullmatch(pat.pattern).mean()
@@ -7256,8 +6713,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                         valid = parsed_full.dropna()
 
 
-                        # ==== SOURCE PAGE 0306 ====
-
                         if len(valid):
                             info["freshness_days"] = (pd.Timestamp.now() - valid.max()).days
                             info["date_range_days"] = (valid.max() - valid.min()).days
@@ -7279,9 +6734,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
             # Store the user's threshold so _dq_score can use it
 
 
-
-            # ==== SOURCE PAGE 0307 ====
-
             _td = next(
                 (cc.get("timeliness_days") for cc in col_config_list if cc.get("name") == col),
                 None
@@ -7302,9 +6754,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
     accuracy_value = (sum(accuracy_scores.values()) / len(accuracy_scores)) if accuracy_scores else None
 
 
-
-    # ==== SOURCE PAGE 0308 ====
-
     # -- Auto-inject baseline validity rules where no explicit rule exists ----------
     # Rules are injected only when the user has not already declared one for the
     # column. Multiple rules can apply to the same column (e.g. not_null + unique).
@@ -7324,9 +6773,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
         # 1. not_null -- only when column has nulls AND is not declared nullable.
         #   Skip columns with 0% nulls: completeness already penalises nulls and
 
-
-
-        # ==== SOURCE PAGE 0309 ====
 
         #   a passing not_null rule on clean data inflates validity without
         #   testing anything real.
@@ -7349,9 +6795,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
             rules.append({
 
 
-
-            # ==== SOURCE PAGE 0310 ====
-
                 "rule_type":  "unique",
                 "column_name": cname,
                 "description": "Unique (auto: identifier-like cardinality)",
@@ -7372,9 +6815,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
             rules.append({
                 "rule_type":  "allowed_values",
 
-
-
-                # ==== SOURCE PAGE 0311 ====
 
                 "column_name": cname,
                 "value":    allowed_str,
@@ -7397,9 +6837,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
             injected_any = True
 
 
-
-        # ==== SOURCE PAGE 0312 ====
-
         # 5. numeric range -- only inject when the column has actual variance AND
         #    is not highly skewed (skewed columns like price/volume have misleading
         #    sigma-based bounds). Use observed min/max instead for skewed columns.
@@ -7419,9 +6856,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                     # Skewed: use observed min/max with 10% headroom
                     obs_min = col_info.get("min", 0) or 0
 
-
-
-                    # ==== SOURCE PAGE 0313 ====
 
                     obs_max = col_info.get("max", 0) or 0
                     headroom = abs(obs_max - obs_min) * 0.10
@@ -7444,9 +6878,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
     _CROSS_COL_TYPES = {"conditional", "settlement_date_t2", "referential_integrity"}
 
 
-
-    # ==== SOURCE PAGE 0314 ====
-
     col_rules    = [r for r in rules if r.get("column_name") and r.get("rule_type") not in _CROSS_COL_TYPES]
     dataset_rules = [r for r in rules if not r.get("column_name") and r.get("rule_type") not in _CROSS_COL_TYPES]
     cross_col_rules = [r for r in rules if r.get("rule_type") in _CROSS_COL_TYPES]
@@ -7466,9 +6897,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
     # Feature 1 & 4 & 5 -- cross-column rules (conditional, referential, settlement T+2)
 
 
-
-    # ==== SOURCE PAGE 0315 ====
-
     if cross_col_rules:
         cc_results = _apply_cross_col_rules(df, cross_col_rules)
         rule_results.extend(cc_results)
@@ -7486,9 +6914,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
         "cusip_format": "Validate CUSIP codes against a reference dataset.",
         "lei_format":  "Validate LEI codes against the GLEIF database.",
 
-
-
-        # ==== SOURCE PAGE 0316 ====
 
         "bic_format":  "Validate BIC/SWIFT codes against the SWIFT BIC directory.",
         "iban_format": "Validate IBAN using checksum algorithm (ISO 13616).",
@@ -7511,9 +6936,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                 "column":  r.get("column_name", "(dataset)"),
 
 
-
-                # ==== SOURCE PAGE 0317 ====
-
                 "rule_type": rt,
                 "severity": r.get("severity", "major"),
                 "failed_rows": r.get("failed", 0),
@@ -7534,9 +6956,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
         col_rules = [r for r in rule_results if r.get("column_name") == cname and not r.get("skipped")]
 
 
-
-        # ==== SOURCE PAGE 0318 ====
-
         if not col_rules:
             col_score = round(100 - col_info.get("null_pct", 0), 1)
         else:
@@ -7554,9 +6973,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
     # 0. Auto-detected consistency issues (no user input required)
     # All checks use already-computed col_info stats or a capped sample -- no
 
-
-
-    # ==== SOURCE PAGE 0319 ====
 
     # full-column Python apply loops here.
     _DATE_PAT_RE = [
@@ -7580,9 +6996,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
         samp_n = len(samp)
 
 
-
-        # ==== SOURCE PAGE 0320 ====
-
         if samp_n == 0:
             continue
         actual_null_n = int(s.isna().sum())
@@ -7602,9 +7015,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
         # 0b. Date format inconsistency -- only for columns whose avg length looks date-like
         avg_len = col_info.get("avg_length", 0) or 0
 
-
-
-        # ==== SOURCE PAGE 0321 ====
 
         if 6 <= avg_len <= 11:
             pat_hits = [int(samp.str.fullmatch(p.pattern).sum()) for p in _DATE_PAT_RE]
@@ -7626,9 +7036,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
             mixed_n = samp_n - numeric_n
 
 
-
-            # ==== SOURCE PAGE 0322 ====
-
             if mixed_n / samp_n >= 0.01:
                 consistency_issues.append({
                     "check": "Mixed numeric/text values",
@@ -7648,9 +7055,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                 "status": "WARN",
                 "detail": f"{ws_n} values have leading/trailing spaces",
 
-
-
-                # ==== SOURCE PAGE 0323 ====
 
             })
 
@@ -7673,9 +7077,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
     if pk_cols:
 
 
-
-        # ==== SOURCE PAGE 0324 ====
-
         pk_nulls = int(df[pk_cols].isna().any(axis=1).sum())
         pk_dups  = int(df.duplicated(subset=pk_cols, keep=False).sum())
         if pk_nulls:
@@ -7696,9 +7097,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
     # 3. Cross-column consistency: referential checks from hints
     # Format: "col_a=val_when:col_b>0" -- e.g. "side=BUY:quantity>0"
 
-
-
-    # ==== SOURCE PAGE 0325 ====
 
     for expr in hints.get("cross_column_rules", "").split(";"):
         expr = expr.strip()
@@ -7721,9 +7119,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                 elif op == "!=": fail_mask = num == cv
 
 
-
-                # ==== SOURCE PAGE 0326 ====
-
                 else: continue
                 failed_n = int(fail_mask.sum())
                 if failed_n:
@@ -7743,9 +7138,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
     for expr in hints.get("referential_rules", "").split(";"):
         expr = expr.strip()
 
-
-
-        # ==== SOURCE PAGE 0327 ====
 
         # Format: "col_a->col_b"  means every value in col_a must appear in col_b
         m = re.match(r'^(\w+)\s*->\s*(\w+)$', expr)
@@ -7768,9 +7160,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
     # each key group. Capped at 5 key columns and 10 value columns for performance.
 
 
-
-    # ==== SOURCE PAGE 0328 ====
-
     id_cols = [
         c["name"] for c in cols
         if c.get("cardinality") == "identifier-like" and c["name"] in df.columns
@@ -7791,9 +7180,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                     # For each key value, count distinct non-null values in val_col
                     grp = (
 
-
-
-    # ==== SOURCE PAGE 0329 ====
 
                         _df_conflict[[key_col, val_col]]
                         .dropna(subset=[key_col])
@@ -7816,9 +7202,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                 except Exception:
 
 
-
-                    # ==== SOURCE PAGE 0330 ====
-
                     pass
 
     # 7. Cross-file referential integrity
@@ -7839,9 +7222,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                 "column": local_col,
                 "failed": 0,
 
-
-
-    # ==== SOURCE PAGE 0331 ====
 
                 "status": "WARN",
                 "detail": f"Reference file '{ref_fname}' or column '{ref_col}' not available",
@@ -7864,9 +7244,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
             })
 
 
-
-# ==== SOURCE PAGE 0332 ====
-
     # 8. Conditional completeness rules
     # Format: "target_col:condition_col=condition_val" semicolon-separated
     for expr in hints.get("conditional_completeness_rules", "").split(";"):
@@ -7884,9 +7261,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
         if cond_count > 0:
             consistency_issues.append({
 
-
-
-# ==== SOURCE PAGE 0333 ====
 
                 "check": f"Conditional completeness: {target_col} when {cond_col}={cond_val}",
                 "column": target_col,
@@ -7907,9 +7281,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                 "column": col_info["name"],
 
 
-
-# ==== SOURCE PAGE 0334 ====
-
                 "failed": col_info.get("non_ascii_count", 0),
                 "status": "WARN",
                 "detail": f"{col_info['non_ascii_pct']}% of values contain non-ASCII characters -- check encoding",
@@ -7929,9 +7300,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
                 "status": "WARN",
 
 
-
-# ==== SOURCE PAGE 0335 ====
-
                 "detail": f"{col_info['control_char_count']} values contain non-printable control characters",
             })
 
@@ -7949,9 +7317,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
     # -- Enhanced duplicate analysis
     dup_analysis = _detect_duplicates(df, cols, hints)
 
-
-
-# ==== SOURCE PAGE 0336 ====
 
     # -- Drift detection against saved baseline
     _baseline = hints.get("dq_baseline")
@@ -7974,9 +7339,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
   "has_data_dict":     bool(data_dict),
 
 
-
-# ==== SOURCE PAGE 0337 ====
-
   "has_rules":       bool(rules),
   "pk_columns":      pk_cols,
   "undocumented_columns":  undocumented,
@@ -7997,9 +7359,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
     "columns": [
 
 
-
-# ==== SOURCE PAGE 0338 ====
-
       {k: c.get(k) for k in ["name", "null_pct", "uniqueness_pct", "outlier_pct", "mean",
   "std", "cardinality"]}
       for c in cols
@@ -8019,7 +7378,6 @@ def _compute_col_stats(df: pd.DataFrame) -> dict[str, dict]:
     # Returns a dict keyed by column name:
     # null_count, null_pct, unique_count, unique_pct, dtype,
 
-    # ==== SOURCE PAGE 0339 ====
 
     # is_numeric, is_datetime, is_object,
     # min, max, mean, std  (numeric only -- None otherwise)
@@ -8053,7 +7411,6 @@ def _compute_col_stats(df: pd.DataFrame) -> dict[str, dict]:
 
         if is_num:
 
-            # ==== SOURCE PAGE 0340 ====
 
             clean = numeric_series.dropna()
             if len(clean):
@@ -8075,7 +7432,6 @@ def _compute_col_stats(df: pd.DataFrame) -> dict[str, dict]:
         stats[col] = {
             "null_count": null_n,
 
-            # ==== SOURCE PAGE 0341 ====
 
             "null_pct": null_pct,
             "unique_count": uniq_n,
@@ -8116,9 +7472,6 @@ def analyze_quality_full(
   # 4. Mapping recon  -- if df2 is provided: type mismatches + recon FAILs
 
 
-
-  # # ==== SOURCE PAGE 0342 ====
-
   # feed a governance penalty into the DQ score
 
   # Uses _compute_col_stats() so null/unique/dtype/min/max/mean/std are
@@ -8140,9 +7493,6 @@ def analyze_quality_full(
               user_hints=_hints)
 
 
-
-# ==== SOURCE PAGE 0343 ====
-
   # -- 2. Profile enrichment (reuses col_stats -- no re-scan) ----------
   total  = len(df)
   mem_mb = round(df.memory_usage(deep=False).sum() / 1_048_576, 2)
@@ -8162,9 +7512,6 @@ def analyze_quality_full(
     if any(h in lower for h in _DATE_HINTS) and cs["is_object"]:
       return "date-like string"
 
-
-
-# ==== SOURCE PAGE 0344 ====
 
     if any(h == lower or lower.endswith(f"_{h}") or lower.startswith(f"{h}_")
         for h in _ID_HINTS):
@@ -8186,9 +7533,6 @@ def analyze_quality_full(
       avg_len = sample.str.len().mean() if len(sample) else 0
 
 
-
-# ==== SOURCE PAGE 0345 ====
-
       return "free text" if avg_len > 60 else "text"
     return cs["dtype"]
 
@@ -8209,9 +7553,6 @@ def analyze_quality_full(
       "dtype":   cs["dtype"],
       "semantic": sem,
 
-
-
-# ==== SOURCE PAGE 0346 ====
 
       "bfsi_domain": _infer_operational_usage(col),
       "criticality": _infer_criticality(col, cs["null_pct"]),
@@ -8236,9 +7577,6 @@ def analyze_quality_full(
         "std":    round(cs["std"], 4),
 
 
-
-# ==== SOURCE PAGE 0347 ====
-
         "q1":    round(q1, 4),
         "q3":    round(q3, 4),
         "outlier_count": out_n,
@@ -8259,9 +7597,6 @@ def analyze_quality_full(
           "avg_length": round(float(lens.mean()), 1),
           "min_length": int(lens.min()),
 
-
-
-# ==== SOURCE PAGE 0348 ====
 
           "max_length": int(lens.max()),
           "sample_values": clean_str.head(3).tolist(),
@@ -8284,9 +7619,6 @@ def analyze_quality_full(
     try:
 
 
-
-# ==== SOURCE PAGE 0349 ====
-
       corr_matrix = df[numeric_col_names].corr()
       seen: set = set()
       for i, c1 in enumerate(numeric_col_names):
@@ -8307,9 +7639,6 @@ def analyze_quality_full(
       correlations.sort(key=lambda x: abs(x["corr"]), reverse=True)
       correlations = correlations[:10]
 
-
-
-# ==== SOURCE PAGE 0351 ====
 
     except Exception:
       pass
@@ -8332,9 +7661,6 @@ def analyze_quality_full(
 # Rules are kept SEPARATE per module -- dc_governance_override rules only.
 
 
-
-# ==== SOURCE PAGE 0352 ====
-
   # Search ALL fingerprints in feedback_rules.json for dc_governance_override
   # rules whose text mentions a column present in the CURRENT file.
   # This is column-name based, not fingerprint-based, so it works regardless
@@ -8354,9 +7680,6 @@ def analyze_quality_full(
     # Scan every fingerprint for dc_governance_* rules (override AND exclude)
     for _fp_entry in _all_saved.values():
 
-
-
-# ==== SOURCE PAGE 0353 ====
 
       for _r in _fp_entry.get("rules", []):
         _cat = _r.get("category", "")
@@ -8379,9 +7702,6 @@ def analyze_quality_full(
               _col_overrides[_col_actual]["exclude"] = True
 
 
-
-# ==== SOURCE PAGE 0354 ====
-
             if _new_sens:
               _col_overrides[_col_actual]["sensitivity"] = _new_sens
             if _not_pii:
@@ -8401,7 +7721,6 @@ def analyze_quality_full(
   mapping_recon: dict = {}
   governance_penalty = 0.0
 
-  # ==== SOURCE PAGE 0355 ====
   if df2 is not None:
       mapping = analyze_mapping(df2, df, name2 or "File 2", name,
                   mapping_spec=None, user_hints=user_hints)
@@ -8423,7 +7742,6 @@ def analyze_quality_full(
               governance_penalty += 1.0
 
       mapping_recon = {
-          # ==== SOURCE PAGE 0356 ====
           "mapping_completeness_pct": mapping.get("mapping_completeness_pct"),
           "type_mismatches": [
               {"column": e["f1_col"], "f1_type": e["f1_type"], "f2_type": e["f2_type"]}
@@ -8443,7 +7761,6 @@ def analyze_quality_full(
 
       # Governance penalty: mandatory breaches + conditional warnings
       gov_breach_count = (
-          # ==== SOURCE PAGE 0357 ====
           len(governance.get("mandatory_breaches", [])) +
           len(governance.get("conditional_warnings", []))
       )
@@ -8465,7 +7782,6 @@ def analyze_quality_full(
   quality["dq_score"]["governance_penalty"] = round(governance_penalty, 1)
   quality["dq_score"]["base_score"]         = base_score
 
-  # ==== SOURCE PAGE 0358 ====
   # -- Merge and return
   # -----------------------------------------------------------------------
 
@@ -8486,7 +7802,6 @@ def analyze_profile(df: pd.DataFrame, name: str) -> dict:
     # Produce a deep structural profile of a DataFrame.
     #
     # Returns per-column stats (type, nulls, cardinality, min/max/mean/std,
-    # ==== SOURCE PAGE 0359 ====
     # top values, inferred semantic type, pattern samples) plus dataset-level
     # summary (shape, memory, duplicate rows, potential key candidates,
     # cross-column correlations for numeric pairs).
@@ -8506,7 +7821,6 @@ def analyze_profile(df: pd.DataFrame, name: str) -> dict:
     _ID_HINTS    = {"id", "key", "pk", "code", "ref", "num", "no", "number"}
     _AMT_HINTS   = {"amount", "amt", "price", "rate", "qty", "quantity", "notional",
                     "value", "bal", "balance", "vol", "volume"}
-    # ==== SOURCE PAGE 0360 ====
     _FLAG_HINTS  = {"flag", "ind", "indicator", "is_", "has_", "active", "status",
                     "type", "category", "class", "group"}
 
@@ -8533,7 +7847,6 @@ def analyze_profile(df: pd.DataFrame, name: str) -> dict:
             return "numeric"
 
         if s.dtype == object:
-            # ==== SOURCE PAGE 0361 ====
             # Sniff patterns in a sample of non-null values
             sample = s.dropna().astype(str).head(200)
 
@@ -8559,7 +7872,6 @@ def analyze_profile(df: pd.DataFrame, name: str) -> dict:
     # -- Column-level profiles --
     col_profiles = []
 
-    # ==== SOURCE PAGE 0362 ====
     numeric_cols = []
 
     for col in df.columns:
@@ -8580,7 +7892,6 @@ def analyze_profile(df: pd.DataFrame, name: str) -> dict:
 
         entry: dict = {
             "name":  col,
-            # ==== SOURCE PAGE 0363 ====
             "dtype":     str(s.dtype),
             "semantic":  sem,
             "null_count": null_n,
@@ -8600,7 +7911,6 @@ def analyze_profile(df: pd.DataFrame, name: str) -> dict:
             clean = s.dropna()
             if len(clean):
                 q1, q3 = float(clean.quantile(0.25)), float(clean.quantile(0.75))
-                # ==== SOURCE PAGE 0364 ====
                 iqr  = q3 - q1
                 out_n = int(((clean < q1 - 1.5 * iqr) | (clean > q3 + 1.5 * iqr)).sum())
                 entry.update({
@@ -8622,7 +7932,6 @@ def analyze_profile(df: pd.DataFrame, name: str) -> dict:
         elif pd.api.types.is_datetime64_any_dtype(s):
             clean = s.dropna()
             if len(clean):
-                # ==== SOURCE PAGE 0365 ====
                 entry.update({
                     "min": str(clean.min()),
                     "max": str(clean.max()),
@@ -8643,7 +7952,6 @@ def analyze_profile(df: pd.DataFrame, name: str) -> dict:
         # -- Distribution data for visualisation --------------------------------
         if pd.api.types.is_numeric_dtype(s):
             clean_num = s.dropna()
-            # ==== SOURCE PAGE 0366 ====
             if len(clean_num) >= 2:
                 try:
                     n_bins = min(10, max(4, int(len(clean_num) ** 0.5 // 2)))
@@ -8664,7 +7972,6 @@ def analyze_profile(df: pd.DataFrame, name: str) -> dict:
                         clean_dt.dt.to_period("M")
                         .value_counts()
                         .sort_index()
-                        # ==== SOURCE PAGE 0367 ====
                     )
                     if len(monthly) >= 2:
                         entry["ts_trend"] = {
@@ -8685,7 +7992,6 @@ def analyze_profile(df: pd.DataFrame, name: str) -> dict:
 
         col_profiles.append(entry)
 
-    # ==== SOURCE PAGE 0368 ====
     # -- Potential key candidates (high cardinality, zero nulls) --
     key_candidates = [
         c["name"] for c in col_profiles
@@ -8706,7 +8012,6 @@ def analyze_profile(df: pd.DataFrame, name: str) -> dict:
             seen: set = set()
             for i, c1 in enumerate(numeric_cols):
                 for c2 in numeric_cols[i + 1:]:
-                    # ==== SOURCE PAGE 0369 ====
                     pair = (c1, c2)
                     if pair not in seen:
                         seen.add(pair)
@@ -8727,7 +8032,6 @@ def analyze_profile(df: pd.DataFrame, name: str) -> dict:
             pass
 
 
-    # ==== SOURCE PAGE 0370 ====
     # -- Column type breakdown --
     type_counts: dict[str, int] = {}
     for c in col_profiles:
@@ -8747,7 +8051,6 @@ def analyze_profile(df: pd.DataFrame, name: str) -> dict:
         "near_key_cols": near_key,
         "type_breakdown": type_counts,
         "correlations": correlations,
-        # ==== SOURCE PAGE 0371 ====
         "columns":  col_profiles,
     }
 
@@ -8773,8 +8076,6 @@ def _luhn_checksum(digits: str) -> bool:
             n *= 2
 
 
-# ==== SOURCE PAGE 0372 ====
-
             total += n - 9 if n > 9 else n
 
         odd = not odd
@@ -8799,8 +8100,6 @@ def _lei_valid(value: str) -> bool:
     # Validate LEI (ISO 17442): 18 alphanumeric chars + 2 numeric check digits (MOD 97).
     v = value.strip().upper()
 
-
-# ==== SOURCE PAGE 0373 ====
 
     if len(v) != 20 or not v[:18].isalnum() or not v[18:].isdigit():
         return False
@@ -8829,8 +8128,6 @@ def _cusip_valid(value: str) -> bool:
         if c.isdigit():
 
 
-# ==== SOURCE PAGE 0374 ====
-
             n = int(c)
         elif c.isalpha():
             n = ord(c) - 55
@@ -8856,10 +8153,6 @@ def _cusip_valid(value: str) -> bool:
 def _uti_valid(value: str) -> bool:
 
 
-
-
-# ==== SOURCE PAGE 0375 ====
-
     """Validate UTI: 1-52 chars, alphanumeric + hyphen/underscore/dot only."""
     v = value.strip()
 
@@ -8883,8 +8176,6 @@ _BFSI_VALIDATORS: dict[str, callable] = {
 }
 
 
-# ==== SOURCE PAGE 0376 ====
-
 def validate_bfsi_identifiers(df: pd.DataFrame, sample_size: int = 500) -> dict[str, dict]:
     # Run structural validation (check-digit / format) on BFSI identifier columns.
     #
@@ -8902,7 +8193,6 @@ def validate_bfsi_identifiers(df: pd.DataFrame, sample_size: int = 500) -> dict[
     # Only columns whose names match _BFSI_ID_COL_HINTS are checked.
     results: dict[str, dict] = {}
 
-    # ==== SOURCE PAGE 0377 ====
     for col in df.columns:
         col_lc = col.lower().replace("-", "_").replace(" ", "_")
         matched_type = None
@@ -8926,7 +8216,6 @@ def validate_bfsi_identifiers(df: pd.DataFrame, sample_size: int = 500) -> dict[
         invalid_samples = sample[invalid_mask].head(5).tolist()
         invalid_pct     = round(invalid_count / checked * 100, 1)
 
-        # ==== SOURCE PAGE 0378 ====
         results[col] = {
             "identifier_type": matched_type,
             "total_checked":  checked,
@@ -8948,7 +8237,6 @@ def validate_bfsi_identifiers(df: pd.DataFrame, sample_size: int = 500) -> dict[
 # Volume & freshness anomaly detection (Monte Carlo-style)
 # -----------------------------------------------------------------------
 
-# ==== SOURCE PAGE 0379 ====
 
 # Stewardship routing table -- maps BFSI domain -> Jefferies owner group
 _STEWARDSHIP_ROUTING: dict[str, str] = {
@@ -8968,7 +8256,6 @@ _REGULATORY_DOMAIN_MAP: dict[str, str] = {
     "CFTC":    "Regulatory",
     "GDPR":    "Compliance / Legal",
     "CCPA":    "Compliance / Legal",
-    # ==== SOURCE PAGE 0380 ====
     "HIPAA": "Compliance / Legal",
     "PCI":   "Compliance / Legal",
 }
@@ -8990,8 +8277,6 @@ def check_volume_and_freshness(
     # in any date-like column against today.
 
 
-    # # ==== SOURCE PAGE 0381 ====
-
     # Returns:
     # {
     # "row_count":       int,
@@ -9012,8 +8297,6 @@ def check_volume_and_freshness(
     prev_row_count   = None
     volume_delta_pct = None
 
-
-# ==== SOURCE PAGE 0382 ====
 
     volume_status  = "NO_HISTORY"
 
@@ -9041,8 +8324,6 @@ def check_volume_and_freshness(
                     f"Possible missing trade batch or duplicate load."
 
 
-# ==== SOURCE PAGE 0383 ====
-
                 )
             else:
                 volume_status = "OK"
@@ -9068,8 +8349,6 @@ def check_volume_and_freshness(
 
     today = pd.Timestamp.now().normalize()
 
-
-# ==== SOURCE PAGE 0384 ====
 
     for col in df.columns:
         col_lc = col.lower()
@@ -9097,7 +8376,6 @@ def check_volume_and_freshness(
 
         status  = "STALE" if age_days > freshness_threshold_days else "OK"
 
-        # ==== SOURCE PAGE 0385 ====
         freshness_checks.append({
             "column":  col,
             "max_date": str(max_date.date()),
@@ -9120,8 +8398,6 @@ def check_volume_and_freshness(
         "freshness_checks": freshness_checks,
         "anomalies":      anomalies,
 
-
-# ==== SOURCE PAGE 0386 ====
 
     }
 
@@ -9178,7 +8454,6 @@ def detect_numeric_anomalies(df: pd.DataFrame, z_threshold: float = 3.0) -> list
     #   "std":     float,
     #   "anomaly_count": int,
     #   "anomaly_pct":  float,
-    # ==== SOURCE PAGE 0387 ====
     #   "max_z":    float,     # worst offender
     #   "sample_values": [float, ...],
     #   "confidence":  "High" | "Medium" | "Low",  # inverse of anomaly rate
@@ -9454,7 +8729,6 @@ def detect_numeric_clusters(df: pd.DataFrame, max_k: int = 5) -> list[dict]:
     # 3. Report clusters with their range, count, and centre
     #
     # Returns one entry per column that has 2+ distinct clusters.
-    # ==== SOURCE PAGE 0391 ====
     # Useful for detecting:
     # - Fee tiers (0-100, 100-500, 500+ basis points)
     # - Rating buckets (1-3, 4-6, 7-10)
@@ -9473,7 +8747,6 @@ def detect_numeric_clusters(df: pd.DataFrame, max_k: int = 5) -> list[dict]:
             continue
 
         # Compute gaps between consecutive unique values
-        # ==== SOURCE PAGE 0392 ====
         gaps = unique_vals[1:] - unique_vals[:-1]
         if gaps.std() == 0:
             continue
@@ -9493,7 +8766,6 @@ def detect_numeric_clusters(df: pd.DataFrame, max_k: int = 5) -> list[dict]:
             hi_idx = boundaries[i + 1]
             cluster_vals = clean[(clean >= unique_vals[lo_idx]) & (clean <=
                                   unique_vals[hi_idx])]
-            # ==== SOURCE PAGE 0393 ====
             clusters.append({
                 "min":    round(float(unique_vals[lo_idx]), 4),
                 "max":    round(float(unique_vals[hi_idx]), 4),
@@ -9513,7 +8785,6 @@ def detect_numeric_clusters(df: pd.DataFrame, max_k: int = 5) -> list[dict]:
         results.append({
             "column":  col,
             "clusters": clusters[:max_k],
-            # ==== SOURCE PAGE 0394 ====
             "n_clusters": len(clusters),
             "max_size_ratio": round(max_ratio, 1),
             "severity": severity,
@@ -9536,8 +8807,6 @@ def detect_categorical_drift(
     max_cardinality: int = 200,
 
 
-# ==== SOURCE PAGE 0395 ====
-
 ) -> list[dict]:
 
     # Detect distribution shift in categorical (string/low-cardinality) columns
@@ -9557,8 +8826,6 @@ def detect_categorical_drift(
 
     results = []
 
-
-# ==== SOURCE PAGE 0396 ====
 
     def _entropy(counts: dict) -> float:
         total = sum(counts.values())
@@ -9586,8 +8853,6 @@ def detect_categorical_drift(
 
         return (kl(pv, mv) + kl(qv, mv)) / 2
 
-
-# ==== SOURCE PAGE 0397 ====
 
     baseline_cols = {}
 
@@ -9623,8 +8888,6 @@ def detect_categorical_drift(
         top_pct = round(top_cnt / n_total * 100, 1) if n_total else 0
 
 
-# ==== SOURCE PAGE 0398 ====
-
         singleton_pct = round(sum(1 for c in vc.values() if c == 1) / n_total * 100, 1)
 
         entropy_val = round(_entropy(vc), 3)
@@ -9653,8 +8916,6 @@ def detect_categorical_drift(
                 "top_value":  str(top_val),
 
 
-# ==== SOURCE PAGE 0399 ====
-
                 "top_pct":  top_pct,
                 "entropy":  entropy_val,
                 "detail": f"Distribution shifted (JSD={jsd:.3f}). "
@@ -9681,8 +8942,6 @@ def detect_categorical_drift(
             results.append({
 
 
-# ==== SOURCE PAGE 0400 ====
-
                 "column":  col,
                 "type":    "suspicious_distribution",
                 "severity": severity,
@@ -9703,8 +8962,6 @@ def detect_categorical_drift(
 # -----------------------------------------------------------------------
 
 
-# ==== SOURCE PAGE 0401 ====
-
 _PII_REGEX = {
     "email":       re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b'),
     "phone":       re.compile(r'\b(\+\d{1,3}[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b'),
@@ -9724,8 +8981,6 @@ _BFSI_ID_REGEX: dict[str, re.Pattern] = {
     "bic":   re.compile(r'\b[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?\b'),
 }
 
-
-# ==== SOURCE PAGE 0402 ====
 
 # BFSI column name hints for regulatory identifier detection
 _BFSI_ID_COL_HINTS: dict[str, list[str]] = {
@@ -9748,8 +9003,6 @@ _BFSI_ID_COL_HINTS: dict[str, list[str]] = {
 }
 
 
-# ==== SOURCE PAGE 0403 ====
-
 # Columns that must not be null under specific regulatory frameworks
 _BFSI_MANDATORY_FIELDS: dict[str, list[str]] = {
     "MiFID II": ["lei", "uti", "mic_code", "venue", "reporting_entity",
@@ -9770,8 +9023,6 @@ _PII_COL_HINTS: dict[str, list[str]] = {
     "email":  ["email", "mail"],
     "phone":  ["phone", "tel", "mobile", "cell", "fax", "contact"],
 
-
-# ==== SOURCE PAGE 0404 ====
 
     # "sin" removed -- too short, matches 'business', 'isin', 'processing'
     # "ssn" kept as exact word only (enforced by word-boundary match below)
@@ -9794,8 +9045,6 @@ _REGULATORY_TAGS: dict[str, list[str]] = {
     # Consumer / personal data frameworks
 
 
-# ==== SOURCE PAGE 0405 ====
-
     "GDPR": ["email", "phone", "name", "dob", "address", "ip_address", "national_id",
 "gender", "race"],
     "CCPA": ["email", "phone", "name", "address", "ip_address"],
@@ -9816,7 +9065,6 @@ def _parse_sensitivity_from_text(text: str) -> str | None:
 
     # Extract intended sensitivity tier from a plain-English override rule,
 
-    # ==== SOURCE PAGE 0406 ====
 
     # handling negation correctly.
 
@@ -9839,7 +9087,6 @@ def _parse_sensitivity_from_text(text: str) -> str | None:
 
     # Negation words/phrases that precede a tier mention
 
-    # ==== SOURCE PAGE 0407 ====
 
     _NEG = r"(?:not|non|isn.t|is not|no longer|shouldn.t be|should not be|remove|clear|or|nor|proprietary,?\s+sensitive,?\s+or)\s+"  # OCR-UNCERTAIN: regex pattern approximate
 
@@ -9866,7 +9113,6 @@ def _parse_sensitivity_from_text(text: str) -> str | None:
     # Return the tier of the LAST non-negated mention
     # ("not Internal Use Only; classify as Public" -> Public wins)
 
-    # ==== SOURCE PAGE 0408 ====
 
     candidates.sort(key=lambda x: x[0])
 
@@ -9890,7 +9136,6 @@ def _parse_regulatory_override(text: str) -> list[str] | None:
     _NO_REG = ("no regulatory", "no regulation", "not subject to", "no framework",
         "not regulated", "exempt from", "no compliance", "none apply",
 
-        # ==== SOURCE PAGE 0409 ====
 
         "no other regulatory", "no other framework")
     if any(p in t for p in _NO_REG):
@@ -9912,7 +9157,6 @@ def _parse_regulatory_override(text: str) -> list[str] | None:
     found = []
     for framework, keywords in _ALL_FRAMEWORKS.items():
 
-        # ==== SOURCE PAGE 0410 ====
 
         if any(kw in t for kw in keywords):
             found.append(framework)
@@ -9932,9 +9176,6 @@ def _parse_regulatory_override(text: str) -> list[str] | None:
         return found        # frameworks explicitly mentioned without limiting
     return None        # no regulatory instruction -- don't override
 
-
-
-    # ==== SOURCE PAGE 0411 ====
 
 def _sensitivity_level(pii: list[str], bfsi_types: set[str] | None = None) -> str:
     types = {p.split(" ")[0] for p in pii}
@@ -9957,9 +9198,6 @@ def _regulatory_flags(pii_types: set[str], bfsi_types: set[str] | None = None) -
     return [reg for reg, types in _REGULATORY_TAGS.items() if combined & set(types)]
 
 
-
-# ==== SOURCE PAGE 0412 ====
-
 def _bfsi_access_recommendation(sensitivity: str, reg_flags: list[str],
                 bfsi_types: set[str]) -> str:
     """Return a domain-specific access recommendation for a BFSI column."""
@@ -9978,9 +9216,6 @@ def _bfsi_access_recommendation(sensitivity: str, reg_flags: list[str],
             "Risk team access only -- aggregation accuracy governed by BCBS239; "
             "changes require risk data owner sign-off"
 
-
-
-# ==== SOURCE PAGE 0413 ====
 
         )
     if sensitivity == "Highly Restricted":
@@ -10003,9 +9238,6 @@ def analyze_governance(df: pd.DataFrame, name: str,
     sample = df.head(500)
 
 
-
-# ==== SOURCE PAGE 0414 ====
-
     findings = []
 
     # Parse pii_context hint: "no PII", "internal only", or "no customer data"
@@ -10026,9 +9258,6 @@ def analyze_governance(df: pd.DataFrame, name: str,
         detected: list[str] = []
         bfsi_detected: list[str] = []
 
-
-
-# ==== SOURCE PAGE 0415 ====
 
         col_lc = col.lower().replace("-", "_").replace(" ", "_")
 
@@ -10051,9 +9280,6 @@ def analyze_governance(df: pd.DataFrame, name: str,
         import re as _re_pii
 
 
-
-# ==== SOURCE PAGE 0416 ====
-
         _col_tokens = set(_re_pii.split(r'[_\s]+', col_lc))
         for pii_type, _col_hints in _PII_COL_HINTS.items():
             matched = False
@@ -10074,9 +9300,6 @@ def analyze_governance(df: pd.DataFrame, name: str,
                 break
 
 
-
-# ==== SOURCE PAGE 0417 ====
-
         # 3. Consumer PII -- content regex scan
         # Skip columns whose names clearly indicate business/financial dates or IDs --
         # these are not personal data even if their values look date-like
@@ -10096,9 +9319,6 @@ def analyze_governance(df: pd.DataFrame, name: str,
                 if not any(pii_type in p for p in detected):
                     hits = int(vals.str.contains(pat, regex=True, na=False).sum())
 
-
-
-# ==== SOURCE PAGE 0418 ====
 
                     # Require at least 1% hit rate (min 2 hits) to reduce false positives
                     # from financial data that incidentally matches date/phone patterns
@@ -10121,9 +9341,6 @@ def analyze_governance(df: pd.DataFrame, name: str,
                     if hits >= max(1, len(vals) // 5):
 
 
-
-# ==== SOURCE PAGE 0419 ====
-
                         bfsi_detected.append(
                             f"{bfsi_type} (content, {hits}/{len(vals)} sampled)"
                         )
@@ -10144,9 +9361,6 @@ def analyze_governance(df: pd.DataFrame, name: str,
             dd.get("sensitivity")
             if dd.get("sensitivity") in (
 
-
-
-# ==== SOURCE PAGE 0420 ====
 
                 "Highly Restricted", "Confidential", "Internal Use Only", "Public"
             )
@@ -10169,9 +9383,6 @@ def analyze_governance(df: pd.DataFrame, name: str,
                     )
 
 
-
-# ==== SOURCE PAGE 0421 ====
-
         # 7. Cross-column conditional checks (EMIR: cleared=Y requires ccp)
         conditional_warnings: list[str] = []
         if any(h in col_lc for h in ["cleared", "is_cleared", "clearing_flag"]):
@@ -10191,9 +9402,6 @@ def analyze_governance(df: pd.DataFrame, name: str,
                             (c for c in df.columns
                                 if c.lower().replace("-", "_").replace(" ", "_") in ccp_cols), None
 
-
-
-# ==== SOURCE PAGE 0422 ====
 
                         )
                         if ccp_col_actual is not None:
@@ -10216,9 +9424,6 @@ def analyze_governance(df: pd.DataFrame, name: str,
             reg_flags        = _dc_col_override["regulatory"]
 
 
-
-# ==== SOURCE PAGE 0423 ====
-
             mandatory_breach    = []  # clear breaches -- user said these don't apply
             conditional_warnings = []
         if _dc_col_override.get("clear_pii"):
@@ -10238,9 +9443,6 @@ def analyze_governance(df: pd.DataFrame, name: str,
             # Regulatory frameworks take precedence for routing
             escalate_to = next(
 
-
-
-# ==== SOURCE PAGE 0424 ====
 
                 (_REGULATORY_DOMAIN_MAP[r] for r in reg_flags if r in
 _REGULATORY_DOMAIN_MAP),
@@ -10262,9 +9464,6 @@ _REGULATORY_DOMAIN_MAP),
             "conditional_warnings": conditional_warnings,
             "owner":       dd.get("owner", ""),
 
-
-
-# ==== SOURCE PAGE 0425 ====
 
             "description":    dd.get("description", ""),
             "business_term":   dd.get("business_term", ""),
@@ -10288,9 +9487,6 @@ _REGULATORY_DOMAIN_MAP),
     )
 
 
-
-# ==== SOURCE PAGE 0426 ====
-
     all_regs = sorted({r for f in findings for r in f["regulatory"]})
 
     # Aggregate mandatory breaches and conditional warnings across all columns
@@ -10310,9 +9506,6 @@ _REGULATORY_DOMAIN_MAP),
     return {
         "file_name":    name,
 
-
-
-# ==== SOURCE PAGE 0427 ====
 
         "overall_classification": overall,
         "regulatory_frameworks": all_regs,
@@ -10335,9 +9528,6 @@ _REGULATORY_DOMAIN_MAP),
 _ABBREV_MAP = {
 
 
-
-# ==== SOURCE PAGE 0428 ====
-
     "acct": "account", "amt": "amount", "ccy": "currency", "curr": "currency",
     "src": "source", "tgt": "target", "ref": "reference", "id": "identifier",
     "le": "legal entity", "prin": "principal", "dt": "date", "ts": "timestamp",
@@ -10358,12 +9548,6 @@ _BOOL_DOMAINS = [
 
 def _expand_col_name(col: str) -> str:
 
-
-
-
-
-
-# ==== SOURCE PAGE 0429 ====
 
     # Normalise a column name to lowercase words, expanding abbreviations.
 
@@ -10387,7 +9571,6 @@ def _expand_col_name(col: str) -> str:
         else:
             if acron_buf:
 
-# ==== SOURCE PAGE 0430 ====
 
                 merged.append("".join(acron_buf))
                 acron_buf = []
@@ -10410,9 +9593,6 @@ def _col_name_similarity(a: str, b: str) -> float:
     if ta and tb:
 
 
-
-# ==== SOURCE PAGE 0431 ====
-
         jaccard = len(ta & tb) / len(ta | tb)
     else:
         jaccard = 0.0
@@ -10430,7 +9610,6 @@ def _profile_similarity(s1: pd.Series, s2: pd.Series) -> float:
     # Compare two column value profiles to detect same-content columns.
     #
     # Uses the maximum of three overlap measures so that partial-domain matches
-    # ==== SOURCE PAGE 0432 ====
     # are detected correctly.  Example: InstrumentID (225 values) vs Security
     # (65 values) share 32 values -- Jaccard=0.12 but containment of target
     # in source = 32/65 = 0.49, which correctly signals a real match.
@@ -10450,8 +9629,6 @@ def _profile_similarity(s1: pd.Series, s2: pd.Series) -> float:
     return round(max(jaccard, containment12, containment21), 3)
 
 
-# ==== SOURCE PAGE 0433 ====
-
 def _detect_transform(s1: pd.Series, s2: pd.Series) -> list[dict]:
     # Auto-detect value-level transforms needed to align s1 (source) to s2 (target).
     # Returns a list of transform descriptors.
@@ -10467,7 +9644,6 @@ def _detect_transform(s1: pd.Series, s2: pd.Series) -> list[dict]:
     sample1 = sample1.iloc[:min_len]
     sample2 = sample2.iloc[:min_len]
 
-    # ==== SOURCE PAGE 0434 ====
     # Case normalisation
     if (sample1.str.upper() == sample2).mean() > 0.7:
         transforms.append({"type": "case", "rule": "uppercase", "description": "Source → UPPER CASE"})
@@ -10485,7 +9661,6 @@ def _detect_transform(s1: pd.Series, s2: pd.Series) -> list[dict]:
     ]
     for pat, fmt in date_patterns:
         if sample1.str.match(pat).mean() > 0.5:
-            # ==== SOURCE PAGE 0435 ====
             transforms.append({
                 "type": "date",
                 "rule": f"{fmt} → ISO 8601",
@@ -10504,7 +9679,6 @@ def _detect_transform(s1: pd.Series, s2: pd.Series) -> list[dict]:
         transforms.append({"type": "null", "rule": "normalise_nulls", "description": f"Null sentinels {src_nulls} → empty"})
 
     # Boolean/code translation
-    # ==== SOURCE PAGE 0436 ====
     d1 = {v.lower() for v in sample1.unique()}
     d2 = {v.lower() for v in sample2.unique()}
     for true_set, false_set in _BOOL_DOMAINS:
@@ -10525,9 +9699,6 @@ def _apply_transform(series: pd.Series, transforms: list[dict]) -> pd.Series:
             elif t["rule"] == "lowercase":
                 s = s.str.lower()
 
-
-
-# ==== SOURCE PAGE 0437 ====
 
             elif t["rule"] == "titlecase":
                 s = s.str.title()
@@ -10550,9 +9721,6 @@ def _apply_transform(series: pd.Series, transforms: list[dict]) -> pd.Series:
     return s
 
 
-
-# ==== SOURCE PAGE 0438 ====
-
 def _canonical(v) -> str:
     # Canonical comparable string -- null-safe, stripped, null-sentinel normalised.
     if v is None:
@@ -10569,7 +9737,6 @@ def _compare_embedded_value(src_val: str, tgt_description: str) -> tuple[bool, s
     # Strategy (in priority order):
     # 1. Exact substring match (fastest, handles most cases).
     # 2. Numeric regex extraction -- build a pattern from the source number and extract
-    # ==== SOURCE PAGE 0439 ====
     # the nearest numeric token from the description, then compare as floats
     # (handles formatting differences like 1000 vs 1,000 vs 1.0e3).
     # 3. Case-insensitive substring match for non-numeric values.
@@ -10588,7 +9755,6 @@ def _compare_embedded_value(src_val: str, tgt_description: str) -> tuple[bool, s
     _NUM_PAT = re.compile(r"[-+]?\d[\d,]*\.?\d*(?:[eE][-+]?\d+)?")  # OCR-UNCERTAIN
     try:
         src_num = float(sv.replace(",", ""))
-        # ==== SOURCE PAGE 0440 ====
         # Find all numbers in the description and pick the closest match
         nums_in_desc = _NUM_PAT.findall(tv)
         for raw in nums_in_desc:
@@ -10608,7 +9774,6 @@ def _compare_embedded_value(src_val: str, tgt_description: str) -> tuple[bool, s
         pass  # source value is not numeric
 
     # 3. Case-insensitive substring for string values
-    # ==== SOURCE PAGE 0441 ====
     if sv.lower() in tv.lower():
         return True, sv
 
@@ -10627,7 +9792,6 @@ def _llm_lineage_mapping(df_src: pd.DataFrame, df_tgt: pd.DataFrame,
     # - reasoning      : free-text explanation of decisions made
     #
     # Returns None on any error so caller falls back to heuristics.
-    # ==== SOURCE PAGE 0442 ====
     _SAMPLE_ROWS = 5
     _MAX_COLS = 60
 
@@ -10647,7 +9811,6 @@ def _llm_lineage_mapping(df_src: pd.DataFrame, df_tgt: pd.DataFrame,
     if user_hints:
         hints_lines = []
 
-        # ==== SOURCE PAGE 0443 ====
         if user_hints.get("domain_context"):
             hints_lines.append(f"Domain / business context:\n{user_hints['domain_context']}")
         if user_hints.get("key_hints"):
@@ -10663,11 +9826,9 @@ def _llm_lineage_mapping(df_src: pd.DataFrame, df_tgt: pd.DataFrame,
                 "\nADDITIONAL CONTEXT PROVIDED BY THE USER (treat as authoritative guidance):\n"
                 + "\n".join(f"  - {l}" for l in hints_lines)
                 + "\n"
-                # ==== SOURCE PAGE 0444 ====
             )
 
     # NOTE (reconstruction): this prompt string had lost its opening/closing
-    # triple-quotes and had "# ==== SOURCE PAGE NNNN ====" transcription
     # markers embedded mid-string during OCR assembly. Restored as an f-string
     # with the markers removed (they are pipeline artifacts, not original
     # content) -- verify against source in code review.
@@ -10723,7 +9884,6 @@ Rules:
     try:
         raw = _ask_llm([{"role": "user", "content": [{"text": prompt}]}])
 
-        # ==== SOURCE PAGE 0447 ====
         # Strip any accidental markdown fences
         raw = re.sub(r"^```[a-z]*\n?", "", raw.strip(), flags=re.MULTILINE)
         raw = re.sub(r"```$", "", raw.strip())
@@ -10732,1929 +9892,6 @@ Rules:
         return None
 
 
-def analyze_lineage(df_src: pd.DataFrame, df_tgt: pd.DataFrame,
-            name_src: str, name_tgt: str,
-            use_llm: bool = False,
-            user_hints: dict | None = None) -> dict:
-
-    # Comprehensive data lineage analysis -- source → target validation.
-
-    # Handles all transformation scenarios:
-    # - Direct column mapping (exact / semantic / content-profile)
-    # - Merged columns (source col A + col B → target col C, e.g. first+last → full_name)
-    # - Split columns (source col A → target col B + col C, e.g. address → city/state/zip)
-
-
-
-    # # ==== SOURCE PAGE 0449 ====
-
-    # - Renamed columns (different name, same data)
-    # - Value transformations (case, date format, number format, boolean, null sentinel)
-    # - Missing source rows in target (completeness check)
-    # - Extra target rows (expected -- target has data from multiple sources)
-    # - Value-level exceptions classified by type
-
-    # Row matching strategy:
-    # - Tries to find a natural key across source columns
-    # - Looks for the same key in target (possibly renamed)
-    # - Falls back to positional matching if no key found
-    # - Target having MORE rows than source is expected and handled correctly
-
-    # Exception classification:
-    # SOURCE exceptions  -- data present in source but missing/wrong in target
-    # TARGET exceptions  -- data present in target with no matching source record
-
-    # Deduplicate column names on entry -- user uploads can produce frames where the same
-    # name appears twice, causing df[col] to return a DataFrame instead of a Series.
-
-
-
-# ==== SOURCE PAGE 0450 ====
-
-    if df_src.columns.duplicated().any():
-        df_src = df_src.loc[:, ~df_src.columns.duplicated()].copy()
-    if df_tgt.columns.duplicated().any():
-        df_tgt = df_tgt.loc[:, ~df_tgt.columns.duplicated()].copy()
-
-
-    def _first_col(df: "pd.DataFrame", col: str) -> "pd.Series":
-        """Return the first occurrence of col as a Series, even when col is duplicated."""
-        positions = [i for i, c in enumerate(df.columns) if c == col]
-        return df.iloc[:, positions[0]] if positions else pd.Series(dtype=object)
-
-
-    src_cols = list(df_src.columns)
-    tgt_cols = list(df_tgt.columns)
-
-    # -- Stage 0a: Exclude metadata columns from lineage reconciliation --------
-    # Metadata columns (audit timestamps, surrogate keys, ETL user/process cols)
-    # are detected data-behaviourally via _metadata_score.  They are stripped from
-    # both src_cols and tgt_cols before any mapping or comparison occurs so they
-    # never pollute the column map, key selection, or exception list.
-    # We need BOTH files present for _metadata_score; when a column exists only in
-
-
-
-# ==== SOURCE PAGE 0451 ====
-
-    # one file we fall back to the name-pattern check (_is_metadata_col).
-    _meta_src: set[str] = set()
-    _meta_tgt: set[str] = set()
-    for c in src_cols:
-        is_meta, _ = _metadata_score(c, df_src, df_tgt)
-        if is_meta:
-            _meta_src.add(c)
-    for c in tgt_cols:
-        is_meta, _ = _metadata_score(c, df_tgt, df_src)
-        if is_meta:
-            _meta_tgt.add(c)
-    src_cols = [c for c in src_cols if c not in _meta_src]
-    tgt_cols = [c for c in tgt_cols if c not in _meta_tgt]
-    # Keep a record for UI display
-    excluded_meta_src = sorted(_meta_src)
-    excluded_meta_tgt = sorted(_meta_tgt)
-
-    # -- Stage 0b: Source duplicate detection --------
-    # Duplicate rows in the source are a data quality problem -- flag them before
-
-
-
-# ==== SOURCE PAGE 0452 ====
-
-    # any comparison so they don't silently inflate match counts.
-    dup_exceptions: list[dict] = []
-    # Use only business columns (metadata already excluded) for duplicate detection
-    _dup_cols = [c for c in src_cols if c in df_src.columns]
-    dup_mask = (df_src[_dup_cols].duplicated(keep=False)
-        if _dup_cols else pd.Series(False, index=df_src.index))
-    if dup_mask.any():
-        dup_groups = df_src[_dup_cols][dup_mask].groupby(_dup_cols, dropna=False)
-        for _, grp in dup_groups:
-            rows = [int(i) + 1 for i in grp.index]  # 1-based row numbers
-            dup_exceptions.append({
-                "row": rows[0],
-                "exception_class": _bfsi_exception_domain("", "DUPLICATE_SOURCE_ROW"),
-                "exception_type": "DUPLICATE_SOURCE_ROW",
-                "severity": "ERROR",
-                "description": f"Duplicate source rows at positions {rows}",
-                "key": {},
-                "changes": {},
-            })
-
-
-
-# ==== SOURCE PAGE 0453 ====
-
-    # Remove duplicates from df_src for downstream comparison (keep first occurrence)
-    df_src = df_src.drop_duplicates(keep="first").reset_index(drop=True)
-
-    # -- Stage 0c: Embedded Side/Qty extraction + target aggregation --------
-    # When the target has a free-text Description column containing embedded side
-    # ("buy trade" / "sell trade") and qty ("x200", "x1,700") values, extract them
-    # into real columns and aggregate the target by (key + side) so the comparison
-    # becomes apple-to-apple against the source's explicit Side + Volume columns.
-    #
-    # Extraction rules (applied to target only):
-    #  Side  → "buy trade" → "B",  "sell trade" → "S"  (matches source B/S encoding)
-    #  Qty   → first numeric after "x" on the matched side ("buy trade for x200" → 200)
-    #  The alert header "(SELL)" / "(BUY)" is also accepted as a fallback for side.
-    #
-    # Aggregation: group df_tgt by (key-candidate cols + extracted _Side) and sum _Qty.
-    # The result replaces df_tgt so all downstream stages see a deduplicated dataset.
-    _tgt_was_aggregated = False
-    _tgt_agg_report: dict = {}  # surfaced in the final return dict for the UI
-
-
-
-# ==== SOURCE PAGE 0454 ====
-
-    # -- Load extraction pattern registry --------
-    # Patterns are defined in extraction_patterns.json next to main.py.
-    # Each entry supplies detect_regex, extract_regex, optional fallback_regex,
-    # side_map, and qty_strip so new description formats can be added without
-    # touching this code.
-    _PATTERNS_FILE = Path(__file__).parent / "extraction_patterns.json"
-    _ext_patterns: list[dict] = []
-    try:
-        with open(_PATTERNS_FILE, encoding="utf-8") as _pf:
-            _raw = json.load(_pf)
-        _ext_patterns = [p for p in _raw.get("patterns", []) if p.get("enabled", True)]
-    except Exception:
-        pass  # file missing or malformed -- fall back to empty list (no extraction)
-
-
-    def _detect_embedded_side_qty(df: pd.DataFrame) -> tuple[str | None, dict | None]:
-        # Return (desc_col, matched_pattern) for the first text column whose values
-        # match any registered extraction pattern at >=50% hit rate.
-        for col in df.columns:
-
-
-
-# ==== SOURCE PAGE 0455 ====
-
-            dtype_str = str(df[col].dtype).lower()
-            if df[col].dtype != object and dtype_str not in ("string", "str"):
-                continue
-            sample = df[col].dropna().astype(str).head(20)
-            for pat in _ext_patterns:
-                detect_re = re.compile(pat["detect_regex"], re.IGNORECASE)
-                hits = sum(1 for v in sample if detect_re.search(v))
-                if hits >= max(1, len(sample) // 2):
-                    return col, pat
-        return None, None
-
-
-    _desc_col, _active_pattern = _detect_embedded_side_qty(df_tgt)
-
-    if _desc_col and _active_pattern:
-        _extract_re = re.compile(_active_pattern["extract_regex"], re.IGNORECASE)
-        _fallback_re = (re.compile(_active_pattern["fallback_regex"], re.IGNORECASE)
-                if _active_pattern.get("fallback_regex") else None)
-        _side_map  = {k.lower(): v for k, v in _active_pattern.get("side_map", {}).items()}
-        _qty_strip  = _active_pattern.get("qty_strip", ",")
-
-
-
-# ==== SOURCE PAGE 0456 ====
-
-        def _extract_all_sides(text: str) -> list[tuple[str, float]]:
-            # Return one (side_code, qty) pair per distinct side leg found in text.
-            # Uses the active registered pattern so new formats need no code changes.
-            text = str(text)
-            matches = _extract_re.findall(text)
-            if not matches:
-                if _fallback_re:
-                    hm = _fallback_re.search(text)
-                    if hm:
-                        code = _side_map.get(hm.group(1).lower(), hm.group(1).upper()[0])
-                        return [(code, 0.0)]
-                return []
-            _side_totals: dict[str, float] = {}
-            for side_word, qty_str in matches:
-                code = _side_map.get(side_word.lower(), side_word.upper()[0])
-                try:
-                    qty = float(qty_str.replace(_qty_strip, ""))
-                except ValueError:
-
-
-
-# ==== SOURCE PAGE 0457 ====
-
-                    qty = 0.0
-                _side_totals[code] = _side_totals.get(code, 0.0) + qty
-            return list(_side_totals.items())
-
-
-        # Explode: each original row becomes N rows (one per embedded side/qty pair)
-        _expanded_rows = []
-        for _, orig_row in df_tgt.iterrows():
-            pairs = _extract_all_sides(orig_row[_desc_col])
-            if not pairs:
-                continue
-            for side_code, qty in pairs:
-                new_row = orig_row.copy()
-                new_row["_Side"] = side_code
-                new_row["_Qty"] = qty
-                _expanded_rows.append(new_row)
-
-        _rows_before_explode = len(df_tgt)
-        if not _expanded_rows:
-            # Nothing extracted -- leave df_tgt unchanged
-
-
-
-# ==== SOURCE PAGE 0458 ====
-
-            _desc_col = None
-        else:
-            df_tgt = pd.DataFrame(_expanded_rows).reset_index(drop=True)
-            tgt_cols = list(df_tgt.columns)  # refresh so candidate key scan sees new cols
-
-            # Identify candidate KEY columns in target: high-cardinality ID-like columns
-            # whose values appear in source. Low-cardinality classifiers (e.g. exchange code,
-            # security type "S") are excluded -- they match source columns by accident (B/S overlap).
-            # Heuristic: a key candidate must have >=10% uniqueness in target (ID-like),
-            # and high value-overlap with exactly one source column.
-            _candidate_keys: list[str] = []
-            for tc in tgt_cols:
-                if tc in ("_Side", "_Qty", _desc_col) or tc not in df_tgt.columns:
-                    continue
-                # Exclude low-cardinality classifiers -- they can't be meaningful join keys.
-                # Use _rows_before_explode as denominator: after exploding B+S rows the total
-                # row count doubles, which would halve uniqueness ratios unfairly.
-                _tgt_uniq_ratio = df_tgt[tc].dropna().nunique() / max(_rows_before_explode, 1)
-
-
-
-# ==== SOURCE PAGE 0459 ====
-
-                if _tgt_uniq_ratio < 0.05:
-                    continue
-                best_overlap = max(
-                    (_profile_similarity(df_src[sc], df_tgt[tc]) for sc in src_cols
-                    if sc in df_src.columns),
-                    default=0.0
-                )
-                if best_overlap >= 0.25:
-                    _candidate_keys.append(tc)
-
-            # Always include extracted _Side if source has a Side-like column
-            _src_side_col = next(
-                (c for c in src_cols
-                if any(kw in c.lower() for kw in ("side", "direction", "buysell"))),
-                None
-            )
-            _agg_key_cols = _candidate_keys + ["_Side"] if _candidate_keys else []
-            if _agg_key_cols and "_Qty" in df_tgt.columns:
-
-
-
-# ==== SOURCE PAGE 0460 ====
-
-                # Aggregate: sum _Qty (and any other numeric mapped cols) per key+side
-                _other_numeric = [
-                    c for c in df_tgt.columns
-                    if c not in _agg_key_cols and c != "_Qty" and c != _desc_col
-                    and pd.api.types.is_numeric_dtype(
-                        pd.to_numeric(df_tgt[c], errors="coerce"))
-                ]
-                _sum_cols = ["_Qty"] + _other_numeric[:3]  # cap to avoid wide output
-                _keep_first = [c for c in df_tgt.columns
-                        if c not in _agg_key_cols and c not in _sum_cols
-                        and c != _desc_col]
-
-                _agg_dict = {c: "sum" for c in _sum_cols}
-                _agg_dict.update({c: "first" for c in _keep_first})
-
-                df_tgt_agg = df_tgt.groupby(_agg_key_cols, as_index=False).agg(_agg_dict)
-
-                # Rename _Side → the source's side column name so mapping works naturally
-                if _src_side_col:
-
-
-
-# ==== SOURCE PAGE 0461 ====
-
-                    df_tgt_agg = df_tgt_agg.rename(columns={"_Side": _src_side_col})
-
-                # Fix agg key col list for downstream
-                _agg_key_cols = [_src_side_col if c == "_Side" else c
-                        for c in _agg_key_cols]
-
-
-                _tgt_agg_report = {
-                    "desc_col":     _desc_col,
-                    "agg_key_cols":  _agg_key_cols,
-                    "rows_before":   _rows_before_explode,
-                    "rows_after":   len(df_tgt_agg),
-                    "qty_col_extracted": "_Qty",
-                    "side_col_extracted": _src_side_col or "_Side",
-                }
-                # Keep only key cols + _Qty -- drop all original Excel2 columns so nothing
-                # from the source name-space can collide with extracted column names downstream.
-                _keep_cols = [c for c in _agg_key_cols if c in df_tgt_agg.columns] + \
-                        [c for c in ["_Qty"] if c in df_tgt_agg.columns]
-                df_tgt = df_tgt_agg[_keep_cols].reset_index(drop=True)
-
-
-
-# ==== SOURCE PAGE 0462 ====
-
-                tgt_cols = list(df_tgt.columns)
-                _tgt_was_aggregated = True
-
-
-    # -- Stage 1: Column Mapping ------------
-
-    # When use_llm=True the LLM produces a structured mapping JSON that drives
-    # column_map, embedded_findings, merged_findings, and key selection directly.
-    # Heuristic passes (convention / semantic / profile) run afterwards to fill
-    # any gaps the LLM left (columns it didn't mention or returned null tgt_col for).
-    llm_mapping_result: dict | None = None
-    llm_reasoning: str = ""
-    llm_mapping_used: bool = False
-
-
-    unmapped_src = list(src_cols)
-    unmapped_tgt = list(tgt_cols)
-    column_map: list[dict] = []
-    # Will be populated from LLM or Stage 2/2b
-    merged_column_findings: list[dict] = []
-    embedded_findings:    list[dict] = []
-
-
-
-# ==== SOURCE PAGE 0463 ====
-
-    # LLM-provided key override (set below if LLM succeeds)
-    llm_src_key: list[str] | None = None
-    llm_tgt_key: list[str] | None = None
-
-    # -- Stage 0c injection: if target was pre-aggregated, seed key + qty mapping ----
-    # Stage 0c already determined the composite key (candidate_keys + Side) and
-    # extracted _Qty from Description.  Rather than hoping Stage 5 re-discovers
-    # this across different column names, we inject it directly here so all
-    # downstream stages (column mapping, key selection, reconciliation) are aware.
-    if _tgt_was_aggregated and _tgt_agg_report:
-        _s0c_tgt_key = _tgt_agg_report["agg_key_cols"]  # e.g. ["Security", "Side"]
-        # Find the matching source columns by value-overlap
-        _s0c_src_key: list[str] = []
-        for tk in _s0c_tgt_key:
-            if tk in df_src.columns:
-                # Same name in both (e.g. "Side" after rename)
-                _s0c_src_key.append(tk)
-            else:
-                # Pick the source column with best value overlap to this target col
-
-
-
-# ==== SOURCE PAGE 0464 ====
-
-                best_sc = max(
-                    src_cols,
-                    key=lambda sc: _profile_similarity(df_src[sc], df_tgt[tk])
-                        if sc in df_src.columns and tk in df_tgt.columns else 0.0,
-                    default=None,
-                )
-                if best_sc and _profile_similarity(df_src[best_sc], df_tgt[tk]) >= 0.20:
-                    _s0c_src_key.append(best_sc)
-        if len(_s0c_src_key) == len(_s0c_tgt_key):
-            llm_src_key = _s0c_src_key
-            llm_tgt_key = _s0c_tgt_key
-
-        # Inject _Qty <-> source numeric/volume column into column_map seed
-        # Find the source column most likely to be the "volume/quantity" column
-        _src_qty_col = next(
-            (c for c in src_cols
-            if any(kw in c.lower() for kw in ("volume", "qty", "quantity", "amount", "notional",
-"size"))),
-            None,
-        )
-
-
-
-# ==== SOURCE PAGE 0465 ====
-
-        _tgt_qty_col = _tgt_agg_report.get("qty_col_extracted", "_Qty")
-        _desc_col_name = _tgt_agg_report.get("desc_col", "Description")
-        _tgt_side_col = _tgt_agg_report.get("side_col_extracted", "_Side")
-
-        if _src_qty_col is None:
-            # Fallback: pick the numeric source column with best value-overlap to _Qty.
-            # Require meaningful overlap (>=0.2) to avoid forcing a spurious mapping on
-            # unrelated schemas where no quantity column exists (e.g. SmartLoan).
-            _num_src = [c for c in src_cols
-                    if c in df_src.columns and pd.api.types.is_numeric_dtype(df_src[c])]
-            if _num_src and _tgt_qty_col in df_tgt.columns:
-                _best_qty = max(_num_src,
-                        key=lambda c: _profile_similarity(df_src[c], df_tgt[_tgt_qty_col]))
-                if _profile_similarity(df_src[_best_qty], df_tgt[_tgt_qty_col]) >= 0.20:
-                    _src_qty_col = _best_qty
-
-        if _src_qty_col and _tgt_qty_col in df_tgt.columns and _src_qty_col in df_src.columns:
-            column_map.append({
-
-
-
-# ==== SOURCE PAGE 0466 ====
-
-                "src_col":    _src_qty_col,
-                "tgt_col":    _tgt_qty_col,
-                "match_type":  "embedded_extracted",
-                "name_score":  None,
-                "profile_score": None,
-                "confidence":  "HIGH",
-                "mapping_note": f"Extracted from '{_desc_col_name}'",
-                "transforms":  [],
-            })
-            if _src_qty_col in unmapped_src:
-                unmapped_src.remove(_src_qty_col)
-            if _tgt_qty_col in unmapped_tgt:
-                unmapped_tgt.remove(_tgt_qty_col)
-
-            # Side was also extracted from the same description column
-            if _src_side_col and _tgt_side_col in df_tgt.columns and _src_side_col in df_src.columns:
-                column_map.append({
-                    "src_col":   _src_side_col,
-
-
-
-# ==== SOURCE PAGE 0467 ====
-
-                    "tgt_col":   _tgt_side_col,
-                    "match_type": "embedded_extracted",
-                    "name_score": None,
-                    "profile_score": None,
-                    "confidence": "HIGH",
-                    "mapping_note": f"Extracted from '{_desc_col_name}'",
-                    "transforms": [{"type": "normalize", "description": "Buy/Sell/buy/sell/b/s → B/S"}],
-                })
-                if _src_side_col in unmapped_src:
-                    unmapped_src.remove(_src_side_col)
-                if _tgt_side_col in unmapped_tgt:
-                    unmapped_tgt.remove(_tgt_side_col)
-
-        # Per-column regex patterns for embedded extraction (sc → pattern string)
-        _embed_regex: dict[str, str] = {}
-
-        if use_llm:
-            llm_mapping_result = _llm_lineage_mapping(df_src, df_tgt, name_src, name_tgt,
-
-
-
-# ==== SOURCE PAGE 0468 ====
-
-                    user_hints=user_hints)
-
-        if llm_mapping_result:
-            llm_mapping_used = True
-            llm_reasoning = llm_mapping_result.get("reasoning", "")
-
-            # Build column_map from LLM output
-            for m in llm_mapping_result.get("column_mappings", []):
-                sc  = m.get("src_col", "")
-                tc  = m.get("tgt_col")
-                mtype = m.get("match_type", "semantic")
-                conf  = m.get("confidence", "MEDIUM")
-                notes = m.get("notes", "")
-                regex = m.get("regex_extract")
-
-                # Skip if columns don't actually exist in the files
-                if sc not in df_src.columns:
-                    continue
-                if mtype == "not_in_target" or not tc:
-
-
-
-# ==== SOURCE PAGE 0469 ====
-
-                    continue
-                if tc not in df_tgt.columns:
-                    continue
-
-                # For direct (non-embedded, non-split, non-merged) matches the LLM claims
-                # as content_profile or renamed -- validate with real value overlap.
-                # Rejects hallucinated matches like Trade ID -> Global Alert ID (LLM scores 1.0
-                # but actual overlap is zero -- different system IDs).
-                if mtype in ("content_profile", "renamed", "semantic") and sc in df_src.columns:
-                    real_overlap = _profile_similarity(df_src[sc], df_tgt[tc])
-                    if real_overlap < 0.20:
-                        continue
-
-                # Skip if already injected (e.g. embedded_extracted Side/Qty from Stage 0c)
-                if any(m["src_col"] == sc and m["tgt_col"] == tc for m in column_map):
-                    if sc in unmapped_src: unmapped_src.remove(sc)
-                    if tc in unmapped_tgt: unmapped_tgt.remove(tc)
-                    continue
-
-
-
-# ==== SOURCE PAGE 0470 ====
-
-                entry = {
-                    "src_col": sc, "tgt_col": tc,
-                    "match_type": mtype,
-                    "name_score": None,
-                    "profile_score": None,
-                    "confidence": conf,
-                    "mapping_note": notes,
-                    "transforms": [],
-                }
-                if regex:
-                    entry["embed_regex"] = regex
-                    _embed_regex[sc] = regex
-                column_map.append(entry)
-                if sc in unmapped_src: unmapped_src.remove(sc)
-                if tc in unmapped_tgt: unmapped_tgt.remove(tc)
-
-            # Build embedded_findings from LLM embedded_cols
-            for ef in llm_mapping_result.get("embedded_cols", []):
-                src_cols_emb = [c for c in ef.get("src_cols", []) if c in df_src.columns]
-
-
-
-# ==== SOURCE PAGE 0471 ====
-
-                tc = ef.get("tgt_col", "")
-                if not src_cols_emb or tc not in df_tgt.columns:
-                    continue
-                regex_pat = ef.get("regex_pattern", "")
-                embedded_findings.append({
-                    "src_cols": src_cols_emb,
-                    "tgt_col": tc,
-                    "embed_rates": {c: 1.0 for c in src_cols_emb},
-                    "avg_embed_rate": 1.0,
-                    "confidence": "HIGH",
-                    "regex_pattern": regex_pat,
-                    "notes": ef.get("notes", ""),
-                })
-                # Store regex per source col
-                for sc in src_cols_emb:
-                    if regex_pat:
-                        _embed_regex[sc] = regex_pat
-                # Ensure column_map has an entry for embedded cols
-                if not any(m["src_col"] == sc and m["tgt_col"] == tc for m in column_map):
-
-
-
-# ==== SOURCE PAGE 0472 ====
-
-                    column_map.append({
-                        "src_col": sc, "tgt_col": tc,
-                        "match_type": "embedded",
-                        "name_score": None, "profile_score": None,
-                        "confidence": "HIGH",
-                        "mapping_note": ef.get("notes", "LLM-detected embedded column"),
-                        "embed_tgt_col": tc,
-                        "embed_regex": regex_pat,
-                        "transforms": [],
-                    })
-                    if sc in unmapped_src: unmapped_src.remove(sc)
-                    if tc in unmapped_tgt: unmapped_tgt.remove(tc)
-
-        # Extract LLM key suggestion -- validate with actual value overlap before accepting.
-        # The LLM can hallucinate keys (e.g. Trade ID -> Global Alert ID scored 1.0 by LLM
-        # but these are system-internal IDs with zero real overlap). We only accept the LLM
-        # key if every src/tgt pair has meaningful value containment (>= 20%).
-        key_info = llm_mapping_result.get("key_cols", {})
-
-
-
-# ==== SOURCE PAGE 0475 ====
-
-    sk = key_info.get("src", [])
-    tk = key_info.get("tgt", [])
-    if (sk and tk
-        and all(c in df_src.columns for c in sk)
-        and all(c in df_tgt.columns for c in tk)
-        and len(sk) == len(tk)):
-        # Verify every key pair has real value overlap
-        key_overlap_ok = all(
-            _profile_similarity(df_src[s], df_tgt[t]) >= 0.20
-            for s, t in zip(sk, tk)
-        )
-        if key_overlap_ok:
-            llm_src_key = sk
-            llm_tgt_key = tk
-
-    # Build a fast lookup of already-mapped pairs so later passes don't duplicate them.
-    def _already_mapped(sc: str, tc: str) -> bool:
-        return any(m["src_col"] == sc and m["tgt_col"] == tc for m in column_map)
-
-
-
-# ==== SOURCE PAGE 0476 ====
-
-    # Pass 1 -- exact name match AND naming-convention variants
-    # Handles: exact, case-insensitive, snake_case<->camelCase<->PascalCase<->"Title Case"<->spaces
-    for sc in list(unmapped_src):
-        sc_norm = _expand_col_name(sc)
-        for tc in list(unmapped_tgt):
-            tc_norm = _expand_col_name(tc)
-            if sc.strip().lower() == tc.strip().lower() or sc_norm == tc_norm:
-                if _already_mapped(sc, tc):
-                    if sc in unmapped_src: unmapped_src.remove(sc)
-                    if tc in unmapped_tgt: unmapped_tgt.remove(tc)
-                    break
-                match_type = "exact" if sc.strip().lower() == tc.strip().lower() else "convention"
-                column_map.append({
-                    "src_col": sc, "tgt_col": tc,
-                    "match_type": match_type, "name_score": 1.0,
-                    "profile_score": None, "confidence": "HIGH",
-                    "mapping_note": None if match_type == "exact"
-                        else f"Convention match: '{sc}' = '{tc}'",
-
-
-
-# ==== SOURCE PAGE 0477 ====
-
-                })
-                unmapped_src.remove(sc)
-                unmapped_tgt.remove(tc)
-                break
-
-    # Pass 2 -- semantic name similarity + value overlap confirmation
-    # Name similarity alone is not enough: "Trade ID" ~ "Global Alert ID" both score high
-    # on name but have zero value overlap -- they are different systems' IDs.
-    # A semantic match is only accepted when the value domains actually share content
-    # (Jaccard >= 0.10 for LOW-confidence, 0.20 for MEDIUM/HIGH).
-    # Columns with purely numeric auto-increment values (disjoint integers) are excluded
-    # from semantic matching entirely -- they can never be a meaningful cross-file join.
-    # Minimum value overlap (Jaccard) to accept a semantic name match.
-    # 0.20 avoids single-letter coincidences (e.g. Side='B'/'S' ~ Security Type Code='S').
-    _SEM_OVERLAP_MIN = 0.20
-
-    sem_candidates = []
-    for sc in unmapped_src:
-
-
-
-# ==== SOURCE PAGE 0478 ====
-
-        for tc in unmapped_tgt:
-            score = _col_name_similarity(sc, tc)
-            if score >= 0.35:
-                sem_candidates.append((score, sc, tc))
-    sem_candidates.sort(reverse=True)
-    used_sc, used_tc = set(), set()
-    for score, sc, tc in sem_candidates:
-        if sc in used_sc or tc in used_tc:
-            continue
-        if _already_mapped(sc, tc):
-            used_sc.add(sc); used_tc.add(tc)
-            continue
-        # Confirm with value overlap -- reject if columns share no actual values,
-        # or if the target column is constant (only one distinct value -- coincidental match).
-        if sc in df_src.columns and tc in df_tgt.columns:
-            if _is_constant(df_tgt[tc]):
-                continue
-            val_overlap = _profile_similarity(df_src[sc], df_tgt[tc])
-            if val_overlap < _SEM_OVERLAP_MIN:
-
-
-
-# ==== SOURCE PAGE 0479 ====
-
-                continue
-            else:
-                val_overlap = None
-            confidence = "HIGH" if score >= 0.80 else "MEDIUM" if score >= 0.55 else "LOW"
-            column_map.append({
-                "src_col": sc, "tgt_col": tc,
-                "match_type": "semantic", "name_score": round(score, 3),
-                "profile_score": round(val_overlap, 3) if val_overlap is not None else None,
-                "confidence": confidence,
-                "mapping_note": None,
-            })
-            unmapped_src.remove(sc); unmapped_tgt.remove(tc)
-            used_sc.add(sc); used_tc.add(tc)
-
-    # Pass 3 -- content/value profile for remaining columns
-    # Skip constant target columns -- a single-value column matches everything coincidentally.
-    prof_candidates = []
-    for sc in list(unmapped_src):
-
-
-
-# ==== SOURCE PAGE 0480 ====
-
-        for tc in list(unmapped_tgt):
-            if sc in df_src.columns and tc in df_tgt.columns:
-                if _is_constant(df_tgt[tc]) or _is_constant(df_src[sc]):
-                    continue
-                ps = _profile_similarity(df_src[sc], df_tgt[tc])
-                if ps >= 0.35:
-                    prof_candidates.append((ps, sc, tc))
-    prof_candidates.sort(reverse=True)
-    used_sc2, used_tc2 = set(), set()
-    for ps, sc, tc in prof_candidates:
-        if sc in used_sc2 or tc in used_tc2:
-            continue
-        if _already_mapped(sc, tc):
-            used_sc2.add(sc); used_tc2.add(tc)
-            continue
-        confidence = "HIGH" if ps >= 0.80 else "MEDIUM" if ps >= 0.55 else "LOW"
-        column_map.append({
-            "src_col": sc, "tgt_col": tc,
-            "match_type": "content_profile", "name_score": None,
-
-
-
-# ==== SOURCE PAGE 0481 ====
-
-            "profile_score": round(ps, 3), "confidence": confidence,
-            "mapping_note": None,
-        })
-        unmapped_src.remove(sc); unmapped_tgt.remove(tc)
-        used_sc2.add(sc); used_tc2.add(tc)
-
-    # -- Stage 2: Merged-column detection --
-    # Detect: two or more source columns whose concatenated values match one target column.
-    # e.g. src[first_name] + " " + src[last_name] -> tgt[full_name]
-    # (merged_column_findings already initialised above; append to it)
-    _MERGE_SAMPLE = 200
-    still_unmapped_src = list(unmapped_src)
-    still_unmapped_tgt = list(unmapped_tgt)
-
-    for tc in list(still_unmapped_tgt):
-        if tc not in df_tgt.columns:
-            continue
-        tgt_sample = df_tgt[tc].dropna().astype(str).str.strip().head(_MERGE_SAMPLE)
-
-
-
-# ==== SOURCE PAGE 0482 ====
-
-        if len(tgt_sample) < 5:
-            continue
-        # Try all pairs of remaining unmapped source columns
-        src_pool = [c for c in still_unmapped_src if c in df_src.columns]
-        for sep in [" ", "-", "_", "", "|"]:
-            for i, sc1 in enumerate(src_pool):
-                for sc2 in src_pool[i+1:]:
-                    merged = (df_src[sc1].fillna("").astype(str).str.strip()
-                        + sep
-                        + df_src[sc2].fillna("").astype(str).str.strip()
-                    ).head(_MERGE_SAMPLE)
-                    match_rate = (merged.values ==
-tgt_sample.reindex(merged.index).values).mean()
-                    if match_rate >= 0.70:
-                        merged_column_findings.append({
-                            "src_cols": [sc1, sc2],
-                            "tgt_col": tc,
-                            "separator": repr(sep),
-                            "match_rate": round(float(match_rate), 3),
-
-
-
-# ==== SOURCE PAGE 0484 ====
-
-                            "confidence": "HIGH" if match_rate >= 0.90 else "MEDIUM",
-                        })
-                        # Mark as handled so they don't appear in unmapped lists
-                        if sc1 in unmapped_src: unmapped_src.remove(sc1)
-                        if sc2 in unmapped_src: unmapped_src.remove(sc2)
-                        if tc in unmapped_tgt: unmapped_tgt.remove(tc)
-                        # Add to column_map for downstream processing
-                        column_map.append({
-                            "src_col": f"{sc1} + {sc2}",
-                            "tgt_col": tc,
-                            "match_type": "merged",
-                            "name_score": None,
-                            "profile_score": round(float(match_rate), 3),
-                            "confidence": "HIGH" if match_rate >= 0.90 else "MEDIUM",
-                            "mapping_note": f"Merged: {sc1} + {sc2} (sep={repr(sep)})",
-                            "merge_src_cols": [sc1, sc2],
-                            "merge_sep": sep,
-                        })
-                        break
-
-
-
-# ==== SOURCE PAGE 0485 ====
-
-                    else:
-                        continue
-                    break
-
-    # -- Stage 2b: Embedded-in-description detection --
-    # Detect: multiple source columns whose values all appear as substrings inside
-    # one target column (a free-text description/narrative field).
-    # e.g. src[Volume]=1000, src[Price]=45.5 -> tgt[Description]="Vol:1000 Price:45.5"
-    # A source column qualifies if >=60% of its (non-null, non-empty) values can be
-    # found verbatim (as a substring) in the corresponding target description cell.
-    # Two or more qualifying source columns mapping to the same target column is enough
-    # to declare it an embedded-description mapping.
-    # (embedded_findings already initialised above; append to it)
-    _EMBED_SAMPLE = 300
-
-    # Only consider still-unmapped target columns that look like free-text
-    # (high average length compared to the source columns being embedded).
-    for tc in list(unmapped_tgt):
-
-
-
-# ==== SOURCE PAGE 0486 ====
-
-        if tc not in df_tgt.columns:
-            continue
-        tgt_s = df_tgt[tc].fillna("").astype(str).str.strip()
-        if tgt_s.str.len().mean() < 5:      # skip near-empty target cols
-            continue
-
-        qualified_src: list[tuple[str, float]] = []  # (src_col, embed_rate)
-        src_pool = [c for c in unmapped_src if c in df_src.columns]
-
-        for sc in src_pool:
-            src_vals = df_src[sc].dropna().astype(str).str.strip()
-            # Skip source columns whose values are too short (single chars / flags)
-            # or are already matched
-            non_trivial = src_vals[src_vals.str.len() >= 1]
-            if len(non_trivial) < 5:
-                continue
-            n_sample = min(len(non_trivial), _EMBED_SAMPLE)
-            sample_idx = non_trivial.index[:n_sample]
-            sv = non_trivial.loc[sample_idx]
-
-
-
-# ==== SOURCE PAGE 0487 ====
-
-            tv = tgt_s.reindex(sample_idx).fillna("")
-            # Check what fraction of source values appear as substrings in target
-            hits = sum(
-                str(sv.iloc[i]) in str(tv.iloc[i])
-                for i in range(len(sv))
-            )
-            embed_rate = hits / max(len(sv), 1)
-            if embed_rate >= 0.60:
-                qualified_src.append((sc, round(embed_rate, 3)))
-
-        if len(qualified_src) >= 2:
-            emb_src_cols = [c for c, _ in qualified_src]
-            avg_rate = round(sum(r for _, r in qualified_src) / len(qualified_src), 3)
-            embedded_findings.append({
-                "src_cols": emb_src_cols,
-                "tgt_col": tc,
-                "embed_rates": {c: r for c, r in qualified_src},
-                "avg_embed_rate": avg_rate,
-                "confidence": "HIGH" if avg_rate >= 0.85 else "MEDIUM",
-
-
-
-# ==== SOURCE PAGE 0488 ====
-
-            })
-            # Remove from unmapped lists
-            for sc in emb_src_cols:
-                if sc in unmapped_src:
-                    unmapped_src.remove(sc)
-            if tc in unmapped_tgt:
-                unmapped_tgt.remove(tc)
-            # Register each source column -> target description in column_map
-            for sc, rate in qualified_src:
-                column_map.append({
-                    "src_col": sc,
-                    "tgt_col": tc,
-                    "match_type": "embedded",
-                    "name_score": None,
-                    "profile_score": rate,
-                    "confidence": "HIGH" if rate >= 0.85 else "MEDIUM",
-                    "mapping_note": f"Value embedded inside target description column",
-                    "embed_tgt_col": tc,
-                    "transforms": [],
-
-
-
-# ==== SOURCE PAGE 0489 ====
-
-            })
-
-    # -- Stage 3: Split-column detection --
-    # Detect: one source column whose values appear split across multiple target columns.
-    # e.g. src[full_address] -> tgt[street], tgt[city], tgt[postcode]
-    split_column_findings: list[dict] = []
-    _SPLIT_SAMPLE = 200
-    for sc in list(unmapped_src):
-        if sc not in df_src.columns:
-            continue
-        src_sample = df_src[sc].dropna().astype(str).str.strip().head(_SPLIT_SAMPLE)
-        if len(src_sample) < 5:
-            continue
-        matched_tgt_cols = []
-        for tc in list(unmapped_tgt):
-            if tc not in df_tgt.columns:
-                continue
-            tgt_sample = df_tgt[tc].dropna().astype(str).str.strip().head(_SPLIT_SAMPLE)
-
-
-
-# ==== SOURCE PAGE 0490 ====
-
-            # Check if target values appear as substrings within source values
-            common_idx = src_sample.index.intersection(tgt_sample.index)
-            if len(common_idx) < 5:
-                continue
-            containment = sum(
-                str(tgt_sample.get(i, "")) in str(src_sample.get(i, ""))
-                for i in common_idx[:_SPLIT_SAMPLE]
-            ) / len(common_idx)
-            if containment >= 0.70:
-                matched_tgt_cols.append((tc, round(containment, 3)))
-        if len(matched_tgt_cols) >= 2:
-            split_column_findings.append({
-                "src_col": sc,
-                "tgt_cols": [t for t, _ in matched_tgt_cols],
-                "containment_rates": {t: r for t, r in matched_tgt_cols},
-                "confidence": "MEDIUM",
-            })
-            if sc in unmapped_src: unmapped_src.remove(sc)
-            for tc, _ in matched_tgt_cols:
-
-
-
-# ==== SOURCE PAGE 0491 ====
-
-                if tc in unmapped_tgt: unmapped_tgt.remove(tc)
-            for tc, rate in matched_tgt_cols:
-                column_map.append({
-                    "src_col": sc,
-                    "tgt_col": tc,
-                    "match_type": "split",
-                    "name_score": None,
-                    "profile_score": rate,
-                    "confidence": "MEDIUM",
-                    "mapping_note": f"Split from source column",
-                    "split_src_col": sc,
-                })
-
-    # -- Stage 4: Transform detection --
-    for mapping in column_map:
-        if mapping["match_type"] in ("merged", "split", "embedded_extracted"):
-            # embedded_extracted entries have hand-crafted transforms already set; skip auto-detection.
-            mapping.setdefault("transforms", [])
-
-
-
-# ==== SOURCE PAGE 0492 ====
-
-            continue
-        sc, tc = mapping["src_col"], mapping["tgt_col"]
-        if sc in df_src.columns and tc in df_tgt.columns:
-            mapping["transforms"] = _detect_transform(df_src[sc], df_tgt[tc])
-        else:
-            mapping["transforms"] = []
-
-    # -- Stage 5: Row matching strategy --
-    # A valid key must be:
-    #  1. >=99% unique in the SOURCE (identifies each source row)
-    #  2. >=99% unique in the TARGET subset (no duplicate target rows for the same key value)
-    #  3. >=30% value overlap between source and target (proves it's the same real-world column)
-    # Condition 2 uses only the rows whose key values appear in the source -- target has
-    # extra rows from other sources, so we filter to the matching subset before checking.
-
-    _KEY_SAMPLE = 5000
-
-    def _tgt_uniqueness_for_key(tc: str, src_vals_set: set) -> float:
-        # Uniqueness of target column restricted to values that exist in source.
-        tgt_col = df_tgt[tc].dropna().astype(str).str.strip()
-        # Only keep target rows whose value appears in the source key set
-        matching = tgt_col[tgt_col.isin(src_vals_set)]
-        if len(matching) == 0:
-            return 0.0
-        return matching.nunique() / len(matching)
-
-    def _best_tgt_match(sc: str) -> tuple[str | None, float, float]:
-        # Return (best_target_col, overlap_score, tgt_uniqueness) for a source column.
-
-        # overlap_score = max(jaccard, containment of tgt in src, containment of src in tgt)
-        # This handles the common case where source and target have different cardinality
-        # (e.g. InstrumentID has 225 values, Security has 65 -- Jaccard=0.12 but
-        # 49% of target values appear in source, signalling a real match).
-
-        # Only considers target columns already confirmed in column_map -- prevents
-        # system-internal IDs from being selected as keys via uniqueness alone.
-        # ==== SOURCE PAGE 0493 ====
-        src_vals = df_src[sc].dropna().astype(str).str.strip().head(_KEY_SAMPLE)
-        src_set = set(src_vals)
-        if len(src_set) < 3:
-            return None, 0.0, 0.0
-
-        def _containment_overlap(src_s: set, tgt_s: set) -> float:
-            common = len(src_s & tgt_s)
-            if common == 0:
-                return 0.0
-            jaccard    = common / len(src_s | tgt_s)
-            contain_tgt = common / len(tgt_s)  # fraction of target values in source
-            contain_src = common / len(src_s)  # fraction of source values in target
-            return max(jaccard, contain_tgt, contain_src)
-
-        # Check column_map first (name/profile match already confirmed)
-        for m in column_map:
-            if m["src_col"] == sc and m["tgt_col"] in df_tgt.columns:
-                tc = m["tgt_col"]
-                # ==== SOURCE PAGE 0494 ====
-                tgt_vals = df_tgt[tc].dropna().astype(str).str.strip().head(_KEY_SAMPLE)
-                tgt_set = set(tgt_vals)
-                if not tgt_set:
-                    continue
-                overlap = _containment_overlap(src_set, tgt_set)
-                tgt_u = _tgt_uniqueness_for_key(tc, src_set)
-                return tc, overlap, tgt_u
-
-        # Only scan target columns confirmed in column_map -- no free scan of all columns.
-        # A source column can only be a join key if a target counterpart was already matched.
-        mapped_tgt_cols = {m["tgt_col"] for m in column_map if m["tgt_col"] in df_tgt.columns}
-        if not mapped_tgt_cols:
-            return None, 0.0, 0.0
-
-        best_tc, best_overlap, best_tgt_u = None, 0.0, 0.0
-        for tc in mapped_tgt_cols:
-            tgt_vals = df_tgt[tc].dropna().astype(str).str.strip().head(_KEY_SAMPLE)
-            # ==== SOURCE PAGE 0495 ====
-            tgt_set = set(tgt_vals)
-            if not tgt_set:
-                continue
-            overlap = _containment_overlap(src_set, tgt_set)
-            if overlap > best_overlap:
-                best_overlap = overlap
-                best_tc = tc
-                best_tgt_u = _tgt_uniqueness_for_key(tc, src_set)
-        return best_tc, best_overlap, best_tgt_u
-
-    # -- Key selection helpers --
-    def _register_key_mapping(sk: str, best_tc: str, overlap: float) -> None:
-        if not any(m["src_col"] == sk and m["tgt_col"] == best_tc for m in column_map):
-            column_map.append({
-                "src_col": sk, "tgt_col": best_tc,
-                "match_type": "content_profile",
-                "name_score": None,
-                "profile_score": round(overlap, 3),
-                "confidence": "HIGH" if overlap >= 0.80 else "MEDIUM",
-                # ==== SOURCE PAGE 0496 ====
-                "mapping_note": f"Key matched by value overlap ({round(overlap*100,1)}%)",
-                "transforms": [],
-            })
-        if sk in unmapped_src:
-            unmapped_src.remove(sk)
-        if best_tc in unmapped_tgt:
-            unmapped_tgt.remove(best_tc)
-
-    # Build candidate list: score = src_uniqueness x tgt_uniqueness x overlap
-    src_key = None
-    src_key_in_tgt: list[str] | None = None
-    row_match_method = "positional"
-
-    # If LLM already identified the key, use it directly and skip heuristic scoring
-    if llm_src_key and llm_tgt_key:
-        src_key = llm_src_key
-        src_key_in_tgt = llm_tgt_key
-        row_match_method = "key-based"
-        for sk, tk in zip(llm_src_key, llm_tgt_key):
-
-
-
-# ==== SOURCE PAGE 0497 ====
-
-            _register_key_mapping(sk, tk, 1.0)
-
-    candidates = []
-    if row_match_method == "positional":
-        for c in src_cols:
-            if c not in df_src.columns:
-                continue
-            src_u = df_src[c].dropna().nunique() / max(len(df_src), 1)
-            if src_u < 0.80:
-                continue
-            best_tc, overlap, tgt_u = _best_tgt_match(c)
-            combined = src_u * tgt_u * overlap
-            candidates.append((combined, src_u, tgt_u, overlap, c, best_tc))
-        candidates.sort(reverse=True)
-
-    # Pick best single-column key: >=99% unique in source; target may have duplicates
-    # (one-to-many is valid -- we aggregate on the target side before comparing).
-    # Target uniqueness threshold is relaxed to 0.10 to allow lookup tables vs fact tables.
-    _AGG_TGT_UNIQ_MIN = 0.10
-
-
-
-# ==== SOURCE PAGE 0498 ====
-
-    for combined, src_u, tgt_u, overlap, sc, best_tc in candidates:
-        if src_u >= 0.99 and tgt_u >= _AGG_TGT_UNIQ_MIN and overlap >= 0.30 and best_tc:
-            src_key = [sc]
-            src_key_in_tgt = [best_tc]
-            row_match_method = "key-based"
-            _register_key_mapping(sc, best_tc, overlap)
-            break
-
-    # Fall back to 2-column composite if no single-column key qualifies.
-    # Pool includes ALL non-metadata source columns (not just high-uniqueness singles),
-    # because individually non-unique columns can together form a unique composite key.
-    if row_match_method == "positional":
-        # Pre-compute best target match for every business column
-        _all_biz_cols = [c for c in src_cols if c in df_src.columns]
-        _col_info: dict[str, tuple[str | None, float, float]] = {}
-        for c in _all_biz_cols:
-            if c not in _col_info:
-
-
-
-# ==== SOURCE PAGE 0499 ====
-
-                tc, ov, tu = _best_tgt_match(c)
-                _col_info[c] = (tc, ov, tu)
-
-        # Sort by individual target-overlap so most-promising pairs come first
-        _sorted = sorted(
-            [(ov, c, tc, tu) for c, (tc, ov, tu) in _col_info.items() if tc],
-            reverse=True
-        )
-
-        # Try every pair (capped at top-10 candidates to avoid O(n^2) explosion)
-        _top = _sorted[:10]
-        best_pair: tuple | None = None
-        best_pair_score = 0.0
-        for i, (ov1, c1, tc1, tu1) in enumerate(_top):
-            for ov2, c2, tc2, tu2 in _top[i+1:]:
-                if c1 == c2 or tc1 == tc2:
-                    continue
-                # Both sides must each have >=30% value overlap with their target counterpart
-                if ov1 < 0.30 or ov2 < 0.30:
-
-
-
-# ==== SOURCE PAGE 0500 ====
-
-                    continue
-                # Composite uniqueness in source
-                src_u2 = (df_src[[c1, c2]].dropna().drop_duplicates().shape[0]
-                    / max(len(df_src), 1))
-                if src_u2 < 0.99:
-                    continue
-                # Composite uniqueness in target -- check the combined (tc1,tc2) pair directly.
-                # Product of individual uniqueness is misleading when one column is a low-
-                # cardinality classifier (e.g. Side = B/S) that only becomes unique as part of a composite.
-                src_set1 = set(df_src[c1].dropna().astype(str).str.strip())
-                src_set2 = set(df_src[c2].dropna().astype(str).str.strip())
-                if tc1 in df_tgt.columns and tc2 in df_tgt.columns:
-                    _tgt_sub = df_tgt[[tc1, tc2]].dropna()
-                    _tgt_sub_match = _tgt_sub[
-                        _tgt_sub[tc1].astype(str).str.strip().isin(src_set1) |
-                        _tgt_sub[tc2].astype(str).str.strip().isin(src_set2)
-                    ]
-                    if len(_tgt_sub_match) == 0:
-
-
-
-# ==== SOURCE PAGE 0501 ====
-
-                        tgt_u2 = 0.0
-                    else:
-                        tgt_u2 = (_tgt_sub_match.drop_duplicates().shape[0]
-                            / len(_tgt_sub_match))
-                else:
-                    tgt_u2 = (_tgt_uniqueness_for_key(tc1, src_set1)
-                        * _tgt_uniqueness_for_key(tc2, src_set2))
-                if tgt_u2 < _AGG_TGT_UNIQ_MIN:
-                    continue
-                score = src_u2 * tgt_u2 * (ov1 + ov2) / 2
-                if score > best_pair_score:
-                    best_pair_score = score
-                    best_pair = (c1, tc1, ov1, c2, tc2, ov2)
-
-        if best_pair:
-            c1, tc1, ov1, c2, tc2, ov2 = best_pair
-            src_key = [c1, c2]
-            src_key_in_tgt = [tc1, tc2]
-            row_match_method = "key-based"
-
-
-
-# ==== SOURCE PAGE 0502 ====
-
-            _register_key_mapping(c1, tc1, ov1)
-            _register_key_mapping(c2, tc2, ov2)
-
-    # -- Stage 6: Aligned comparison --
-    # Seed with any source duplicate exceptions found in Stage 0.
-    # All other exceptions are strictly source->target (missing/wrong in target).
-    # Target extra columns and target extra rows NEVER generate exceptions.
-    exceptions: list[dict] = list(dup_exceptions)
-    reconciliation: list[dict] = []
-    transform_log: list[dict] = []
-    completeness: dict = {}
-    _MAX_EXC = 500
-
-    # Build aligned source applying transforms.
-    # Only source-originated columns are placed here -- target-only columns are never added,
-    # so they are excluded from all comparisons and cannot generate exceptions.
-    # Group embedded mappings by target col so we can store per-source-col aligned series
-    # with a unique key: "__embed__{sc}_in__{tc}"
-
-
-
-# ==== SOURCE PAGE 0503 ====
-
-    _aligned_cols: dict = {}
-    _embedded_pairs: list[tuple[str, str]] = []  # (src_col, tgt_col) for embedded mappings
-
-    for mapping in column_map:
-        sc, tc = mapping["src_col"], mapping["tgt_col"]
-        if mapping["match_type"] == "merged":
-            src_c1, src_c2 = mapping.get("merge_src_cols", [None, None])
-            sep = mapping.get("merge_sep", " ")
-            if src_c1 and src_c2 and src_c1 in df_src.columns and src_c2 in df_src.columns:
-                _aligned_cols[tc] = (
-                    df_src[src_c1].fillna("").astype(str).str.strip()
-                    + sep
-                    + df_src[src_c2].fillna("").astype(str).str.strip()
-                )
-            continue
-        if mapping["match_type"] == "split":
-            src_c = mapping.get("split_src_col", sc)
-            if src_c in df_src.columns:
-
-
-
-# ==== SOURCE PAGE 0504 ====
-
-                _aligned_cols[tc] = df_src[src_c].copy()
-            continue
-        if mapping["match_type"] == "embedded":
-            # Store source values under a private key; comparison uses substring check
-            if sc in df_src.columns and tc in df_tgt.columns:
-                embed_key = f"__embed__{sc}__in__{tc}"
-                _aligned_cols[embed_key] = df_src[sc].fillna("").astype(str).str.strip()
-                _embedded_pairs.append((sc, tc))
-            continue
-        if sc in df_src.columns and tc in df_tgt.columns:
-            xf = _apply_transform(df_src[sc].copy(), mapping.get("transforms", []))
-            _aligned_cols[tc] = xf
-            if mapping.get("transforms"):
-                transform_log.append({
-                    "src_col": sc, "tgt_col": tc,
-                    "transforms": [t["description"] for t in mapping["transforms"]],
-                })
-    aligned_src = pd.DataFrame(_aligned_cols, index=df_src.index)
-
-
-
-# ==== SOURCE PAGE 0505 ====
-
-    # Columns to compare (exact/semantic/merged/split): target col present in aligned_src.
-    # Embedded mappings are handled separately via _embedded_pairs.
-    # Target-only columns never appear here -- no exceptions generated for them.
-    mapped_tgt_cols = [
-        m["tgt_col"] for m in column_map
-        if m["match_type"] not in ("embedded",)
-        and m["tgt_col"] in df_tgt.columns and m["tgt_col"] in aligned_src.columns
-    ]
-
-    # Initialise tgt_only_count before the conditional block to avoid UnboundLocalError
-    tgt_only_count = 0
-
-    if row_match_method == "key-based" and src_key and src_key_in_tgt:
-        # Key-based: look up each source row in the target by key value
-        # Normalise key columns for matching
-        def _norm_key(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
-            d = df.copy()
-            for c in cols:
-
-
-
-# ==== SOURCE PAGE 0506 ====
-
-                if c in d.columns:
-                    d[c] = d[c].fillna("").astype(str).str.strip().str.lower()
-            return d
-
-        src_norm = _norm_key(df_src, src_key)
-        tgt_norm = _norm_key(df_tgt, src_key_in_tgt)
-
-        # Build target lookup index
-        if len(src_key_in_tgt) == 1:
-            tgt_idx = tgt_norm.set_index(src_key_in_tgt[0])
-            src_key_vals = src_norm[src_key[0]]
-        else:
-            tgt_idx = tgt_norm.set_index(src_key_in_tgt)
-            src_key_vals = pd.MultiIndex.from_frame(src_norm[src_key])
-
-        rows_found = 0
-        rows_missing = 0
-        missing_src_rows: list[dict] = []
-
-
-
-# ==== SOURCE PAGE 0507 ====
-
-        for pos, src_row_idx in enumerate(df_src.index):
-            if len(exceptions) >= _MAX_EXC:
-                break
-            try:
-                key_val = (src_norm[src_key[0]].iloc[pos] if len(src_key) == 1
-                    else tuple(src_norm[c].iloc[pos] for c in src_key))
-                tgt_matches = tgt_idx.loc[[key_val]] if key_val in tgt_idx.index else pd.DataFrame()
-            except Exception:
-                continue
-
-            if len(tgt_matches) == 0:
-                rows_missing += 1
-                key_disp = {src_key[i]: str(df_src[src_key[i]].iloc[pos]) for i in range(len(src_key))}
-                if len(missing_src_rows) < 200:
-                    # Capture full source row (business columns only, metadata already excluded)
-                    full_row = {
-                        c: str(df_src[c].iloc[pos]) if c in df_src.columns else ""
-
-
-
-# ==== SOURCE PAGE 0508 ====
-
-                        for c in src_cols if c in df_src.columns
-                    }
-                    missing_src_rows.append({
-                        "src_row": pos + 1,
-                        "key": key_disp,
-                        "row_data": full_row,
-                    })
-                exceptions.append({
-                    "row": pos + 1,
-                    "exception_class": _bfsi_exception_domain("", "MISSING_IN_TARGET"),
-                    "exception_type": "MISSING_IN_TARGET",
-                    "severity": "CRITICAL",
-                    "description": "Source row not found in target",
-                    "key": key_disp,
-                    "changes": {},
-                })
-                continue
-
-            rows_found += 1
-
-
-
-# ==== SOURCE PAGE 0509 ====
-
-            tgt_row = tgt_matches.iloc[0]
-            key_disp = {src_key[i]: str(df_src[src_key[i]].iloc[pos]) for i in range(len(src_key))}
-
-            # Only compare mapped source->target columns; skip target-only, timestamp,
-            # and key columns.
-            # Key columns are matched by definition -- comparing them produces spurious NULL_IN_TARGET
-            # exceptions when the target frame only carries key + qty after aggregation.
-            _tgt_key_cols = set(src_key_in_tgt) if src_key_in_tgt else set()
-            for tc in mapped_tgt_cols:
-                if tc in _tgt_key_cols:
-                    continue
-                if (pd.api.types.is_datetime64_any_dtype(df_tgt[tc].dtype)
-                    or _is_metadata_col(tc)):
-                    continue
-                sc_entry = next((m for m in column_map if m["tgt_col"] == tc), None)
-                if sc_entry and sc_entry["src_col"] in df_src.columns:
-                    if pd.api.types.is_datetime64_any_dtype(df_src[sc_entry["src_col"]].dtype):
-                        continue
-                sv = _canonical(aligned_src[tc].iloc[pos] if pos < len(aligned_src) else "")
-
-
-
-# ==== SOURCE PAGE 0510 ====
-
-                tv = _canonical(tgt_row.get(tc, ""))
-                if sv == tv:
-                    continue
-                exc_type = _classify_value_exception(sv, tv)
-                exceptions.append({
-                    "row": pos + 1,
-                    "exception_class": _bfsi_exception_domain(tc, exc_type),
-                    "exception_type": exc_type,
-                    "severity": _exception_severity(sv, tv),
-                    "description": f"{exc_type.replace('_', ' ').title()} in '{tc}'",
-                    "key": key_disp,
-                    "changes": {tc: {"source_transformed": sv, "target": tv}},
-                })
-
-        # Embedded columns: try LLM regex first, then generic extraction.
-        for sc, tc in _embedded_pairs:
-            embed_key = f"__embed__{sc}__in__{tc}"
-            if embed_key not in aligned_src.columns:
-                continue
-
-
-
-# ==== SOURCE PAGE 0513 ====
-
-            sv = str(aligned_src[embed_key].iloc[pos]).strip() if pos < len(aligned_src) else ""
-            tv = str(tgt_row.get(tc, "")).strip()
-            # Use LLM-provided regex if available
-            llm_pat = _embed_regex.get(sc)
-            if llm_pat:
-                try:
-                    m = re.search(llm_pat, tv, re.IGNORECASE)
-                    extracted = m.group(0) if m else "(no match)"
-                    matched = m is not None and _compare_embedded_value(sv, extracted)[0]
-                except Exception:
-                    matched, extracted = _compare_embedded_value(sv, tv)
-            else:
-                matched, extracted = _compare_embedded_value(sv, tv)
-            if not matched:
-                exceptions.append({
-                    "row": pos + 1,
-                    "exception_class": _bfsi_exception_domain(sc, "VALUE_NOT_EMBEDDED"),
-
-
-
-# ==== SOURCE PAGE 0514 ====
-
-                    "exception_type": "VALUE_NOT_EMBEDDED",
-                    "severity": "ERROR",
-                    "description": (f"'{sc}'={sv!r} not found in target '{tc}' "
-                        f"(extracted: {extracted})"),
-                    "key": key_disp,
-                    "changes": {f"{sc}->{tc}": {"source_transformed": sv, "target": tv}},
-                })
-
-        completeness = {
-            "src_rows": len(df_src),
-            "rows_found": rows_found,
-            "rows_missing": rows_missing,
-            "completeness_pct": round(rows_found / max(len(df_src), 1) * 100, 1),
-            "missing_sample": missing_src_rows,
-        }
-
-        # Target-side: rows in target that have no matching source record
-        tgt_key_vals = set(
-            tgt_norm[src_key_in_tgt[0]].unique() if len(src_key_in_tgt) == 1
-            # ==== SOURCE PAGE 0515 ====
-            else [tuple(r) for r in tgt_norm[src_key_in_tgt].drop_duplicates().values]
-        )
-        src_key_vals_set = set(
-            src_norm[src_key[0]].unique() if len(src_key) == 1
-            else [tuple(r) for r in src_norm[src_key].drop_duplicates().values]
-        )
-        tgt_only_count = len(tgt_key_vals - src_key_vals_set)
-
-    else:
-        # Positional fallback
-        n_rows = min(len(aligned_src), len(df_tgt))
-        rows_found = n_rows
-        rows_missing = max(0, len(df_src) - len(df_tgt))
-        tgt_only_count = max(0, len(df_tgt) - len(df_src))
-        completeness = {
-            "src_rows": len(df_src),
-            "rows_found": rows_found,
-            "rows_missing": rows_missing,
-            "completeness_pct": round(rows_found / max(len(df_src), 1) * 100, 1),
-            # ==== SOURCE PAGE 0516 ====
-            "missing_sample": [],
-            "note": "Positional matching used -- no unique key found. Upload a key column for precise row tracking.",
-        }
-
-        for i in range(n_rows):
-            if len(exceptions) >= _MAX_EXC:
-                break
-            row_changes = {}
-            for tc in mapped_tgt_cols:
-                # Skip timestamp/datetime columns -- format differences cause false mismatches
-                if (pd.api.types.is_datetime64_any_dtype(df_tgt[tc].dtype)
-                    or _is_metadata_col(tc)):
-                    continue
-                sc_entry = next((m for m in column_map if m["tgt_col"] == tc), None)
-                if sc_entry and sc_entry["src_col"] in df_src.columns:
-                    if pd.api.types.is_datetime64_any_dtype(df_src[sc_entry["src_col"]].dtype):
-                        continue
-                sv = _canonical(aligned_src[tc].iloc[i] if i < len(aligned_src) else "")
-
-                # ==== SOURCE PAGE 0517 ====
-                tv = _canonical(df_tgt[tc].iloc[i] if i < len(df_tgt) else "")
-                if sv != tv:
-                    row_changes[tc] = {"source_transformed": sv, "target": tv}
-
-            # Embedded columns: regex-aware extraction from target description.
-            for sc, tc in _embedded_pairs:
-                embed_key = f"__embed__{sc}__in__{tc}"
-                if embed_key not in aligned_src.columns:
-                    continue
-                sv_raw = str(aligned_src[embed_key].iloc[i]).strip() if i < len(aligned_src) else ""
-                tv_raw = str(df_tgt[tc].iloc[i]).strip() if i < len(df_tgt) else ""
-                sv = "" if sv_raw.lower() in _LINEAGE_NULLS else sv_raw
-                tv = "" if tv_raw.lower() in _LINEAGE_NULLS else tv_raw
-                # Skip if both sides are blank after null normalisation
-                if sv == "" and tv == "":
-                    continue
-                matched, extracted = _compare_embedded_value(sv, tv)
-                if not matched:
-                    row_changes[f"{sc}->{tc}"] = {"source_transformed": sv, "target": tv}
-
-            # ==== SOURCE PAGE 0518 ====
-            if row_changes:
-                # Include key column values so the user can identify the row
-                key_disp = {}
-                if src_key:
-                    key_disp = {sk: str(df_src[sk].iloc[i]) for sk in src_key if sk in df_src.columns
-                                and i < len(df_src)}
-                # Use the first changed column to drive domain classification
-                _first_col = next(iter(row_changes), "")
-                exceptions.append({
-                    "row": i + 1,
-                    "exception_class": _bfsi_exception_domain(_first_col, "VALUE_MISMATCH"),
-                    "exception_type": "VALUE_MISMATCH",
-                    "severity": "ERROR",
-                    "description": "Row-level value mismatch",
-                    "key": key_disp,
-                    "changes": row_changes,
-                })
-
-    # -- Stage 7: Per-column reconciliation --
-
-
-
-    # ==== SOURCE PAGE 0519 ====
-
-    # For key-based matching: build a merged frame of aligned-source vs target rows
-    # so we compare the same logical rows (not positional slices).
-    # Target-only columns never appear in mapped_tgt_cols so they are never reconciled.
-    if row_match_method == "key-based" and src_key and src_key_in_tgt:
-        # Re-join source and target on key for an accurate column-level stats
-        _src_for_recon = aligned_src.copy()
-        for i, sk in enumerate(src_key):
-            _src_for_recon[f"__key_{i}"] = df_src[sk].fillna("").astype(str).str.strip().str.lower().values
-        _tgt_for_recon = df_tgt.copy()
-        for i, tk in enumerate(src_key_in_tgt):
-            _tgt_for_recon[f"__key_{i}"] = df_tgt[tk].fillna("").astype(str).str.strip().str.lower().values
-        _join_keys = [f"__key_{i}" for i in range(len(src_key))]
-        try:
-            _recon_merged = _src_for_recon.merge(
-                _tgt_for_recon[[tc for tc in mapped_tgt_cols if tc in df_tgt.columns] + _join_keys],
-                on=_join_keys, how="inner", suffixes=("__src", "__tgt")
-
-
-
-    # ==== SOURCE PAGE 0520 ====
-
-            )
-        except Exception:
-            _recon_merged = None
-    else:
-        _recon_merged = None
-
-    recon_rows = min(len(aligned_src), len(df_tgt))
-
-    for tc in mapped_tgt_cols:
-        sc_entry = next((m for m in column_map if m["tgt_col"] == tc), None)
-        sc = sc_entry["src_col"] if sc_entry else None
-        if not sc or tc not in df_tgt.columns or tc not in aligned_src.columns:
-            continue
-        # Skip timestamp/datetime columns -- format differences cause false failures
-        # and time-based columns carry no business reconciliation meaning
-        if (pd.api.types.is_datetime64_any_dtype(df_tgt[tc].dtype)
-            or (sc in df_src.columns and pd.api.types.is_datetime64_any_dtype(df_src[sc].dtype))
-            or _is_metadata_col(tc)):
-
-
-
-    # ==== SOURCE PAGE 0521 ====
-
-            continue
-
-        if _recon_merged is not None:
-            # Key-based: compare the joined rows
-            src_col_name = f"{tc}__src" if f"{tc}__src" in _recon_merged.columns else tc
-            tgt_col_name = f"{tc}__tgt" if f"{tc}__tgt" in _recon_merged.columns else tc
-            if src_col_name not in _recon_merged.columns or tgt_col_name not in _recon_merged.columns:
-                continue
-            sv_arr = _first_col(_recon_merged, src_col_name).fillna("").astype(str).str.strip()
-            tv_arr = _first_col(_recon_merged, tgt_col_name).fillna("").astype(str).str.strip()
-            n = max(len(_recon_merged), 1)
-            xf_match = int((sv_arr.values == tv_arr.values).sum())
-            raw_sc = sc if sc in df_src.columns else None
-            if raw_sc and raw_sc in _recon_merged.columns:
-                raw_arr = _first_col(_recon_merged, raw_sc).fillna("").astype(str).str.strip()
-                raw_match = int((raw_arr.values == tv_arr.values).sum())
-            else:
-                raw_match = xf_match
-
-
-
-    # ==== SOURCE PAGE 0522 ====
-
-            n_compared = len(_recon_merged)
-        else:
-            # Positional fallback
-            sv_arr = aligned_src[tc].iloc[:recon_rows].fillna("").astype(str).str.strip()
-            tv_arr = df_tgt[tc].iloc[:recon_rows].fillna("").astype(str).str.strip()
-            raw_sc = sc if sc in df_src.columns else None
-            if raw_sc:
-                raw_arr = df_src[raw_sc].iloc[:recon_rows].fillna("").astype(str).str.strip()
-                raw_match = int((raw_arr.values == tv_arr.values).sum())
-            else:
-                raw_match = 0
-            xf_match = int((sv_arr.values == tv_arr.values).sum())
-            n = max(recon_rows, 1)
-            n_compared = recon_rows
-
-        reconciliation.append({
-            "tgt_col": tc,
-            "src_col": sc,
-            "mapping_type": sc_entry.get("match_type", ""),
-
-
-
-    # ==== SOURCE PAGE 0523 ====
-
-            "rows_compared": n_compared,
-            "raw_match_count": raw_match,
-            "raw_match_pct": round(raw_match / max(n_compared, 1) * 100, 1),
-            "aligned_match_count": xf_match,
-            "aligned_match_pct": round(xf_match / max(n_compared, 1) * 100, 1),
-            "exceptions": n_compared - xf_match,
-            "status": (
-                "PASS" if xf_match == n_compared
-                else "WARN" if xf_match / max(n_compared, 1) >= 0.95
-                else "FAIL"
-            ) if n_compared else "SKIP",
-        })
-
-    # -- Stage 7b: Aggregated key reconciliation --
-    # When the target may have multiple rows per source key (one-to-many), group
-    # both sides by their respective key columns, sum numeric/qty columns, then
-    # compare the aggregated totals.  A 10% tolerance is applied before flagging
-    # a MISMATCH so rounding and minor allocation differences are not false positives.
-    _AGG_TOLERANCE = 0.10   # accept differences within 10%
-
-
-
-    # ==== SOURCE PAGE 0524 ====
-
-    agg_recon: list[dict] = []
-    agg_src_extra: list[dict] = []
-    agg_tgt_extra: list[dict] = []
-    agg_qty_cols: list[str] = []
-    agg_key_cols_used: list[str] = []
-
-    if src_key and src_key_in_tgt:
-        # Detect numeric columns that are mapped on both sides (qty / value candidates)
-        _qty_candidates: list[tuple[str, str]] = []  # (src_col, tgt_col)
-        for m in column_map:
-            sc_c, tc_c = m["src_col"], m["tgt_col"]
-            if (sc_c in df_src.columns and tc_c in df_tgt.columns
-                and sc_c not in src_key and tc_c not in src_key_in_tgt
-                and pd.api.types.is_numeric_dtype(
-                    pd.to_numeric(_first_col(df_src, sc_c).fillna(0), errors="coerce"))
-                and pd.api.types.is_numeric_dtype(
-                    pd.to_numeric(_first_col(df_tgt, tc_c).fillna(0), errors="coerce"))):
-                _qty_candidates.append((sc_c, tc_c))
-
-
-
-    # ==== SOURCE PAGE 0525 ====
-
-        if _qty_candidates:
-            # Build column lists deduplicating key vs qty cols to avoid duplicate-column DataFrames
-            _src_qty_cols = [sc for sc, _ in _qty_candidates if sc not in src_key]
-            _tgt_qty_cols = [tc for _, tc in _qty_candidates if tc not in src_key_in_tgt]
-            agg_qty_cols = [f"{sc}->{tc}" for sc, tc in zip(_src_qty_cols, _tgt_qty_cols)]
-            agg_key_cols_used = src_key
-
-        # Build working frames -- reconstruct as fresh dict-based DataFrame so column
-        # names are guaranteed unique (take first occurrence of any duplicate via _first_col).
-        _src_agg = pd.DataFrame({
-            k: _first_col(df_src, k) for k in src_key + _src_qty_cols
-            if k in df_src.columns
-        }).reset_index(drop=True)
-        _tgt_agg = pd.DataFrame({
-            k: _first_col(df_tgt, k) for k in src_key_in_tgt + _tgt_qty_cols
-            if k in df_tgt.columns
-        }).reset_index(drop=True)
-
-
-
-    # ==== SOURCE PAGE 0526 ====
-
-        # Normalise key columns to strings, with Side-like columns canonicalised to B/S.
-        # This handles both "Buy"/"Sell" (full word) and "B"/"S" (single char) from either side,
-        # case-insensitively, so the join succeeds even when encodings differ.
-        _SIDE_MAP = {
-            "buy": "B", "b": "B",
-            "sell": "S", "s": "S",
-        }
-
-        def _norm_key_col(series: "pd.Series") -> "pd.Series":
-            s = series.fillna("").astype(str).str.strip()
-            mapped = s.str.lower().map(_SIDE_MAP)
-            # Only apply when every non-empty value maps cleanly (i.e. this IS a side col)
-            non_empty = s[s != ""]
-            if len(non_empty) > 0 and mapped[s != ""].notna().all():
-                return mapped.where(s != "", "")
-            return s
-
-        for k in src_key:
-            _src_agg[k] = _norm_key_col(_src_agg[k])
-
-
-
-    # ==== SOURCE PAGE 0527 ====
-
-        for k in src_key_in_tgt:
-            _tgt_agg[k] = _norm_key_col(_tgt_agg[k])
-
-        # Coerce qty cols to numeric
-        for sc in _src_qty_cols:
-            _src_agg[sc] = pd.to_numeric(_src_agg[sc], errors="coerce").fillna(0)
-        for tc in _tgt_qty_cols:
-            _tgt_agg[tc] = pd.to_numeric(_tgt_agg[tc], errors="coerce").fillna(0)
-
-        # Aggregate: sum numeric cols per key
-        _src_grp = _src_agg.groupby(src_key, as_index=False)[_src_qty_cols].sum() if _src_qty_cols else _src_agg.groupby(src_key, as_index=False).first()
-
-        # Rename target key cols to match source for join
-        _tgt_renamed = _tgt_agg.rename(
-            columns={tk: sk for sk, tk in zip(src_key, src_key_in_tgt)}
-        )
-        _tgt_grp = _tgt_renamed.groupby(src_key, as_index=False)[_tgt_qty_cols].sum() if _tgt_qty_cols else _tgt_renamed.groupby(src_key, as_index=False).first()
-
-        _src_keys_set = set(tuple(r) for r in _src_grp[src_key].values)
-
-
-
-    # ==== SOURCE PAGE 0528 ====
-
-        _tgt_keys_set = set(tuple(r) for r in _tgt_grp[src_key].values)
-
-        # Rename qty cols to fixed unique sentinel names before merging so the merged
-        # frame is guaranteed duplicate-free regardless of original column names.
-        _SRC_SENTINELS = [f"__sq{i}__" for i in range(len(_src_qty_cols))]
-        _TGT_SENTINELS = [f"__tq{i}__" for i in range(len(_tgt_qty_cols))]
-        _src_grp_r = _src_grp.rename(columns=dict(zip(_src_qty_cols, _SRC_SENTINELS)))
-        _tgt_grp_r = _tgt_grp.rename(columns=dict(zip(_tgt_qty_cols, _TGT_SENTINELS)))
-
-        _merged_agg = _src_grp_r.merge(_tgt_grp_r, on=src_key, how="inner")
-
-        for _, row in _merged_agg.iterrows():
-            key_dict = {k: str(row[k]) for k in src_key}
-            col_results = []
-            overall_status = "MATCH"
-            for i, (sc_c, tc_c) in enumerate(zip(_src_qty_cols, _tgt_qty_cols)):
-                sv = float(pd.to_numeric(row[_SRC_SENTINELS[i]], errors="coerce") or 0)
-                tv = float(pd.to_numeric(row[_TGT_SENTINELS[i]], errors="coerce") or 0)
-                diff = tv - sv
-
-
-
-    # ==== SOURCE PAGE 0529 ====
-
-                diff_pct = abs(diff) / abs(sv) * 100 if sv != 0 else (0.0 if tv == 0 else 100.0)
-                # Match if within % tolerance OR within absolute decimal rounding tolerance (0.01)
-                _ABS_TOL = 0.01
-                within_tol = diff_pct <= _AGG_TOLERANCE * 100 or abs(diff) <= _ABS_TOL
-                status = "MATCH" if within_tol else "MISMATCH"
-                if status == "MISMATCH":
-                    overall_status = "MISMATCH"
-                col_results.append({
-                    "src_col": sc_c, "tgt_col": tc_c,
-                    "src_total": round(sv, 4), "tgt_total": round(tv, 4),
-                    "diff": round(diff, 4),
-                    "diff_pct": round(diff_pct, 2),
-                    "within_tolerance": within_tol,
-                    "status": status,
-                })
-
-            # Count raw rows contributing to this key on each side
-            _src_mask = pd.Series([True] * len(_src_agg), index=_src_agg.index)
-            _tgt_mask = pd.Series([True] * len(_tgt_agg), index=_tgt_agg.index)
-
-
-
-    # ==== SOURCE PAGE 0530 ====
-
-            for i, sk in enumerate(src_key):
-                _src_mask &= (_src_agg[sk] == key_dict[sk])
-            for i, (sk, tk) in enumerate(zip(src_key, src_key_in_tgt)):
-                _tgt_mask &= (_tgt_agg[tk] == key_dict[sk])
-            agg_recon.append({
-                "key": key_dict,
-                "src_row_count": int(_src_mask.sum()),
-                "tgt_row_count": int(_tgt_mask.sum()),
-                "columns": col_results,
-                "overall_status": overall_status,
-            })
-
-    def _grp_mask(grp: pd.DataFrame, keys: list[str],
-            key_dict: dict) -> "pd.Series[bool]":
-        m = pd.Series([True] * len(grp), index=grp.index)
-        for k in keys:
-            m &= (grp[k].astype(str) == str(key_dict[k]))
-        return m
-
-
-
-    # ==== SOURCE PAGE 0531 ====
-
-    # Source-only keys (not in target)
-    for key_tuple in sorted(_src_keys_set - _tgt_keys_set)[:200]:
-        key_dict = dict(zip(src_key, key_tuple))
-        mask = _grp_mask(_src_grp, src_key, key_dict)
-        row = _src_grp[mask].iloc[0] if mask.any() else None
-        col_totals = {}
-        if row is not None:
-            for sc_c in _src_qty_cols:
-                col_totals[sc_c] = round(float(row.get(sc_c, 0) or 0), 4)
-        agg_src_extra.append({"key": key_dict, "src_totals": col_totals})
-
-    # Target-only keys (not in source)
-    for key_tuple in sorted(_tgt_keys_set - _src_keys_set)[:200]:
-        key_dict = dict(zip(src_key, key_tuple))
-        mask = _grp_mask(_tgt_grp, src_key, key_dict)
-        row = _tgt_grp[mask].iloc[0] if mask.any() else None
-        col_totals = {}
-        if row is not None:
-            for tc_c in _tgt_qty_cols:
-
-
-
-    # ==== SOURCE PAGE 0532 ====
-
-                col_totals[tc_c] = round(float(row.get(tc_c, 0) or 0), 4)
-        agg_tgt_extra.append({"key": key_dict, "tgt_totals": col_totals})
-
-    # -- Stage 8: Exception summary by class / type --
-    exc_by_class: dict[str, int] = {}
-    exc_by_type: dict[str, int] = {}
-    for e in exceptions:
-        cls = e.get("exception_class", "SOURCE")
-        typ = e.get("exception_type", "VALUE_MISMATCH")
-        exc_by_class[cls] = exc_by_class.get(cls, 0) + 1
-        exc_by_type[typ] = exc_by_type.get(typ, 0) + 1
-
-    total_exceptions = len(exceptions)
-    if row_match_method == "key-based":
-        total_rows_compared = completeness.get("rows_found", len(df_src))
-    else:
-        total_rows_compared = recon_rows
-    mapping_pct = round(len(column_map) / max(len(src_cols), 1) * 100, 1)
-
-
-
-    # ==== SOURCE PAGE 0533 ====
-
-    return {
-        "src_name":       name_src,
-        "tgt_name":       name_tgt,
-        "src_rows":      len(df_src),
-        "tgt_rows":      len(df_tgt),
-        "src_cols":      len(src_cols),
-        "tgt_cols":      len(tgt_cols),
-        "total_rows_compared": total_rows_compared,
-        "row_match_method":   row_match_method,
-        "src_key":       src_key,
-        "src_key_in_tgt":    src_key_in_tgt,
-        "column_map":     column_map,
-        "total_mapped":     len(column_map),
-        "mapping_pct":     mapping_pct,
-        "high_conf":      sum(1 for m in column_map if m["confidence"] == "HIGH"),
-        "medium_conf":     sum(1 for m in column_map if m["confidence"] == "MEDIUM"),
-        "low_conf":       sum(1 for m in column_map if m["confidence"] == "LOW"),
-        "unmapped_src":     unmapped_src,
-        "unmapped_tgt":     unmapped_tgt,
-
-
-
-    # ==== SOURCE PAGE 0534 ====
-
-        "excluded_meta_src":  excluded_meta_src,
-        "excluded_meta_tgt":  excluded_meta_tgt,
-        "llm_mapping_used":  llm_mapping_used,
-        "llm_reasoning":    llm_reasoning,
-        "merged_findings":   merged_column_findings,
-        "split_findings":   split_column_findings,
-        "embedded_findings":  embedded_findings,
-        "transform_log":    transform_log,
-        "reconciliation":   reconciliation,
-        "completeness":     completeness,
-        "tgt_only_count":   tgt_only_count,
-        "exceptions":     exceptions,
-        "total_exceptions":  total_exceptions,
-        "exc_by_class":    exc_by_class,
-        "exc_by_type":     exc_by_type,
-        "agg_recon":      agg_recon,
-        "agg_src_extra":    agg_src_extra,
-        "agg_tgt_extra":    agg_tgt_extra,
-        "agg_qty_cols":    agg_qty_cols,
-
-
-
-    # ==== SOURCE PAGE 0535 ====
-
-        "agg_key_cols":    agg_key_cols_used,
-        "agg_tolerance_pct":  int(_AGG_TOLERANCE * 100),
-        "tgt_agg_report":   _tgt_agg_report,
-        "tgt_was_aggregated":  _tgt_was_aggregated,
-        "user_hints":     user_hints or {},
-        "overall_status": (
-            "PASS" if total_exceptions == 0
-            else "WARN" if total_exceptions / max(total_rows_compared, 1) < 0.05
-            else "FAIL"
-        ),
-    }
-
 def _classify_value_exception(src_val: str, tgt_val: str) -> str:
     # Classify what kind of value exception this is.
     if not src_val and tgt_val:
@@ -12662,9 +9899,6 @@ def _classify_value_exception(src_val: str, tgt_val: str) -> str:
     if src_val and not tgt_val:
         return "NULL_IN_TARGET"
 
-
-
-# ==== SOURCE PAGE 0536 ====
 
     try:
         if abs(float(src_val) - float(tgt_val)) / max(abs(float(src_val)), 1) < 0.001:
@@ -12687,9 +9921,6 @@ def _exception_severity(src_val: str, tgt_val: str) -> str:
         return "ERROR"
 
 
-
-# ==== SOURCE PAGE 0537 ====
-
     if exc_type == "NULL_IN_SOURCE":
         return "INFO"
     return "ERROR"
@@ -12709,9 +9940,6 @@ _BFSI_BUSINESS_COLS: frozenset[str] = frozenset({
     "side", "buy_sell", "direction", "action",
     "status", "trade_status", "order_status", "settlement_status", "lifecycle_status",
 
-
-
-# ==== SOURCE PAGE 0538 ====
 
     "counterparty", "cpty", "counterparty_id", "client_id", "client_name",
     "book", "book_id", "portfolio", "fund", "account", "entity", "legal_entity",
@@ -12734,9 +9962,6 @@ _BFSI_TECHNICAL_COLS: frozenset[str] = frozenset({
     "checksum", "hash", "version", "row_num", "seq", "sequence",
 
 
-
-# ==== SOURCE PAGE 0539 ====
-
     "file_name", "source_file", "batch_id",
 })
 
@@ -12755,7 +9980,6 @@ def _bfsi_exception_domain(col_name: str, exc_type: str) -> str:
                     "VALUE_NOT_EMBEDDED"):
         return "Operational"
 
-    # ==== SOURCE PAGE 0540 ====
     # Technical -- data format / quality problems regardless of column name
     if exc_type in ("NULL_IN_TARGET", "NULL_IN_SOURCE", "ROUNDING_DIFFERENCE",
                     "CASE_DIFFERENCE", "TRUNCATION_OR_PREFIX"):
@@ -12773,7 +9997,6 @@ def _bfsi_exception_domain(col_name: str, exc_type: str) -> str:
     if normalized in _BFSI_TECHNICAL_COLS or any(
         tk in normalized for tk in ("etl", "batch", "load", "checksum", "hash", "seq")
     ):
-        # ==== SOURCE PAGE 0541 ====
         return "Technical"
 
     # VALUE_MISMATCH on any non-metadata column -> Data
@@ -12794,7 +10017,6 @@ _BFSI_ANALYTICS_COLS = frozenset({
     "cost", "accrual", "amortization", "unrealised", "realised", "fx", "swap",
 })
 
-# ==== SOURCE PAGE 0542 ====
 _BFSI_REFERENCE_COLS = frozenset({
     "id", "code", "isin", "cusip", "sedol", "ric", "ticker", "lei", "uti", "ccy", "currency",
     "entity", "counterparty", "cpty", "account", "portfolio", "fund", "legal_entity",
@@ -12815,7 +10037,6 @@ _DATE_PATTERNS = [
     (r"^\d{2}-\d{2}-\d{4}$",        "DD-MM-YYYY"),
     (r"^\d{8}$",              "YYYYMMDD"),
     (r"^\d{4}-\d{2}-\d{2}T\d{2}:",    "YYYY-MM-DDTHH:MM:SS"),
-    # ==== SOURCE PAGE 0543 ====
 ]
 
 
@@ -12835,9 +10056,6 @@ _BFSI_TRANSACTIONAL_COLS):
         return "Reference"
     return "Analytics"
 
-
-
-# ==== SOURCE PAGE 0544 ====
 
 def _infer_criticality(col_name: str, null_pct: float) -> str:
     n = col_name.lower()
@@ -12859,8 +10077,6 @@ def _infer_business_attribute(col_name: str) -> str:
             n = n[len(pfx):]
 
 
-# ==== SOURCE PAGE 0545 ====
-
     # split on _ or camelCase boundaries
     parts = re.sub(r"([a-z])([A-Z])", r"\1 \2", n).replace("_", " ").split()
     # Expand known abbreviations
@@ -12881,9 +10097,6 @@ def _infer_description(col_name: str, series: "pd.Series") -> str:
     return f"{ba} -- {dtype_label} field used for {usage.lower()} purposes."
 
 
-
-# ==== SOURCE PAGE 0546 ====
-
 def _pandas_dtype_to_sql(dtype_str: str) -> str:
     if "int" in dtype_str:  return "INTEGER"
     if "float" in dtype_str: return "DECIMAL"
@@ -12903,9 +10116,6 @@ def _infer_format(series: "pd.Series", dtype_str: str) -> str:
     # Sample non-null strings
     sample = series.dropna().astype(str).head(200)
 
-
-
-# ==== SOURCE PAGE 0547 ====
 
     if sample.empty:
         return "--"
@@ -12928,9 +10138,6 @@ def _infer_business_rules(col_name: str, series: "pd.Series", dtype_str: str) ->
         numeric = pd.to_numeric(series, errors="coerce").dropna()
 
 
-
-# ==== SOURCE PAGE 0548 ====
-
         if not numeric.empty:
             mn, mx = numeric.min(), numeric.max()
             if any(k in n for k in ("qty","quantity","count","alloc")):
@@ -12952,9 +10159,6 @@ def _infer_business_rules(col_name: str, series: "pd.Series", dtype_str: str) ->
     if not rules:
 
 
-
-# ==== SOURCE PAGE 0549 ====
-
         return "--"  # OCR-UNCERTAIN (continuation from prior page context)
     return "; ".join(rules)
 
@@ -12974,9 +10178,6 @@ def _exc(exc_type: str, count: int, total: int, severity: str, sample: str, rule
 def _compute_field_exceptions(
     col_name: str,
 
-
-
-# ==== SOURCE PAGE 0550 ====
 
     series_src: "pd.Series",
     series_tgt: "pd.Series | None",
@@ -12998,9 +10199,6 @@ def _compute_field_exceptions(
         sev = "High" if src_null / total > 0.1 else "Medium"
 
 
-
-# ==== SOURCE PAGE 0551 ====
-
         sample_idx = s[s.isna()].index[:3].tolist()
         exceptions.append(_exc(
             "NULL_IN_SOURCE", src_null, total, sev,
@@ -13020,9 +10218,6 @@ def _compute_field_exceptions(
     if 1 < s.nunique(dropna=True) <= 15 and len(non_null) > 0:
         lov_set = set(non_null.astype(str).str.strip().str.upper().unique())
 
-
-
-# ==== SOURCE PAGE 0552 ====
 
         invalid = non_null.astype(str).str.strip().str.upper().apply(
             lambda v: v not in lov_set
@@ -13045,9 +10240,6 @@ def _compute_field_exceptions(
     if any(k in n for k in ("ccy", "currency", "iso_ccy", "curr")):
 
 
-
-# ==== SOURCE PAGE 0553 ====
-
         _iso_re = re.compile(r"^[A-Z]{3}$")
         bad = non_null.astype(str).str.strip().apply(lambda v: not bool(_iso_re.match(v)))
         cnt = int(bad.sum())
@@ -13069,9 +10261,6 @@ def _compute_field_exceptions(
                 "INVALID_ISIN", cnt, total, "High",
 
 
-
-# ==== SOURCE PAGE 0554 ====
-
                 ", ".join(samples), "Must match ISIN format: 2 alpha + 9 alphanumeric + 1 digit",
             ))
 
@@ -13091,9 +10280,6 @@ def _compute_field_exceptions(
     if "lei" in n:
         _lei_re = re.compile(r"^[A-Z0-9]{18}[0-9]{2}$")
 
-
-
-# ==== SOURCE PAGE 0555 ====
 
         bad = non_null.astype(str).str.strip().apply(lambda v: not bool(_lei_re.match(v)))
         cnt = int(bad.sum())
@@ -13116,9 +10302,6 @@ def _compute_field_exceptions(
                 ", ".join(samples), "Must be <=52 alphanumeric/hyphen UTI",
 
 
-
-# ==== SOURCE PAGE 0556 ====
-
             ))
 
     # Date format consistency
@@ -13139,9 +10322,6 @@ def _compute_field_exceptions(
                     "INVALID_DATE_FORMAT", cnt, total, "High",
                     ", ".join(samples), "Must be YYYY-MM-DD, DD/MM/YYYY, or YYYYMMDD",
 
-
-
-# ==== SOURCE PAGE 0557 ====
 
                 ))  # OCR-UNCERTAIN (closing paren carried from prior page context)
 
@@ -13171,9 +10351,6 @@ def _compute_field_exceptions(
         if mx > 1:   # 0-100 scale
 
 
-
-# ==== SOURCE PAGE 0558 ====
-
             out_of_range = ((valid_num < 0) | (valid_num > 100)).sum()
             rule_msg = "Rate must be 0-100"
         else:      # 0-1 scale
@@ -13194,9 +10371,6 @@ def _compute_field_exceptions(
         neg = (valid_num < 0).sum()
         if neg:
 
-
-
-# ==== SOURCE PAGE 0559 ====
 
             samples = valid_num[valid_num < 0].head(3).astype(str).tolist()
             exceptions.append(_exc(
@@ -13219,9 +10393,6 @@ def _compute_field_exceptions(
     if series_tgt is not None:
 
 
-
-# ==== SOURCE PAGE 0560 ====
-
         tgt_sql  = _pandas_dtype_to_sql(str(series_tgt.dtype))
         tgt_null = int(series_tgt.isna().sum())
         tgt_total = len(series_tgt)
@@ -13241,9 +10412,6 @@ def _compute_field_exceptions(
                 f"{src_sql} -> {tgt_sql}", "Source and target data types differ",
             ))
 
-
-
-# ==== SOURCE PAGE 0561 ====
 
         # Value mismatch (row-aligned) -- null-sentinel normalised
         try:
@@ -13266,9 +10434,6 @@ def _compute_field_exceptions(
                     "VALUE_MISMATCH", cnt, min_len, sev,
 
 
-
-# ==== SOURCE PAGE 0562 ====
-
                     ", ".join(samples), "Row-level value differs between source and target",
                 ))
         except Exception:
@@ -13289,9 +10454,6 @@ def _compute_field_exceptions(
                         exceptions.append(_exc(
                             "CASE_DIFFERENCE", case_diff, len(idx), "Low",
 
-
-
-# ==== SOURCE PAGE 0563 ====
 
                             "--", "Values match case-insensitively but casing differs",
                         ))
@@ -13314,9 +10476,6 @@ def _compute_field_exceptions(
                         "ROUNDING_DIFFERENCE", rounding,
 
 
-
-# ==== SOURCE PAGE 0564 ====
-
                         int(both.sum()), "Low",
                         "diff < 0.01", "Numeric values differ by < 0.01 (rounding)",
                     ))
@@ -13338,9 +10497,6 @@ def _compute_field_exceptions(
                         exceptions.append(_exc(
 
 
-
-# ==== SOURCE PAGE 0565 ====
-
                             "TRUNCATION", trunc, len(idx), "Medium",
                             "--", "Target value appears truncated (< 80% of source length)",
                         ))
@@ -13361,9 +10517,6 @@ def _compute_field_exceptions(
             fill_run = filled_mask.astype(int).diff().abs().sum()
 
 
-
-# ==== SOURCE PAGE 0566 ====
-
             # Low run count = values grouped in blocks -> conditional/dependent field
             if null_run < total * 0.2:
                 exceptions.append(_exc(
@@ -13383,9 +10536,6 @@ def _compute_field_exceptions(
         exceptions.append(_exc(
             "MISSING_IN_SOURCE", total, total, "High",
 
-
-
-# ==== SOURCE PAGE 0567 ====
 
             f"No source column mapped",
             f"Column '{col_name}' exists in target but has no source mapping",
@@ -13408,9 +10558,6 @@ def _build_field_spec(
     col_name: str,
 
 
-
-# ==== SOURCE PAGE 0568 ====
-
     series_src: "pd.Series",
     series_tgt: "pd.Series | None",
     source_name: str,
@@ -13432,9 +10579,6 @@ def _build_field_spec(
     example_val = str(non_null.iloc[0])[:40] if len(non_null) else "--"
 
 
-
-# ==== SOURCE PAGE 0569 ====
-
     # List of values -- only for low-cardinality cols
     lov = "--"
     if 1 < distinct <= 15:
@@ -13454,26 +10598,6 @@ def _build_field_spec(
             tgt_sample = series_tgt.dropna().astype(str).head(100)
             if len(src_sample) and len(tgt_sample):
 
-
-
-# ==== SOURCE PAGE 0570 ====
-
-# SKIPPED PAGE 0570 -- duplicate of preceding page (function signature block
-# already transcribed above under page 0568; source photo repeats identical
-# text: "series_src: pd.Series, series_tgt: pd.Series | None, source_name: str,
-# target_name: str, match_type: str, tgt_col_name: str | None = None,
-# fuzzy_score: float | None = None, -> dict: ... s = series_src ... example_val ...")
-
-
-
-# ==== SOURCE PAGE 0571 ====
-
-# SKIPPED PAGE 0571 -- duplicate of page 0569 (identical "List of values" /
-# "Transformation Applied" content, verified against source photo)
-
-
-
-# ==== SOURCE PAGE 0572 ====
 
                 src_upper = src_sample.str.isupper().mean()
                 tgt_upper = tgt_sample.str.isupper().mean()
@@ -13496,9 +10620,6 @@ def _build_field_spec(
     # Length / precision
 
 
-
-# ==== SOURCE PAGE 0573 ====
-
     if sql_type == "VARCHAR":
         max_len = int(s.dropna().astype(str).str.len().max()) if len(non_null) else 0
         length = f"{max_len} chars"
@@ -13519,9 +10640,6 @@ def _build_field_spec(
     fmt = _infer_format(s, dtype_str)
 
 
-
-# ==== SOURCE PAGE 0574 ====
-
     # Default value -- dominant value if > 40% frequency
     default_val = "--"
     if len(non_null):
@@ -13541,9 +10659,6 @@ def _build_field_spec(
         "target_field": tgt_col_name or "--",
         "source": source_name,
 
-
-
-# ==== SOURCE PAGE 0575 ====
 
         "target": target_name,
         "match_type": match_type,
@@ -13566,9 +10681,6 @@ def _build_field_spec(
         "format": fmt,
 
 
-
-# ==== SOURCE PAGE 0576 ====
-
         "default_value": default_val,
         # Others
         "error_handling": error_handling,
@@ -13589,9 +10701,6 @@ def _build_field_spec(
 # ------------------------------------------------------------
 
 
-
-# ==== SOURCE PAGE 0577 ====
-
 def analyze_mapping(df1, df2, name1, name2,
             mapping_spec: list[dict] | None = None,
             user_hints: dict | None = None) -> dict:
@@ -13611,9 +10720,6 @@ def analyze_mapping(df1, df2, name1, name2,
             if left in df1.columns and right in df2.columns:
                 _hint_pairs.append((left, right))
 
-
-
-# ==== SOURCE PAGE 0578 ====
 
     # Columns the user wants excluded from mapping
     _hint_exclude = {c.strip() for c in hints.get("exclude_hints", "").split(",") if c.strip()}
@@ -13636,9 +10742,6 @@ def analyze_mapping(df1, df2, name1, name2,
     spec_results = []
 
 
-
-# ==== SOURCE PAGE 0579 ====
-
     if mapping_spec:
         for spec in mapping_spec:
             src, tgt = spec["source_column"], spec["target_column"]
@@ -13659,9 +10762,6 @@ def analyze_mapping(df1, df2, name1, name2,
                     else "MISSING_TARGET"
                 ),
 
-
-
-# ==== SOURCE PAGE 0580 ====
 
             })
 
@@ -13684,9 +10784,6 @@ def analyze_mapping(df1, df2, name1, name2,
             if col1 in unmapped_f2:
 
 
-
-# ==== SOURCE PAGE 0581 ====
-
                 unmapped_f2.remove(col1)
         else:
             best_score, best_col = 0.0, None
@@ -13707,9 +10804,6 @@ def analyze_mapping(df1, df2, name1, name2,
             else:
                 unmapped_f1.append({
 
-
-
-# ==== SOURCE PAGE 0582 ====
 
                     "col": col1,
                     "dtype": str(df1[col1].dtype),
@@ -13733,9 +10827,6 @@ def analyze_mapping(df1, df2, name1, name2,
                 col_name=e["f1_col"], series_src=df1[e["f1_col"]],
 
 
-
-# ==== SOURCE PAGE 0583 ====
-
                 series_tgt=df2[e["f2_col"]] if e["f2_col"] in df2.columns else None,
                 source_name=name1, target_name=name2,
                 match_type="Exact", tgt_col_name=e["f2_col"],
@@ -13756,9 +10847,6 @@ def analyze_mapping(df1, df2, name1, name2,
     for u in unmapped_f1:
         try:
 
-
-
-# ==== SOURCE PAGE 0584 ====
 
             field_specs.append(_build_field_spec(
                 col_name=u["col"], series_src=df1[u["col"]],
@@ -13781,9 +10869,6 @@ def analyze_mapping(df1, df2, name1, name2,
     _RECON_ROW_LIMIT = 50_000
 
 
-
-# ==== SOURCE PAGE 0585 ====
-
     reconciliation = []
     # All null sentinel strings that should be treated as missing before numeric coercion
     _recon_null_map = {s: pd.NA for s in _NULL_SENTINELS}
@@ -13802,9 +10887,6 @@ def analyze_mapping(df1, df2, name1, name2,
                 reconciliation.append({
                     "column": col,
 
-
-
-# ==== SOURCE PAGE 0586 ====
 
                     "f1_sum": round(s1, 4), "f2_sum": round(s2, 4),
                     "f1_count": int(df1[col].count()), "f2_count": int(df2[col].count()),
@@ -13827,9 +10909,6 @@ def analyze_mapping(df1, df2, name1, name2,
     )
 
 
-
-# ==== SOURCE PAGE 0587 ====
-
     # Detect files that are likely unrelated to the same business domain
     warning_reasons = []
     if completeness_pct < 30:
@@ -13849,9 +10928,6 @@ def analyze_mapping(df1, df2, name1, name2,
 
     relatedness_warning = (
 
-
-
-# ==== SOURCE PAGE 0588 ====
 
         {
             "level": "HIGH" if len(warning_reasons) >= 2 else "MEDIUM",
@@ -13874,9 +10950,6 @@ def analyze_mapping(df1, df2, name1, name2,
             if not col or col not in df1.columns:
 
 
-
-# ==== SOURCE PAGE 0589 ====
-
                 continue
 
             series   = df1[col]
@@ -13896,9 +10969,6 @@ def analyze_mapping(df1, df2, name1, name2,
             # -- unique check
             if spec.get("unique"):
 
-
-
-# ==== SOURCE PAGE 0590 ====
 
                 dupes = series[series.duplicated(keep=False) & series.notna()]
                 for idx in dupes.index[:100]:
@@ -13921,8 +10991,6 @@ def analyze_mapping(df1, df2, name1, name2,
                     violations.append({
 
 
-# ==== SOURCE PAGE 0591 ====
-
                 "row_index": int(idx),
                 "value": str(series.at[idx]),
                 "message": f"{col}: '{series.at[idx]}' not in allowed list {allowed}",
@@ -13944,9 +11012,6 @@ def analyze_mapping(df1, df2, name1, name2,
                         "message": f"{col}: {series.at[idx]} < min_value {min_val}",
 
 
-
-# ==== SOURCE PAGE 0592 ====
-
                     })
             if max_val is not None:
                 bad_max = numeric[numeric.notna() & (numeric > max_val)]
@@ -13966,9 +11031,6 @@ def analyze_mapping(df1, df2, name1, name2,
             try:
                 bad_re = series[non_null_mask & ~series.astype(str).str.match(pattern, na=False)]
 
-
-
-# ==== SOURCE PAGE 0593 ====
 
                 for idx in bad_re.index[:100]:
                     if len(violations) >= 100:
@@ -13991,9 +11053,6 @@ def analyze_mapping(df1, df2, name1, name2,
                 re.IGNORECASE,
 
 
-
-# ==== SOURCE PAGE 0594 ====
-
             )
             if cond_match:
                 trigger_col   = cond_match.group(1).strip()
@@ -14013,9 +11072,6 @@ def analyze_mapping(df1, df2, name1, name2,
                             "row_index": int(idx),
                             "value": str(df1.at[idx, trigger_col]),
 
-
-
-# ==== SOURCE PAGE 0595 ====
 
                             "message": (
                                 f"Condition violated: {trigger_col}="
@@ -14038,9 +11094,6 @@ def analyze_mapping(df1, df2, name1, name2,
             "sample_violations": violations[:5],
 
 
-
-# ==== SOURCE PAGE 0596 ====
-
         })
 
     # Flat list of source-side column names that have a confirmed match (exact or fuzzy).
@@ -14061,9 +11114,6 @@ def analyze_mapping(df1, df2, name1, name2,
         "Operational": all_domain_items.count("Operational"),
         "Other":       all_domain_items.count("Other"),
 
-
-
-# ==== SOURCE PAGE 0597 ====
 
     }
 
@@ -14086,9 +11136,6 @@ def analyze_mapping(df1, df2, name1, name2,
         "domain_summary": domain_summary,
 
 
-
-# ==== SOURCE PAGE 0598 ====
-
         "field_specs": field_specs,
     }
 
@@ -14108,7 +11155,6 @@ def _hints_block(hints: dict | None, fields: list[str]) -> str:
         return ""
     raw = hints.get("domain_context", "").strip()
     if not raw:
-        # ==== SOURCE PAGE 0599 ====
         return ""
     _labels = {
         "key_hints":       "Extracted key columns",
@@ -14127,100 +11173,8 @@ def _hints_block(hints: dict | None, fields: list[str]) -> str:
         f"{raw}\n"
     )
     if structured:
-        # ==== SOURCE PAGE 0600 ====
         block += "Parsed from above:\n" + "\n".join(structured) + "\n"
     return block
-
-
-def _compare_prompt(pairs, hints: dict | None = None):
-    hb = _hints_block(hints, ["domain_context", "key_hints", "mapping_hints"])
-    lines = ["Summarise these data file comparison results for a data analyst:\n" + hb]
-    for p in pairs:
-        d = p["diff"]
-        lines.append(
-            f"## {p['file1_name']} → {p['file2_name']}\n"
-            f"Key method: {d['key_method']} | Keys: {d.get('key_columns')}\n"
-            f"Extra rows from File 2: {d['added_count']} | Extra rows from File 1: {d['removed_count']} | Modified: {d['modified_count']}\n"
-            f"Extra columns from File 2: {d['schema_added_columns']} | Extra columns from File 1: {d['schema_removed_columns']}\n"
-            f"Type mismatches: {list(d['type_mismatches'].keys())}\n"
-            f"Sample changes: {json.dumps(d['modified_rows'][:3])}\n"
-        )
-
-
-
-# ==== SOURCE PAGE 0601 ====
-
-        lines.append("\nHighlight: root causes, data quality risks, schema concerns. Be concise.")
-    return "\n".join(lines)
-
-
-def _lineage_prompt(reports, hints: dict | None = None):
-    hb = _hints_block(hints, ["domain_context", "key_hints", "mapping_hints",
-                               "transform_hints", "exclude_hints"])
-    lines = ["Summarise data lineage analysis results for a data integration / lineage analyst:\n" + hb]
-    for lr in reports:
-        hints = lr.get("user_hints") or {}
-        if hints:
-            hint_parts = []
-            if hints.get("domain_context"):
-                hint_parts.append(f"Domain context: {hints['domain_context']}")
-            if hints.get("key_hints"):
-                hint_parts.append(f"Expected keys: {hints['key_hints']}")
-
-
-
-# ==== SOURCE PAGE 0604 ====
-
-            if hints.get("mapping_hints"):
-                hint_parts.append(f"Known mappings: {hints['mapping_hints']}")
-            if hints.get("transform_hints"):
-                hint_parts.append(f"Known transforms: {hints['transform_hints']}")
-            lines.append("User-supplied criteria: " + " | ".join(hint_parts) + "\n")
-        fail_cols  = [r["tgt_col"] for r in lr["reconciliation"] if r["status"] == "FAIL"]
-        warn_cols  = [r["tgt_col"] for r in lr["reconciliation"] if r["status"] == "WARN"]
-        xf_applied = [t["src_col"] for t in lr["transform_log"]]
-        miss     = lr.get("completeness", {}).get("rows_missing", 0)
-        embedded = [f"{e['src_cols']}→{e['tgt_col']}" for e in lr.get("embedded_findings", [])]
-        merged   = [f"{m['src_cols']}→{m['tgt_col']}" for m in lr.get("merged_findings", [])]
-        exc_by_type = lr.get("exc_by_type", {})
-        lines.append(
-            f"## {lr['src_name']} → {lr['tgt_name']}\n"
-            f"AI mapping used: {lr.get('llm_mapping_used', False)}\n"
-            f"AI mapping reasoning: {lr.get('llm_reasoning', 'N/A')}\n"
-            f"Source rows: {lr['src_rows']} | Target rows: {lr['tgt_rows']} | "
-            f"Rows compared: {lr['total_rows_compared']} | Missing in target: {miss}\n"
-
-
-
-# ==== SOURCE PAGE 0605 ====
-
-            f"Columns mapped: {lr['total_mapped']} ({lr['mapping_pct']}%) | "
-            f"High: {lr['high_conf']} | Medium: {lr['medium_conf']} | Low: {lr['low_conf']}\n"
-            f"Unmapped source cols: {lr['unmapped_src']}\n"
-            f"Excluded metadata cols: {lr.get('excluded_meta_src', [])}\n"
-            f"Embedded detections: {embedded}\n"
-            f"Merged detections: {merged}\n"
-            f"Transforms applied to: {xf_applied}\n"
-            f"Overall status: {lr['overall_status']} | Total exceptions: {lr['total_exceptions']}\n"
-            f"Exception breakdown: {exc_by_type}\n"
-            f"FAIL columns: {fail_cols}\n"
-            f"WARN columns: {warn_cols}\n"
-            f"Sample exceptions: {json.dumps(lr['exceptions'][:5])}\n"
-        )
-        lines.append(
-            "\nProvide (bullet points):\n"
-            "1. Root cause for each exception type -- data quality issue, transformation gap, or mapping error?\n"
-            "2. Flag any LOW-confidence column matches that need human review.\n"
-            "3. For embedded/merged columns -- confirm regex extraction patterns look correct.\n"
-
-
-
-# ==== SOURCE PAGE 0606 ====
-
-            "4. Source columns not mapped to target -- should any be mapped?\n"
-            "5. Recommended next steps for the data integration team."
-        )
-    return "\n".join(lines)
 
 
 def _parse_prompt(filename: str, raw_text: str, hints: dict | None = None) -> str:
@@ -14236,9 +11190,6 @@ def _parse_prompt(filename: str, raw_text: str, hints: dict | None = None) -> st
         + hb + "\n"
         f"FILE CONTENT:\n{preview}\n\n"
 
-
-
-# ==== SOURCE PAGE 0607 ====
 
         "Return ONLY a valid JSON object with this exact structure (no markdown, no commentary):\n"
         '{\n'
@@ -14258,10 +11209,6 @@ def _parse_prompt(filename: str, raw_text: str, hints: dict | None = None) -> st
 def parse_unstructured(raw_bytes: bytes, filename: str,
                         hints: dict | None = None) -> dict:
 
-
-
-
-    # # ==== SOURCE PAGE 0608 ====
 
     # Use Claude LLM to parse an unstructured file into a structured table.
     # Accepts the raw bytes of the uploaded file so no temp file is needed.
@@ -14284,9 +11231,6 @@ def parse_unstructured(raw_bytes: bytes, filename: str,
             [{"role": "user", "content": [{"text": prompt}]}],
 
 
-
-# ==== SOURCE PAGE 0609 ====
-
             system="You are a structured data extraction engine. Output ONLY valid JSON.",
         )
         # Strip any accidental markdown fences
@@ -14308,9 +11252,6 @@ def parse_unstructured(raw_bytes: bytes, filename: str,
         return {
 
 
-
-# ==== SOURCE PAGE 0610 ====
-
             "file_name": filename, "columns": [], "rows": [],
             "row_count": 0, "col_count": 0,
             "format_detected": "error", "notes": "", "error": str(exc),
@@ -14330,9 +11271,6 @@ def parse_unstructured(raw_bytes: bytes, filename: str,
         "notes": notes,
         "error": None,
 
-
-
-# ==== SOURCE PAGE 0611 ====
 
     }
 
@@ -14355,9 +11293,6 @@ def _hdr(ws, row: int, cols: list[str]) -> None:
         c.font = _HDR_FONT
 
 
-
-# ==== SOURCE PAGE 0612 ====
-
         c.fill = _HDR_FILL
         c.alignment = Alignment(horizontal="center", wrap_text=True)
     ws.row_dimensions[row].height = 18
@@ -14378,9 +11313,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
     wb = openpyxl.Workbook()
 
 
-
-# ==== SOURCE PAGE 0613 ====
-
     wb.remove(wb.active)  # remove default empty sheet
     action = data.get("action", "")
     files  = data.get("file_names", [])
@@ -14400,9 +11332,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
         ws.cell(2, 1).alignment = Alignment(wrap_text=True)
         ws.row_dimensions[2].height = max(60, len(_ai_summary) // 3)
 
-
-
-# ==== SOURCE PAGE 0614 ====
 
         ws.merge_cells("A2:B2")
         ws.cell(3, 1, "").fill = PatternFill("solid", fgColor="F0F4FF")
@@ -14425,9 +11354,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
                 ("Uniqueness",    f"{dqs.get('uniqueness','')}%"),
 
 
-
-# ==== SOURCE PAGE 0615 ====
-
                 ("Validity",       f"{dqs.get('validity','')}%"),
                 ("Rule Failures",  sum(1 for r in qr.get("rule_results",[]) if r.get("status")=="FAIL")),
                 ("Duplicate Rows", qr.get("duplicate_rows",0)),
@@ -14447,9 +11373,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
         """Build a unique sheet name ≤31 chars."""
         base = re.sub(r"[\\/*?:\[\]]", "", f"{suffix} {name}")[:28].strip()
 
-
-
-# ==== SOURCE PAGE 0616 ====
 
         sn = base
         i = 2
@@ -14472,9 +11395,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
         ws = wb.create_sheet(_safe_sn(f1, "Cmp Summary", _used_sn))
 
 
-
-# ==== SOURCE PAGE 0617 ====
-
         _hdr(ws, 1, ["Metric", "Value"])
         meta = [
             ("File 1",                       f1),
@@ -14496,9 +11416,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
                 for ci in range(1, 3):
 
 
-
-# ==== SOURCE PAGE 0620 ====
-
                     ws.cell(ri, ci).fill = _ALT_FILL
         _autofit(ws)
 
@@ -14518,9 +11435,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
                 for ci, c in enumerate(used_data_cols, len(key_cols) + 1):
                     ws.cell(ri, ci, r_item["row_data"].get(c, ""))
 
-
-
-# ==== SOURCE PAGE 0621 ====
 
                 if ri % 2 == 0:
                     for ci in range(1, len(out_cols) + 1):
@@ -14542,9 +11456,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
                 for ci, c in enumerate(used_data_cols, len(key_cols) + 1):
 
 
-
-# ==== SOURCE PAGE 0622 ====
-
                     ws.cell(ri, ci, r_item["row_data"].get(c, ""))
                 if ri % 2 == 0:
                     for ci in range(1, len(out_cols) + 1):
@@ -14564,9 +11475,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
                 key_str = " | ".join(f"{k}={v}" for k, v in mr["key_values"].items())
                 for col, chg in mr["changes"].items():
 
-
-
-# ==== SOURCE PAGE 0623 ====
 
                     ws.cell(ri, 1, key_str)
                     ws.cell(ri, 2, col).font = Font(bold=True)
@@ -14588,9 +11496,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
             _hdr(ws, 2, ["Column", "Has Data In", "All Null In", "Non-Null Count", "Sample Values"])
 
 
-
-# ==== SOURCE PAGE 0624 ====
-
             for ri, exc in enumerate(null_col_exc, 3):
                 ws.cell(ri, 1, exc["column"])
                 ws.cell(ri, 2, exc["has_data_in"])
@@ -14610,9 +11515,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
             if dup_rows:
                 ws = wb.create_sheet(_safe_sn(fname, "Duplicates", _used_sn))
 
-
-
-# ==== SOURCE PAGE 0625 ====
 
                 ws.cell(1, 1, label).font = Font(bold=True, color="3730A3")
                 _hdr(ws, 2, dup_cols)
@@ -14635,9 +11537,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
             ("DQ Score",  f"{dq['score']}/100 Grade {dq['grade']}"),
 
 
-
-# ==== SOURCE PAGE 0626 ====
-
             ("Base Score",         f"{dq.get('base_score', dq['score'])}/100"),
             ("Governance Penalty", f"-{dq.get('governance_penalty', 0)} pts"),
             ("Completeness",       f"{dq['completeness']}%"),
@@ -14659,9 +11558,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
                            "C": "92400E", "F": "991B1B"}.get(dq["grade"], "374151"))
 
 
-
-# ==== SOURCE PAGE 0627 ====
-
         # Build governance lookup: col_name → gov_entry (from embedded governance)
         _gov_cols = {}
         gov = q.get("governance")
@@ -14681,9 +11577,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
         ws.cell(row, 1, "Column Details").font = Font(bold=True, size=11)
         row += 1
 
-
-
-# ==== SOURCE PAGE 0628 ====
 
         _hdr(ws, row, col_hdrs)
         row += 1
@@ -14706,9 +11599,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
             elif (c.get("null_pct") or 0) > 5:
 
 
-
-# ==== SOURCE PAGE 0629 ====
-
                 c4.fill = _WARN_FILL
             ws.cell(row, 5, c.get("uniqueness_pct", ""))
             ws.cell(row, 6, c.get("cardinality", ""))
@@ -14730,9 +11620,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
                             else _WARN_FILL if sens == "Confidential"
 
 
-
-# ==== SOURCE PAGE 0630 ====
-
                             else _PASS_FILL if sens else PatternFill())
                 ws.cell(row, 13, regs)
                 ws.cell(row, 14, acc)
@@ -14752,9 +11639,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
             ws.cell(row, 1, f"Rule Exceptions ({len(fail_warn)} FAIL/WARN)").font = Font(bold=True, size=11)
             row += 1
 
-
-
-# ==== SOURCE PAGE 0631 ====
 
             _hdr(ws, row, ["Rule Name", "Column", "Rule Type", "Status",
                            "Pass %", "Failed Count", "Failing Examples"])
@@ -14777,9 +11661,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
         if bfsi_fails:
 
 
-
-# ==== SOURCE PAGE 0632 ====
-
             row += 1
             ws.cell(row, 1, "BFSI Identifier Validation Failures").font = Font(bold=True, size=11)
             row += 1
@@ -14800,9 +11681,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
         anomalies = q.get("volume_freshness", {}).get("anomalies", [])
 
 
-
-# ==== SOURCE PAGE 0633 ====
-
         if anomalies:
             row += 1
             ws.cell(row, 1, "Volume & Freshness Anomalies").font = Font(bold=True, size=11)
@@ -14822,9 +11700,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
         ws.cell(1, 2, g["overall_classification"])
         ws.cell(2, 1, "Regulatory").font = Font(bold=True)
 
-
-
-# ==== SOURCE PAGE 0636 ====
 
         ws.cell(2, 2, ", ".join(g["regulatory_frameworks"]))
         ws.cell(3, 1, "PII columns").font = Font(bold=True)
@@ -14847,9 +11722,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
             ws.cell(row, 8, col.get("description", ""))
 
 
-
-# ==== SOURCE PAGE 0637 ====
-
             row += 1
         _autofit(ws)
 
@@ -14871,9 +11743,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
         for ri, (label, value) in enumerate(summary, 1):
 
 
-
-# ==== SOURCE PAGE 0638 ====
-
             ws.cell(ri, 1, label).font = Font(bold=True)
             ws.cell(ri, 2, str(value) if value is not None else "")
 
@@ -14893,9 +11762,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
             row += 1
             ws.cell(row, 1, f"Notable Correlations ({len(strong_corr)})").font = Font(bold=True, size=11)
 
-
-
-# ==== SOURCE PAGE 0639 ====
 
             row += 1
             _hdr(ws, row, ["Column A", "Column B", "Correlation", "Strength"])
@@ -14918,9 +11784,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
             or (c.get("cardinality") == "low (enum)" and c.get("unique_count", 0) <= 1)
 
 
-
-# ==== SOURCE PAGE 0640 ====
-
         ]
         row += 1
         ws.cell(row, 1, f"Column Exceptions ({len(exc_cols)} of {len(p.get('columns',[]))} columns have issues)").font = Font(bold=True, size=11)
@@ -14939,8 +11802,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
             null_pct = c.get("null_pct", 0) or 0
             out_cnt  = c.get("outlier_count", 0) or 0
 
-
-# ==== SOURCE PAGE 0641 ====
 
             ws.cell(row, 1, c.get("name", "")).font = Font(bold=True)
             ws.cell(row, 2, c.get("bfsi_domain", ""))
@@ -14962,9 +11823,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
             ws.cell(row, 12, c.get("max", ""))
 
 
-
-# ==== SOURCE PAGE 0642 ====
-
             ws.cell(row, 13, c.get("mean", ""))
             ws.cell(row, 14, c.get("std", ""))
             c15 = ws.cell(row, 15, out_cnt)
@@ -14984,9 +11842,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
     for m in data.get("mappings", []):
         sn = f"Map_{m['file1_name'][:12]}_{m['file2_name'][:12]}"[:31]
 
-
-
-# ==== SOURCE PAGE 0643 ====
 
         ws = wb.create_sheet(sn)
         ws.cell(1, 1, "Mapping Completeness").font = Font(bold=True)
@@ -15008,9 +11863,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
                 ws.cell(row, 7, "OK" if s.get("type_ok") else ("MISMATCH" if s.get("type_ok") is False else "--"))
 
 
-
-# ==== SOURCE PAGE 0644 ====
-
                 ws.cell(row, 8, s.get("transformation", ""))
                 row += 1
             row += 1
@@ -15031,9 +11883,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
         _autofit(ws)
 
 
-
-# ==== SOURCE PAGE 0645 ====
-
     # --- Cross Reference sheets
     xref = data.get("xref")
     if xref:
@@ -15053,9 +11902,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
         ]
         for ri, (k, v) in enumerate(xr_meta, 2):
 
-
-
-# ==== SOURCE PAGE 0646 ====
 
             ws.cell(ri, 1, k).font = Font(bold=True)
             ws.cell(ri, 2, str(v))
@@ -15078,9 +11924,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
                     cell.alignment = Alignment(horizontal="center")
 
 
-
-# ==== SOURCE PAGE 0647 ====
-
                     if present:
                         cell.font = Font(color="059669", bold=True)
                 if ri % 2 == 0:
@@ -15101,9 +11944,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
                 for ci, sn in enumerate(src_names, 4):
                     ws.cell(ri, ci, str(c.get("source_values", {}).get(sn, "")))
 
-
-
-# ==== SOURCE PAGE 0648 ====
 
                 ws.cell(ri, 4 + len(src_names), str(c.get("golden_value", "")))
                 if c.get("conflict_type") == "VALUE_CONFLICT":
@@ -15126,9 +11966,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
                     _hdr(ws, 2, cols)
 
 
-
-# ==== SOURCE PAGE 0649 ====
-
                     for ri, row in enumerate(only, 3):
                         for ci, col in enumerate(cols, 1):
                             ws.cell(ri, ci, str(row.get(col, "")))
@@ -15149,9 +11986,6 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
     _autofit(ws)
 
 
-
-# ==== SOURCE PAGE 0650 ====
-
     return wb
 
 
@@ -15169,9 +12003,6 @@ def _build_email_html(data: dict) -> str:
         f"<p><strong>Elapsed:</strong> {data.get('elapsed',0)}s</p>",
     ]
 
-
-
-# ==== SOURCE PAGE 0651 ====
 
     for q in data.get("quality_reports", []):
         dq = q["dq_score"]
@@ -15192,9 +12023,6 @@ def _build_email_html(data: dict) -> str:
         lines.append(f"<h3>Governance: {g['file_name']}</h3>")
 
 
-
-# ==== SOURCE PAGE 0652 ====
-
         lines.append(f"<p>Classification: <strong>{g['overall_classification']}</strong> | "
                       f"PII columns: {g['pii_column_count']} | Regulatory: {', '.join(g['regulatory_frameworks'])}</p>")
 
@@ -15214,9 +12042,6 @@ def _build_email_html(data: dict) -> str:
                 f"<ul style='margin:6px 0 0 16px'>{reasons_html}</ul></div>"
             )
 
-
-
-# ==== SOURCE PAGE 0653 ====
 
         lines.append(f"<p>Completeness: "
                       f"<strong>{m['mapping_completeness_pct']}%</strong> | "
@@ -15239,7 +12064,6 @@ def _infer_column_config(df: pd.DataFrame) -> list[dict]:
     # For each column returns a config dict with:
     # name, dtype, mandatory (bool), exclude (bool),
     # null_threshold_pct, min_val, max_val, decimal_places,
-    # ==== SOURCE PAGE 0654 ====
     # timeliness_days, rule_type (suggested), infer_reason (explanation).
 
     # Mandatory inference rules (applied in priority order):
@@ -15259,7 +12083,6 @@ def _infer_column_config(df: pd.DataFrame) -> list[dict]:
         "account", "acct", "counterparty", "broker", "trader",
         # Product / instrument classification
         "product", "instrument", "asset", "class", "category", "subtype",
-        # ==== SOURCE PAGE 0655 ====
         "sub", "leg", "strategy", "book", "portfolio", "fund", "entity",
         "market", "venue", "exchange", "desk", "region", "sector",
         # Trade / transaction fields
@@ -15279,7 +12102,6 @@ def _infer_column_config(df: pd.DataFrame) -> list[dict]:
     _AMOUNT_NAME_HINTS = {"amount", "amt", "price", "notional", "qty", "quantity", "value",
         "rate", "balance", "bal", "vol", "volume"}
 
-    # ==== SOURCE PAGE 0656 ====
     total = len(df)
     configs = []
 
@@ -15299,7 +12121,6 @@ def _infer_column_config(df: pd.DataFrame) -> list[dict]:
         uniq_ratio = s.nunique(dropna=True) / total if total else 0
         is_identifier_like = uniq_ratio > 0.95
 
-        # ==== SOURCE PAGE 0657 ====
         # --- Mandatory determination
         # Priority 1: name strongly signals optional -> always optional
         if name_is_optional and not name_is_mandatory:
@@ -15318,7 +12139,6 @@ def _infer_column_config(df: pd.DataFrame) -> list[dict]:
             else:
                 infer_reason = (
                     f"Name matches mandatory pattern -- review ({null_pct:.0f}% nulls"
-                    # ==== SOURCE PAGE 0658 ====
                     )
         # Priority 3: high nulls with no name signal -> optional
         elif null_pct > 50:
@@ -15338,7 +12158,6 @@ def _infer_column_config(df: pd.DataFrame) -> list[dict]:
         # Priority 6: moderate nulls, ambiguous
         else:
             mandatory = True
-            # ==== SOURCE PAGE 0659 ====
             exclude   = False
             infer_reason = f"{null_pct:.1f}% nulls -- defaulting to mandatory (review)"
 
@@ -15357,7 +12176,6 @@ def _infer_column_config(df: pd.DataFrame) -> list[dict]:
             infer_rule = "unique"
 
         cfg: dict = {
-            # ==== SOURCE PAGE 0660 ====
             "name":               col,
             "dtype":              str(s.dtype),
             "mandatory":          mandatory,
@@ -15378,7 +12196,6 @@ def _infer_column_config(df: pd.DataFrame) -> list[dict]:
                 cfg["min_val"] = round(float(clean.min()), 4)
                 cfg["max_val"] = round(float(clean.max()), 4)
 
-                # ==== SOURCE PAGE 0661 ====
                 # Infer decimal places from actual values
                 def _dp(v):
                     try:
@@ -15398,7 +12215,6 @@ def _infer_column_config(df: pd.DataFrame) -> list[dict]:
 
         # --- String BFSI format auto-detect -- vectorised, capped at 50 rows --
         # Skip if values are numeric/financial quantities (>=80% parse as numbers).
-        # ==== SOURCE PAGE 0662 ====
         elif s.dtype == object:
             str_s = s.dropna().astype(str).str.strip().head(50)
             _num_rate = pd.to_numeric(str_s, errors="coerce").notna().mean()
@@ -15418,9 +12234,6 @@ def _infer_column_config(df: pd.DataFrame) -> list[dict]:
 async def save_dq_baseline(session_id: str, file_name: str):
     """Save the current DQ run's baseline_snapshot to the workspace for future drift comparison."""
 
-
-
-# ==== SOURCE PAGE 0663 ====
 
     import json as _json_b
     try:
@@ -15442,9 +12255,6 @@ async def save_dq_baseline(session_id: str, file_name: str):
 @app.get("/api/dq/rules/{fingerprint}")
 
 
-
-# ==== SOURCE PAGE 0664 ====
-
 async def get_dq_rules(fingerprint: str):
     """Load saved DQ column config for a schema fingerprint."""
     path = Path("workspace") / "dq_rules" / f"{fingerprint}.json"
@@ -15465,9 +12275,6 @@ async def save_dq_rules(fingerprint: str, request: Request):
         path.mkdir(parents=True, exist_ok=True)
         (path / f"{fingerprint}.json").write_text(json.dumps(body), encoding="utf-8")
 
-
-
-# ==== SOURCE PAGE 0665 ====
 
         return {"ok": True}
     except Exception as e:
@@ -15563,9 +12370,6 @@ async def apply_rule_template(request: Request):
     return JSONResponse({"copied": copied})
 
 
-
-# ==== SOURCE PAGE 0666 ====
-
 @app.post("/api/dq/mask/{session_id}")
 async def mask_pii_data(session_id: str, request: Request):
 
@@ -15585,10 +12389,6 @@ async def mask_pii_data(session_id: str, request: Request):
     # Returns a masked CSV file for download.
 
 
-
-
-# ==== SOURCE PAGE 0667 ====
-
     import io, re as _re
 
     body = await request.json()
@@ -15607,9 +12407,6 @@ async def mask_pii_data(session_id: str, request: Request):
     df_orig = dfs_raw[0]["df"].copy()
     fname   = dfs_raw[0]["name"]
 
-
-
-# ==== SOURCE PAGE 0668 ====
 
     # Auto-detect PII columns from governance results if not explicitly provided
     if not columns_to_mask:
@@ -15632,9 +12429,6 @@ async def mask_pii_data(session_id: str, request: Request):
         if s == "ssn":
 
 
-
-# ==== SOURCE PAGE 0669 ====
-
             parts = _re.sub(r'\D', '', val)
             return f"***-**-{parts[-4:]}" if len(parts) >= 4 else "***-**-****"
         if s == "credit_card":
@@ -15654,12 +12448,6 @@ async def mask_pii_data(session_id: str, request: Request):
 
     def _infer_mask_strategy(col: str) -> str:
 
-
-
-
-
-
-# ==== SOURCE PAGE 0670 ====
 
         cl = col.lower()
         if any(k in cl for k in ("email", "mail")):                    return "email"
@@ -15682,9 +12470,6 @@ async def mask_pii_data(session_id: str, request: Request):
         )
 
 
-
-# ==== SOURCE PAGE 0671 ====
-
     # Add masking audit column
     masked_df["_pii_masked"] = f"Masked columns: {', '.join(columns_to_mask)} | Generated by Data Validation Agent"
 
@@ -15704,9 +12489,6 @@ async def mask_pii_data(session_id: str, request: Request):
 @app.post("/dq-infer")
 
 
-
-# ==== SOURCE PAGE 0672 ====
-
 async def dq_infer(files: list[UploadFile] = File(...)):
     """Accept one or more files, return auto-inferred per-column DQ config as JSON."""
     try:
@@ -15725,7 +12507,6 @@ async def dq_infer(files: list[UploadFile] = File(...)):
 async def dq_suggest(files: list[UploadFile] = File(...)):
     # Send column profiles to the LLM and get back AI-suggested DQ rules.
     # Returns a list of suggestion dicts, one per column that the LLM thinks
-    # ==== SOURCE PAGE 0673 ====
     # needs a rule beyond what statistics already inferred:
     # {name, rule_type, value, reason, mandatory, allowed_values, pattern}
     try:
@@ -15745,7 +12526,6 @@ async def dq_suggest(files: list[UploadFile] = File(...)):
             dtype_str = str(s.dtype)
             sample   = s.dropna().astype(str).head(8).tolist()
 
-            # ==== SOURCE PAGE 0674 ====
             summary = {
                 "name":     col,
                 "dtype":    dtype_str,
@@ -15765,7 +12545,6 @@ async def dq_suggest(files: list[UploadFile] = File(...)):
 
         profile_json = json.dumps(col_summaries, indent=2)
 
-        # ==== SOURCE PAGE 0675 ====
         system_prompt = (
             "You are a senior data quality engineer specialising in financial services (BFSI) data. "
             "You are given a column-level profile of a dataset. Your job is to suggest data quality "
@@ -15781,7 +12560,6 @@ async def dq_suggest(files: list[UploadFile] = File(...)):
             "email_format, date_format, freshness_days, decimal_places, uppercase, lowercase. "
             "Each suggestion must have: "
 
-            # ==== SOURCE PAGE 0676 ====
             "name (column name), rule_type, value (rule parameter if needed, else empty string), "
             "reason (1 sentence explaining why), mandatory (true/false), "
             "allowed_values (comma-separated if rule_type=allowed_values, else empty), "
@@ -15800,7 +12578,6 @@ async def dq_suggest(files: list[UploadFile] = File(...)):
         raw = _ask_llm(
             [{"role": "user", "content": [{"text": user_prompt}]}],
 
-            # ==== SOURCE PAGE 0677 ====
             system=system_prompt,
         )
 
@@ -15821,7 +12598,6 @@ async def dq_suggest(files: list[UploadFile] = File(...)):
                     "reason":     str(s.get("reason", "")),
                     "mandatory":  bool(s.get("mandatory", True)),
 
-                    # ==== SOURCE PAGE 0678 ====
                     "allowed_values": str(s.get("allowed_values", "") or ""),
                     "pattern":    str(s.get("pattern", "") or ""),
                 })
@@ -15843,9 +12619,6 @@ async def index(request: Request):
             if not token or not verify_session(token):
                 from fastapi.responses import RedirectResponse
 
-
-
-# ==== SOURCE PAGE 0679 ====
 
                 return RedirectResponse(url="/login", status_code=302)
         else:
@@ -15877,9 +12650,6 @@ async def login_page(request: Request, error: str = "", registered: str = "", re
             token = request.cookies.get("dv_local_session", "")
 
 
-
-# ==== SOURCE PAGE 0680 ====
-
             if token and verify_session(token):
                 from fastapi.responses import RedirectResponse
                 return RedirectResponse(url="/", status_code=302)
@@ -15906,9 +12676,6 @@ async def login_submit(request: Request):
     from fastapi.responses import RedirectResponse
     try:
 
-
-
-# ==== SOURCE PAGE 0681 ====
 
         from workspace.local_auth import LOCAL_AUTH_ENABLED, login as _local_login, AuthError, has_any_users
 
@@ -15955,9 +12722,6 @@ async def login_submit(request: Request):
         return response
 
 
-
-# ==== SOURCE PAGE 0682 ====
-
     except Exception as exc:
         error_msg = str(exc) if "AuthError" in type(exc).__name__ or "Invalid" in str(exc) else "Login failed."
         return HTMLResponse(_render_login_page(error=error_msg, show_register=False))
@@ -15975,9 +12739,6 @@ async def register_page(request: Request):
         return RedirectResponse(url="/", status_code=302)
     return HTMLResponse(_render_login_page(error="", show_register=True))
 
-
-
-# ==== SOURCE PAGE 0683 ====
 
 @app.post("/register")
 async def register_submit(request: Request):
@@ -15998,9 +12759,6 @@ async def register_submit(request: Request):
             return HTMLResponse(_render_login_page(
                 error="Passwords do not match.", show_register=True,
 
-
-
-# ==== SOURCE PAGE 0684 ====
 
                 prefill={"username": username, "full_name": full_name, "email": email},
             ))
@@ -16112,9 +12870,6 @@ async def logout(request: Request):
         from workspace.local_auth import logout as _local_logout
 
 
-
-# ==== SOURCE PAGE 0685 ====
-
         token = request.cookies.get("dv_local_session", "")
         if token:
             _local_logout(token)
@@ -16138,9 +12893,6 @@ async def change_password_submit(request: Request):
     try:
 
 
-
-# ==== SOURCE PAGE 0686 ====
-
         from workspace.local_auth import LOCAL_AUTH_ENABLED, verify_session, change_password, AuthError
         if not LOCAL_AUTH_ENABLED:
             return JSONResponse({"ok": False, "error": "Local auth not enabled."})
@@ -16157,7 +12909,6 @@ async def change_password_submit(request: Request):
 
 def _render_login_page(
     error: str = "",
-    # ==== SOURCE PAGE 0687 ====
     show_register: bool = False,
     registered: str = "",
     reset: str = "",
@@ -16206,7 +12957,6 @@ def _render_login_page(
 <button type="submit" class="auth-btn">Create Account</button>
 </form>
 <div class="auth-switch">Already have an account? <a href="/login">Sign in</a></div>"""
-        # ==== SOURCE PAGE 0688 ====
         title = "Create Account"
         subtitle = "AI Agent -- Data Validation"
     else:
@@ -16236,61 +12986,7 @@ def _render_login_page(
 <title>{title} -- AI Agent Data Validation</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet"/>
-<style>
-*,*::before,*::after{{box-sizing:border-box;margin:0;padding:0}}
-body{{font-family:"Inter","Segoe UI",sans-serif;color:#0f172a;
- min-height:100vh;display:flex;align-items:center;justify-content:center;
- -webkit-font-smoothing:antialiased;
- background:
-   radial-gradient(1100px 550px at 108% -8%, rgba(37,99,235,.10), transparent 60%),
-   radial-gradient(900px 480px at -8% 105%, rgba(124,58,237,.08), transparent 55%),
-   radial-gradient(700px 400px at 50% -15%, rgba(2,132,199,.06), transparent 60%),
-   #eef1f6;
- background-attachment:fixed}}
-@keyframes gradShift{{0%{{background-position:0% 50%}}50%{{background-position:100% 50%}}100%{{background-position:0% 50%}}}}
-@keyframes glowPulse{{0%,100%{{box-shadow:0 3px 14px -2px rgba(37,99,235,.55),0 0 0 3px rgba(37,99,235,.1),0 0 22px -4px rgba(124,58,237,.35)}}
- 50%{{box-shadow:0 3px 18px -1px rgba(37,99,235,.7),0 0 0 5px rgba(37,99,235,.14),0 0 30px -2px rgba(124,58,237,.55)}}}}
-.auth-wrap{{width:100%;max-width:400px;padding:1.5rem}}
-.auth-card{{background:linear-gradient(180deg,#ffffff,#f6f8fb);border:1.5px solid rgba(15,23,42,.13);
- border-radius:16px;padding:2rem 2rem 1.75rem;
- box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 20px 50px -20px rgba(37,99,235,.25),0 2px 8px rgba(15,23,42,.06)}}
-.auth-logo{{display:flex;align-items:center;gap:.75rem;margin-bottom:1.75rem}}
-.auth-logo-mark{{width:42px;height:42px;background:#ffffff;border:3px solid #2563eb;border-radius:12px;
- display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;
- animation:glowPulse 4.5s ease-in-out infinite}}
-.auth-logo-text h1{{font-family:"Sora","Inter",sans-serif;font-size:1rem;font-weight:700;letter-spacing:.03em;
- background:linear-gradient(90deg,#2563eb,#7c3aed,#0284c7,#2563eb);background-size:300% auto;
- -webkit-background-clip:text;background-clip:text;color:transparent;animation:gradShift 7s ease infinite}}
-.auth-logo-text p{{font-size:.68rem;color:#64748b;margin-top:.15rem;letter-spacing:.06em;text-transform:uppercase}}
-.auth-title{{font-family:"Sora","Inter",sans-serif;font-size:1.2rem;font-weight:700;color:#0f172a;margin-bottom:.25rem}}
-.auth-subtitle{{font-size:.78rem;color:#64748b;margin-bottom:1.5rem}}
-.auth-field{{margin-bottom:.9rem}}
-.auth-field label{{display:block;font-size:.72rem;font-weight:700;color:#64748b;
- text-transform:uppercase;letter-spacing:.04em;margin-bottom:.3rem}}
-.auth-hint{{font-weight:400;color:#64748b;text-transform:none;letter-spacing:0}}
-.auth-field input{{width:100%;padding:.5rem .75rem;border:1.5px solid rgba(15,23,42,.13);border-radius:9px;
- font-size:.86rem;background:#fff;color:#0f172a;outline:none;
- transition:border-color .15s,box-shadow .15s;font-family:inherit}}
-.auth-field input:focus{{border-color:#2563eb;box-shadow:0 0 0 3.5px rgba(37,99,235,.12)}}
-.auth-field input::placeholder{{color:#94a3b8}}
-.auth-btn{{position:relative;overflow:hidden;width:100%;padding:.65rem;border:none;border-radius:10px;
- background:linear-gradient(90deg,#2563eb,#4f46e5);color:#fff;font-weight:700;font-size:.88rem;cursor:pointer;
- margin-top:.25rem;transition:filter .15s,transform .12s,box-shadow .2s;letter-spacing:.01em;
- box-shadow:0 2px 10px -3px rgba(37,99,235,.5)}}
-.auth-btn::after{{content:'';position:absolute;inset:0;
- background:linear-gradient(115deg,transparent 20%,rgba(255,255,255,.35) 40%,transparent 60%);
- background-size:250% 100%;background-position:150% 0;transition:background-position .55s ease}}
-.auth-btn:hover::after{{background-position:-50% 0}}
-.auth-btn:hover{{filter:brightness(1.1);box-shadow:0 6px 18px -4px rgba(37,99,235,.65);transform:translateY(-1.5px)}}
-.auth-error{{background:#fef2f2;border:1px solid #fecaca;
- color:#dc2626;border-radius:7px;padding:.5rem .75rem;font-size:.8rem;margin-bottom:.9rem}}
-.auth-ok{{background:#f0fdf4;border:1px solid #bbf7d0;
- color:#16a34a;border-radius:7px;padding:.5rem .75rem;font-size:.8rem;margin-bottom:.9rem}}
-.auth-switch{{margin-top:1.1rem;text-align:center;font-size:.76rem;color:#64748b}}
-.auth-switch a{{color:#2563eb;text-decoration:none;font-weight:600}}
-.auth-switch a:hover{{text-decoration:underline}}
-.auth-footer{{margin-top:1.25rem;text-align:center;font-size:.7rem;color:#94a3b8}}
-</style>
+<style>{_AUTH_PAGE_STYLE}</style>
 </head>
 <body>
 <div class="auth-wrap">
@@ -16332,16 +13028,20 @@ body{font-family:"Inter","Segoe UI",sans-serif;color:#0f172a;
    radial-gradient(700px 400px at 50% -15%, rgba(2,132,199,.06), transparent 60%),
    #eef1f6;
  background-attachment:fixed}
+@keyframes gradShift{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+@keyframes glowPulse{0%,100%{box-shadow:0 3px 14px -2px rgba(37,99,235,.55),0 0 0 3px rgba(37,99,235,.1),0 0 22px -4px rgba(124,58,237,.35)}
+ 50%{box-shadow:0 3px 18px -1px rgba(37,99,235,.7),0 0 0 5px rgba(37,99,235,.14),0 0 30px -2px rgba(124,58,237,.55)}}
 .auth-wrap{width:100%;max-width:400px;padding:1.5rem}
 .auth-card{background:linear-gradient(180deg,#ffffff,#f6f8fb);border:1.5px solid rgba(15,23,42,.13);
  border-radius:16px;padding:2rem 2rem 1.75rem;
  box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 20px 50px -20px rgba(37,99,235,.25),0 2px 8px rgba(15,23,42,.06)}
 .auth-logo{display:flex;align-items:center;gap:.75rem;margin-bottom:1.75rem}
 .auth-logo-mark{width:42px;height:42px;background:#ffffff;border:3px solid #2563eb;border-radius:12px;
- display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden}
+ display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;
+ animation:glowPulse 4.5s ease-in-out infinite}
 .auth-logo-text h1{font-family:"Sora","Inter",sans-serif;font-size:1rem;font-weight:700;letter-spacing:.03em;
  background:linear-gradient(90deg,#2563eb,#7c3aed,#0284c7,#2563eb);background-size:300% auto;
- -webkit-background-clip:text;background-clip:text;color:transparent}
+ -webkit-background-clip:text;background-clip:text;color:transparent;animation:gradShift 7s ease infinite}
 .auth-logo-text p{font-size:.68rem;color:#64748b;margin-top:.15rem;letter-spacing:.06em;text-transform:uppercase}
 .auth-title{font-family:"Sora","Inter",sans-serif;font-size:1.2rem;font-weight:700;color:#0f172a;margin-bottom:.25rem}
 .auth-subtitle{font-size:.78rem;color:#64748b;margin-bottom:1.5rem}
@@ -16357,6 +13057,10 @@ body{font-family:"Inter","Segoe UI",sans-serif;color:#0f172a;
  background:linear-gradient(90deg,#2563eb,#4f46e5);color:#fff;font-weight:700;font-size:.88rem;cursor:pointer;
  margin-top:.25rem;transition:filter .15s,transform .12s,box-shadow .2s;letter-spacing:.01em;
  box-shadow:0 2px 10px -3px rgba(37,99,235,.5)}
+.auth-btn::after{content:'';position:absolute;inset:0;
+ background:linear-gradient(115deg,transparent 20%,rgba(255,255,255,.35) 40%,transparent 60%);
+ background-size:250% 100%;background-position:150% 0;transition:background-position .55s ease}
+.auth-btn:hover::after{background-position:-50% 0}
 .auth-btn:hover{filter:brightness(1.1);box-shadow:0 6px 18px -4px rgba(37,99,235,.65);transform:translateY(-1.5px)}
 .auth-error{background:#fef2f2;border:1px solid #fecaca;
  color:#dc2626;border-radius:7px;padding:.5rem .75rem;font-size:.8rem;margin-bottom:.9rem}
@@ -16559,9 +13263,6 @@ async def preview_file(request: Request):
     delimiter = str(form.get("delimiter", "")).strip() or None
 
 
-
-# ==== SOURCE PAGE 0696 ====
-
     if not files:
         return JSONResponse({"error": "No file provided"}, status_code=400)
 
@@ -16582,9 +13283,6 @@ async def preview_file(request: Request):
 
     return JSONResponse({
 
-
-
-# ==== SOURCE PAGE 0697 ====
 
         "filename":     f.filename,
         "format":       df.attrs.get("_format", "unknown"),
@@ -16607,9 +13305,6 @@ async def xref_analyze(request: Request):
     _t0 = time.time()
 
 
-
-# ==== SOURCE PAGE 0698 ====
-
     proc_logs: list[dict] = []
 
     def _log(msg: str, level: str = "INFO") -> None:
@@ -16628,9 +13323,6 @@ async def xref_analyze(request: Request):
 
     # Load each source
 
-
-
-# ==== SOURCE PAGE 0699 ====
 
     sources: list[tuple[str, pd.DataFrame]] = []
     _ws_username = _ws_resolve_username(request) if _ws_check_soft() else None
@@ -16652,9 +13344,6 @@ async def xref_analyze(request: Request):
                 _resolved_fname = df.attrs.get("_source_filename") or upload.filename
                 name_raw = _os.path.splitext(_resolved_fname)[0] if _resolved_fname else name_raw
 
-
-
-# ==== SOURCE PAGE 0700 ====
 
                 _log(f"Loaded source {i} '{name_raw}' from upload: {len(df)} rows x {len(df.columns)} cols")
                 break
@@ -16698,9 +13387,6 @@ async def xref_analyze(request: Request):
     show_coverage      = form.get("xref_show_coverage", "on") == "on"
 
 
-
-# ==== SOURCE PAGE 0702 ====
-
     _log(f"Cross Reference: {len(sources)} sources, key={key_col or 'auto'}, golden={golden_source or 'auto'}")
 
     # Run the engine
@@ -16719,9 +13405,6 @@ async def xref_analyze(request: Request):
 
     total_elapsed = round(time.time() - _t0, 3)
 
-
-
-# ==== SOURCE PAGE 0703 ====
 
     _log(f"Cross Reference complete in {total_elapsed}s -- {xr['summary']['conflict_count']} conflicts, {xr['summary']['matched_in_all']} matched keys")
 
@@ -16742,9 +13425,6 @@ async def xref_analyze(request: Request):
     for name, df in sources:
         k_col = xr.get("key_col_per_source", {}).get(name)
 
-
-
-# ==== SOURCE PAGE 0704 ====
 
         if k_col and k_col in df.columns:
             tmp = df.copy()
@@ -16767,9 +13447,6 @@ async def xref_analyze(request: Request):
             "key_col":   xr.get("key_col_per_source", {}).get(name, ""),
 
 
-
-# ==== SOURCE PAGE 0705 ====
-
             "row_count":  stat.get("rows", len(df)),
             "matched":    stat.get("matched", 0),
             "exclusive":  stat.get("exclusive", 0),
@@ -16789,9 +13466,6 @@ async def xref_analyze(request: Request):
         for kdf in keyed_dfs.values():
             all_keys_for_cov.update(kdf.index.tolist())
 
-
-
-# ==== SOURCE PAGE 0706 ====
 
         cov_rows = []
         for k in sorted(list(all_keys_for_cov))[:500]:
@@ -17024,7 +13698,6 @@ async def analyze(request: Request):
     _t0 = time.time()
     proc_logs: list[dict] = []
 
-    # ==== SOURCE PAGE 0709 ====
     def _log(msg: str, level: str = "INFO") -> None:
         elapsed = round(time.time() - _t0, 3)
         proc_logs.append({"elapsed": elapsed, "level": level, "message": msg})
@@ -17043,7 +13716,6 @@ async def analyze(request: Request):
     # -- License gate -- check feature is allowed for current subscription --
     _ai_to_feature = {"quality_ai": "quality", "profile_ai": "profile", "governance_ai": "governance"}
 
-    # ==== SOURCE PAGE 0710 ====
     _require_feature(_ai_to_feature.get(action, action))
 
     # -- Data Intelligence scope filter -- only return selected reports --
@@ -17070,7 +13742,6 @@ async def analyze(request: Request):
 
     # -- Customize/Complex Compare criteria panel --
 
-    # ==== SOURCE PAGE 0711 ====
     # These fields are sent when the user runs a "lineage" (custom compare) action.
     # They feed the LLM column-mapping and transform hints so rules are schema-generic.
     _recon_prompt   = str(form.get("recon_prompt",   "")).strip()
@@ -17090,7 +13761,6 @@ async def analyze(request: Request):
 
     # DQ-specific hints from the quality panel hint fields
 
-    # ==== SOURCE PAGE 0712 ====
     _nullable_hints    = str(form.get("nullable_hints",     "")).strip()
     _range_hints      = str(form.get("range_hints",      "")).strip()
     _timeliness_hints   = str(form.get("timeliness_hints",   "")).strip()
@@ -17110,7 +13780,6 @@ async def analyze(request: Request):
             "mapping_hints":    _mapping_hints,
             "key_hints":      _key_hints,
 
-            # ==== SOURCE PAGE 0713 ====
             "transform_hints":    _transform_hints,
             "exclude_hints":     _exclude_hints,
             "col_config":       _col_config,
@@ -17131,7 +13800,6 @@ async def analyze(request: Request):
     # -- primary data files --
     # Compare / Lineage use two named groups (files_a, files_b) that are each
 
-    # ==== SOURCE PAGE 0714 ====
     # concatenated into one DataFrame before comparison.  All other actions
     # use the legacy "files" field.
     files_a_uploads: list[UploadFile] = [
@@ -17158,7 +13826,6 @@ async def analyze(request: Request):
     # These supplement or replace file uploads with live data fetched from saved connections.
     # Use _ws_resolve_username (not get_current_user) because /analyze is outside
 
-    # ==== SOURCE PAGE 0715 ====
     # /api/ws/* so the middleware never sets request.state.username for this path.
     _ws_username = ""
     if _WS_ENABLED:
@@ -17184,7 +13851,6 @@ async def analyze(request: Request):
     ref_uploads = [
         v for v in form.getlist("ref_docs")
 
-        # ==== SOURCE PAGE 0716 ====
         if hasattr(v, "filename") and v.filename
     ]
     # Fetch documents from saved workspace connections (SharePoint, OneDrive, S3, SFTP etc.)
@@ -17202,7 +13868,6 @@ async def analyze(request: Request):
                 if len(_kb_df.columns) > 1:
                     # Structured -- write as CSV bytes
 
-                    # ==== SOURCE PAGE 0717 ====
                     _kb_df.to_csv(_kb_buf, index=False)
                     _kb_bytes = _kb_buf.getvalue().encode("utf-8")
                     _kb_fname = _kb_rec.get("name", _kb_cid) + ".csv"
@@ -17221,7 +13886,6 @@ async def analyze(request: Request):
     has_b = bool(files_b_uploads or _conn_b_ids)
     has_files = bool(files or _conn_ids)
 
-    # ==== SOURCE PAGE 0718 ====
     if action in ("compare", "lineage"):
         if not has_a or not has_b:
             raise HTTPException(
@@ -17244,7 +13908,6 @@ async def analyze(request: Request):
         result = []
         for f in upload_list:
 
-            # ==== SOURCE PAGE 0719 ====
             _log(f"Loading data file: {f.filename}")
             f.file.seek(0)
             try:
@@ -17274,7 +13937,6 @@ async def analyze(request: Request):
         combined = pd.concat(dfs, ignore_index=True)
         # Preserve format attribute from first file
 
-        # ==== SOURCE PAGE 0720 ====
         combined.attrs["_format"]  = tuples[0][1].attrs.get("_format", "unknown")
         combined.attrs["_delimiter"] = tuples[0][1].attrs.get("_delimiter", "")
         _log(f"Concatenated {len(tuples)} files into Dataset {label} ({names}) → {len(combined)} rows")
@@ -17293,7 +13955,6 @@ async def analyze(request: Request):
         # cfg_json: JSON string {"group_by": ["col",...], "agg_col": "col", "agg_fn": "sum"}
         # Returns the (possibly transformed) (name, df) tuple unchanged if cfg is empty/invalid.
 
-        # ==== SOURCE PAGE 0721 ====
         if not cfg_json:
             return name, df
         try:
@@ -17313,7 +13974,6 @@ async def analyze(request: Request):
                     return name, df
                 resolved_keys.append(real)
 
-            # ==== SOURCE PAGE 0722 ====
             real_agg = col_map.get(agg_col.lower())
             if real_agg is None:
                 _log(f"Pre-process: aggregate column '{agg_col}' not found in '{name}' -- skipping", level="WARN")
@@ -17333,7 +13993,6 @@ async def analyze(request: Request):
                 f"Pre-process '{name}': grouped by {resolved_keys}, "
                 f"{fn}({real_agg}) → {before} rows → {len(df_out)} rows"
 
-                # ==== SOURCE PAGE 0723 ====
             )
             return name, df_out
         except Exception as pp_err:
@@ -17366,7 +14025,6 @@ async def analyze(request: Request):
             except Exception as exc:
                 raise HTTPException(502, f"Connection fetch error: {exc}") from exc
 
-        # ==== SOURCE PAGE 0724 ====
         return result
 
     if action in ("compare", "lineage"):
@@ -17399,9 +14057,6 @@ async def analyze(request: Request):
         f.file.seek(0)
 
 
-
-    # ==== SOURCE PAGE 0725 ====
-
         df = _load_file(f, delimiter=delimiter)
         fmt  = df.attrs.get("_format",  "unknown")
         delim = df.attrs.get("_delimiter", "")
@@ -17423,9 +14078,6 @@ async def analyze(request: Request):
     ref_log   = ref_result["classifications"]  # shown in results
     for r in ref_log:
 
-
-
-    # ==== SOURCE PAGE 0726 ====
 
       _log(f"Ref doc '{r['file']}' classified as: {r['type']}" +
          (f" ({r.get('rows',0)} rows)" if r.get("rows") else f" -- {r.get('detail','')}"),
@@ -17449,9 +14101,6 @@ async def analyze(request: Request):
         _dc_cat_prefix = f"dc_{action}_exclude"
 
 
-
-    # ==== SOURCE PAGE 0727 ====
-
         _all_dc: dict = {}
         with open(_fb_dc_path, encoding="utf-8") as _fb_dc:
           _all_dc = _json_dc.load(_fb_dc)
@@ -17471,9 +14120,6 @@ async def analyze(request: Request):
         _log(f"Excluded columns (form + saved rules): {excluded_cols}")
     except Exception:
 
-
-
-    # ==== SOURCE PAGE 0728 ====
 
       pass
 
@@ -17498,9 +14144,6 @@ async def analyze(request: Request):
     quality_reports  = []
     governance_reports = []
 
-
-
-    # ==== SOURCE PAGE 0729 ====
 
     mappings     = []
     parse_reports   = []
@@ -17550,9 +14193,6 @@ async def analyze(request: Request):
         "file2_name":  b_name,
 
 
-
-    # ==== SOURCE PAGE 0730 ====
-
         "file1_format": a_df.attrs.get("_format", ""),
         "file2_format": b_df.attrs.get("_format", ""),
         "file1_delimiter": a_df.attrs.get("_delimiter", ""),
@@ -17575,9 +14215,6 @@ async def analyze(request: Request):
           "range_hints": "notional 0-1000000000000,price 0-1000000000",
 
 
-
-    # ==== SOURCE PAGE 0731 ====
-
           "bfsi_validators": ["isin_format:isin", "cusip_format:cusip", "lei_format:lei",
                     "positive:notional", "positive:price",
                     "allowed_values:side:BUY,SELL,B,S,BUY/SELL"],
@@ -17598,9 +14235,6 @@ async def analyze(request: Request):
                     "currency_code_format:currency", "positive:amount",
 
 
-
-    # ==== SOURCE PAGE 0732 ====
-
                     "positive:instructed_amount"],
         },
         "refdata": {
@@ -17619,9 +14253,6 @@ async def analyze(request: Request):
                     "positive:notional", "positive:price",
                     "currency_code_format:currency"],
 
-
-
-    # ==== SOURCE PAGE 0733 ====
 
         },
         "risk": {
@@ -17644,9 +14275,6 @@ async def analyze(request: Request):
         _hints = dict(user_hints) if user_hints else {}
 
 
-
-      # ==== SOURCE PAGE 0734 ====
-
         _hints["cross_file_ref_data"] = {k: v for k, v in _cross_file_map.items() if k != fname}
         # Load saved baseline if exists
         _safe_fname = re.sub(r'[^\w\-.]', '_', fname)
@@ -17666,9 +14294,6 @@ async def analyze(request: Request):
               _saved_cfg = json.loads(_rules_path.read_text(encoding="utf-8"))
               if _saved_cfg.get("col_config"):
 
-
-
-      # ==== SOURCE PAGE 0735 ====
 
                 _hints["col_config"] = _saved_cfg["col_config"]
                 _log(f"Auto-loaded DQ rules for schema {_fp_val}")
@@ -17693,9 +14318,6 @@ async def analyze(request: Request):
         _domain_col_map = {
 
 
-
-        # ==== SOURCE PAGE 0736 ====
-
           "currency_code": ["currency","ccy","base_currency","quote_currency",
                     "settlement_currency","reporting_currency","traded_ccy"],
           "country_code": ["country","country_code","domicile","nationality",
@@ -17717,9 +14339,6 @@ async def analyze(request: Request):
           _hints["bfsi_validators"] = _auto_domain_validators
 
 
-
-        # ==== SOURCE PAGE 0737 ====
-
         # -- Auto-inject BFSI temporal consistency rules ----------------
         # Detect trade_date/settle_date pairs and inject T+2 validation.
         # Also inject quantity>0 when side=BUY, notional>0 always.
@@ -17739,9 +14358,6 @@ async def analyze(request: Request):
 
         # notional > 0
 
-
-
-        # ==== SOURCE PAGE 0738 ====
 
         _notional = next((v for k, v in _df_cols_lower.items() if k in
           ("notional","notional_amount","face_value","face_amount")), None)
@@ -17766,9 +14382,6 @@ async def analyze(request: Request):
         # Pair with the other file for cross-file mapping recon (if two files uploaded)
 
 
-
-        # ==== SOURCE PAGE 0739 ====
-
         _other_fname = next((n for n in _fnames if n != fname), None)
         _df2 = _df_map.get(_other_fname) if _other_fname else None
 
@@ -17791,9 +14404,6 @@ async def analyze(request: Request):
           )
         except Exception:
 
-
-
-      # ==== SOURCE PAGE 0740 ====
 
           q["anomaly_results"] = []
 
@@ -17829,9 +14439,6 @@ async def analyze(request: Request):
           q["trend_anomalies"] = []
 
 
-
-      # ==== SOURCE PAGE 0741 ====
-
         # -- AI-Enhanced: LLM suggests additional rules, re-run with them ------
         if _di_ai_enhanced and "quality" in _di_scope:
           try:
@@ -17853,9 +14460,6 @@ async def analyze(request: Request):
                 _clean = _s.dropna()
 
 
-
-      # ==== SOURCE PAGE 0742 ====
-
                 if len(_clean):
                   _cs["min"] = round(float(_clean.min()), 4)
                   _cs["max"] = round(float(_clean.max()), 4)
@@ -17875,9 +14479,6 @@ async def analyze(request: Request):
                   "Focus on business meaning, cross-column relationships, BFSI-specific patterns. "
 
 
-
-      # ==== SOURCE PAGE 0743 ====
-
                   "Use only these rule_type values: range, allowed_values, pattern, positive, "
                   "non_negative, integer_only, not_future_date, isin_format, cusip_format, "
                   "sedol_format, lei_format, bic_format, iban_format, currency_code_format, "
@@ -17894,9 +14495,6 @@ async def analyze(request: Request):
                   "Suggest additional rules. JSON array only."
                 )
 
-
-
-      # ==== SOURCE PAGE 0744 ====
 
                 _ai_raw = await asyncio.to_thread(
                   _ask_llm,
@@ -17917,9 +14515,6 @@ async def analyze(request: Request):
                     "value":  str(_sg.get("value", "") or ""),
                     "severity": str(_sg.get("severity", "major")),
 
-
-
-      # ==== SOURCE PAGE 0745 ====
 
                     "reason":  str(_sg.get("reason", "")),
                   })
@@ -17942,9 +14537,6 @@ async def analyze(request: Request):
                       })
 
 
-
-      # ==== SOURCE PAGE 0746 ====
-
                   _ai_hints["col_config"] = _ai_col_config
 
                   # Re-run with AI rules
@@ -17965,9 +14557,6 @@ async def analyze(request: Request):
                       _av["name"].lower() == (r.get("column_name","") or "").lower()
                       and _av["rule_type"] == r.get("rule_type","")
 
-
-
-      # ==== SOURCE PAGE 0747 ====
 
                       for _av in _ai_validators
                     )
@@ -18009,7 +14598,6 @@ async def analyze(request: Request):
             "memory_mb":      _prof.get("memory_mb", 0),
             "duplicate_rows": q["duplicate_rows"],
             "key_candidates": _prof.get("key_candidates", []),
-            # ==== SOURCE PAGE 0749 ====
             "near_key_cols": _prof.get("near_key_cols", []),
             "type_breakdown": _prof.get("type_breakdown", {}),
             "correlations":  _prof.get("correlations", []),
@@ -18029,9 +14617,6 @@ async def analyze(request: Request):
         # Persist DQ score to history for trend tracking
         try:
 
-
-
-      # ==== SOURCE PAGE 0750 ====
 
           _rule_fails_h = sum(1 for r in q["rule_results"] if r.get("status") == "FAIL")
           _crit_fails_h = q["dq_score"].get("severity_breakdown", {}).get("critical_fails", 0)
@@ -18054,9 +14639,6 @@ async def analyze(request: Request):
         profile_reports.append(p)
 
 
-
-    # ==== SOURCE PAGE 0751 ====
-
         _log(f"Profile '{fname}' → {p['total_cols']} cols | "
            f"{p['numeric_cols']} numeric | {len(p['key_candidates'])} key candidates")
 
@@ -18078,9 +14660,6 @@ async def analyze(request: Request):
           _cm_sa = {c.lower(): c for c in df.columns}
 
 
-
-    # ==== SOURCE PAGE 0752 ====
-
           for _fpe in _all2.values():
             for _r in _fpe.get("rules", []):
               _cat2 = _r.get("category", "")
@@ -18100,9 +14679,6 @@ async def analyze(request: Request):
                   if _nr is not None: _col_ov_sa[_ca]["regulatory"] = _nr
           if _col_ov_sa:
 
-
-
-    # ==== SOURCE PAGE 0753 ====
 
             _gov_hints_sa["_dc_col_overrides"] = _col_ov_sa
         except Exception:
@@ -18126,9 +14702,6 @@ async def analyze(request: Request):
         _log(f"Parsing '{fname}' [format: {fmt}] → {len(df)} rows × {len(df.columns)} cols")
 
 
-
-    # ==== SOURCE PAGE 0754 ====
-
         if len(df.columns) > 1:
           # Well-structured: DataFrame already has meaningful columns
           columns = list(df.columns)
@@ -18150,9 +14723,6 @@ async def analyze(request: Request):
               f"Parsed by built-in {fmt} loader."
 
 
-
-    # ==== SOURCE PAGE 0755 ====
-
               + (f" Showing first 1000 of {len(df)} rows." if len(df) > 1000 else "")
             ),
             "error":     None,
@@ -18171,9 +14741,6 @@ async def analyze(request: Request):
               f" | Format: {result['format_detected']}"
             )
 
-
-
-    # ==== SOURCE PAGE 0756 ====
 
         parse_reports.append(result)
 
@@ -18198,9 +14765,6 @@ async def analyze(request: Request):
           }
 
 
-
-    # ==== SOURCE PAGE 0757 ====
-
           if pd.api.types.is_numeric_dtype(s):
             clean = s.dropna()
             if len(clean):
@@ -18222,9 +14786,6 @@ async def analyze(request: Request):
         "tgt_rows":   0,
         "_dq_ai_mode":  True,
 
-
-
-    # ==== SOURCE PAGE 0758 ====
 
         "_ai_module_label": _module_label,
       })
@@ -18250,9 +14811,6 @@ async def analyze(request: Request):
       lineage_reports.append({
 
 
-
-    # ==== SOURCE PAGE 0759 ====
-
         "src_name":  src_name,
         "tgt_name":  tgt_name,
         "src_schema": _schema_summary(src_df),
@@ -18275,9 +14833,6 @@ async def analyze(request: Request):
     # -- Dataset Memory fingerprint --------------------------------
     # Lookup priority: file-name match → exact schema → fuzzy schema.
 
-
-
-    # ==== SOURCE PAGE 0760 ====
 
     # Rules are filtered by module (action) so recon rules never bleed into DQ.
     try:
@@ -18307,9 +14862,6 @@ async def analyze(request: Request):
           _dm_username,
           _dataset_fingerprint,
 
-
-
-    # ==== SOURCE PAGE 0761 ====
 
           json.dumps(_hints_to_save),
           category="recon_hints",
@@ -18359,9 +14911,6 @@ async def analyze(request: Request):
          "added": p["diff"]["added_count"],
 
 
-
-    # ==== SOURCE PAGE 0763 ====
-
          "removed": p["diff"]["removed_count"],
          "modified": p["diff"]["modified_count"]}
         for p in pairs
@@ -18382,9 +14931,6 @@ async def analyze(request: Request):
          "completeness": m["mapping_completeness_pct"]}
         for m in mappings
 
-
-
-    # ==== SOURCE PAGE 0764 ====
 
       ],
       **_recon_ctx,
@@ -18416,9 +14962,6 @@ async def analyze(request: Request):
       "conn_a_ids": _conn_a_ids, "conn_b_ids": _conn_b_ids, "conn_ids": _conn_ids,
 
 
-
-    # ==== SOURCE PAGE 0765 ====
-
       "parse_reports":  parse_reports,
       "lineage_reports": lineage_reports,
       "profile_reports": profile_reports,
@@ -18438,9 +14981,6 @@ async def analyze(request: Request):
       from agent.tools import register_files as _lc_register_files
       from agent.rag import invalidate_store as _lc_invalidate_store
 
-
-
-    # ==== SOURCE PAGE 0766 ====
 
       _sess_dir = Path(_tempfile.gettempdir()) / "dva_main_sessions" / session_id
       _sess_dir.mkdir(parents=True, exist_ok=True)
@@ -18463,9 +15003,6 @@ async def analyze(request: Request):
           _lc_f2_path, _lc_f2_name = str(_dest), _fname
 
 
-
-    # ==== SOURCE PAGE 0767 ====
-
       # Save reference docs too if they were uploaded
       for _ref in ref_uploads:
         try:
@@ -18485,9 +15022,6 @@ async def analyze(request: Request):
         file2_name=_lc_f2_name,
         ref_paths=_lc_ref_paths,
 
-
-
-    # ==== SOURCE PAGE 0768 ====
 
         dataset_fingerprint=_dataset_fingerprint,
       )
@@ -18817,8 +15351,6 @@ def _load_saved_recon_hints(fingerprint: str, username: str = "default") -> dict
 @app.post("/rerun/{session_id}")
 
 
-# ==== SOURCE PAGE 0771 ====
-
 async def rerun(session_id: str, request: Request):
     # Re-run a compare using stored DataFrames from a previous session.
     # Allows the user to change key_columns / exclude_columns without
@@ -18837,7 +15369,6 @@ async def rerun(session_id: str, request: Request):
     key_columns    = str(form.get("key_columns",    ""))
     exclude_columns = str(form.get("exclude_columns", ""))
 
-    # ==== SOURCE PAGE 0772 ====
     manual_keys  = [k.strip() for k in key_columns.split(",")  if k.strip()] or None
     excluded_cols = [c.strip() for c in exclude_columns.split(",") if c.strip()]
 
@@ -18858,7 +15389,6 @@ async def rerun(session_id: str, request: Request):
         pairs.append({
             "file1_name":  base_name,
 
-            # ==== SOURCE PAGE 0773 ====
             "file2_name":  cmp_name,
             "file1_format": base_df.attrs.get("_format", ""),
             "file2_format": cmp_df.attrs.get("_format", ""),
@@ -18879,7 +15409,6 @@ async def rerun(session_id: str, request: Request):
         "has_mapping_spec": False,
         "comparisons": [
 
-            # ==== SOURCE PAGE 0774 ====
             {"pair": f"{p['file1_name']}→{p['file2_name']}",
              "added": p["diff"]["added_count"],
              "removed": p["diff"]["removed_count"],
@@ -18900,7 +15429,6 @@ async def rerun(session_id: str, request: Request):
         "quality_reports": [],
         "governance_reports": [],
 
-        # ==== SOURCE PAGE 0775 ====
         "mappings": mappings,
         "parse_reports": [],
         "proc_logs": [],
@@ -18972,10 +15500,6 @@ async def rerun(session_id: str, request: Request):
 async def dq_ai_results_get(session_id: str, request: Request):
 
 
-
-# ==== SOURCE PAGE 0777 ====
-
-
   # GET endpoint that runs DQ on stored session data and returns the full report.
   # Browser navigates here after AI Copilot finishes -- no POST needed.
 
@@ -18993,9 +15517,6 @@ async def dq_ai_results_get(session_id: str, request: Request):
   def _log(msg, level="INFO"):
     proc_logs.append({"elapsed": round(time.time()-t0,3), "level": level, "message": msg})
 
-
-
-# ==== SOURCE PAGE 0778 ====
 
   quality_reports = []
   governance_reports = []
@@ -19016,9 +15537,6 @@ async def dq_ai_results_get(session_id: str, request: Request):
         profile_reports.append({
           "file_name": fname, "file_format": q["file_format"],
 
-
-
-# ==== SOURCE PAGE 0779 ====
 
           "total_rows": q["total_rows"],
           "total_cols": q.get("total_cols", len(df.columns)),
@@ -19042,9 +15560,6 @@ async def dq_ai_results_get(session_id: str, request: Request):
       try: q["numeric_clusters"] = await _asyncio.to_thread(detect_numeric_clusters, df)
 
 
-
-# ==== SOURCE PAGE 0780 ====
-
       except: q["numeric_clusters"] = []
       _log(f"Score: {q['dq_score']['score']} ({q['dq_score']['grade']})")
     except Exception as e:
@@ -19067,9 +15582,6 @@ async def dq_ai_results_get(session_id: str, request: Request):
       "di_ai_enhanced": False, "file_names": [n for n,_ in dataframes],
       "pairs":[], "quality_reports": quality_reports,
 
-
-
-# ==== SOURCE PAGE 0781 ====
 
       "governance_reports": governance_reports, "mappings":[], "parse_reports":[],
       "lineage_reports":[], "profile_reports": profile_reports,
@@ -19135,7 +15647,6 @@ async def rerun_quality_json(session_id: str, request: Request):
         _file_names_qj = stored.get("file_names", [])
         _rqj_username = _ws_resolve_username(request) or "default"
 
-        # ==== SOURCE PAGE 0783 ====
         _saved_qj = _fp_get_rules(_rqj_username, _fp_qj, cols1=list(df.columns),
                     file_names=_file_names_qj, module="quality")
         _regex_entries: list[dict] = []
@@ -19155,7 +15666,6 @@ async def rerun_quality_json(session_id: str, request: Request):
     except Exception:
         pass
 
-    # ==== SOURCE PAGE 0784 ====
     try:
         q = await _asyncio.to_thread(analyze_quality_full, df, fname, {}, [], _hints, None, None)
         dq = q["dq_score"]
@@ -19187,7 +15697,6 @@ async def rerun_quality_json(session_id: str, request: Request):
         except Exception:
             q["trend_anomalies"] = []
 
-        # ==== SOURCE PAGE 0785 ====
         fails = [r for r in q.get("rule_results", []) if r.get("status") == "FAIL"]
         warnings = [r for r in q.get("rule_results", []) if r.get("status") == "WARN"]
         anomalies = q.get("anomaly_results", [])
@@ -19203,7 +15712,6 @@ async def rerun_quality_json(session_id: str, request: Request):
             "pairs":[], "mappings":[], "parse_reports":[], "lineage_reports":[], "excluded_cols":[],
         }
         if new_sid not in _chat_contexts:
-            # ==== SOURCE PAGE 0786 ====
             _chat_contexts[new_sid] = {"action":"quality","files":[fname],"quality":[{"file":fname,"score":dq["score"],"grade":dq["grade"],"rule_fails":len(fails)}]}
 
             # Column completeness details
@@ -19224,8 +15732,6 @@ async def rerun_quality_json(session_id: str, request: Request):
 
             # All rule results -- tag AI-defined ones
 
-
-    # ==== SOURCE PAGE 0787 ====
 
             all_rules = [
                 {
@@ -19248,8 +15754,6 @@ async def rerun_quality_json(session_id: str, request: Request):
             ai_rules = [r for r in all_rules if r.get("ai_defined")]
 
 
-    # ==== SOURCE PAGE 0788 ====
-
             # Anomalies full
             anomaly_data = [
                 {"col": a["column"], "pct": a.get("anomaly_pct",0), "max_z": a.get("max_z",0),
@@ -19269,8 +15773,6 @@ async def rerun_quality_json(session_id: str, request: Request):
                 {"check": c.get("check",""), "col": c.get("column",""), "failed": c.get("failed",0),
                  "status": c.get("status","")}
 
-
-    # ==== SOURCE PAGE 0789 ====
 
                 for c in q.get("consistency_issues", []) if c.get("status") in ("FAIL","WARN")
             ][:10]
@@ -19292,8 +15794,6 @@ async def rerun_quality_json(session_id: str, request: Request):
             _exec_summary_error = ""
 
 
-    # ==== SOURCE PAGE 0790 ====
-
             try:
                 _summary_context = (
                     f"Dataset: {fname} ({q['total_rows']} rows, {q.get('total_cols', len(df.columns))} columns)\n"
@@ -19312,8 +15812,6 @@ async def rerun_quality_json(session_id: str, request: Request):
                     _summary_context += f"Categorical issues: {len(cat_issues)} columns with distribution problems\n"
 
 
-    # ==== SOURCE PAGE 0791 ====
-
                 if ai_rules:
                     _summary_context += f"AI-defined rules checked: {len(ai_rules)} ({sum(1 for r in ai_rules if r.get('status')=='FAIL')} failed)\n"
 
@@ -19331,8 +15829,6 @@ async def rerun_quality_json(session_id: str, request: Request):
                 )
                 _exec_summary = _exec_summary.strip()
 
-
-    # ==== SOURCE PAGE 0792 ====
 
             except Exception as _e_sum:
                 _exec_summary = (
@@ -19356,8 +15852,6 @@ async def rerun_quality_json(session_id: str, request: Request):
                     dq, q["total_rows"], _rule_fails_h, _crit_fails_h,
 
 
-    # ==== SOURCE PAGE 0793 ====
-
                     session_id=new_sid, bfsi_pack=";".join(_hints.keys()), di_scope="quality",
                 )
             except Exception as _eh:
@@ -19378,8 +15872,6 @@ async def rerun_quality_json(session_id: str, request: Request):
                 "consistency":  dq.get("consistency"),
                 "conformity":   dq.get("conformity"),
 
-
-    # ==== SOURCE PAGE 0794 ====
 
                 "precision":    dq.get("precision"),
                 "timeliness":   dq.get("timeliness"),
@@ -19404,8 +15896,6 @@ async def rerun_quality_json(session_id: str, request: Request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
-# ==== SOURCE PAGE 0795 ====
-
 @app.post("/rerun-quality/{session_id}", response_class=HTMLResponse)
 async def rerun_quality(session_id: str, request: Request):
 
@@ -19426,8 +15916,6 @@ async def rerun_quality(session_id: str, request: Request):
     import asyncio as _asyncio
 
 
-# ==== SOURCE PAGE 0796 ====
-
     t0 = time.time()
     proc_logs: list[dict] = []
     def _log(msg: str, level: str = "INFO") -> None:
@@ -19446,8 +15934,6 @@ async def rerun_quality(session_id: str, request: Request):
                 '"bfsi_validators":["positive:price","allowed_values:side:BUY,SELL"]}\n'
                 "Return {} if nothing specific was mentioned."
 
-
-# ==== SOURCE PAGE 0797 ====
 
             )
             _raw = await asyncio.to_thread(
@@ -19469,8 +15955,6 @@ async def rerun_quality(session_id: str, request: Request):
     quality_reports = []
     governance_reports = []
 
-
-# ==== SOURCE PAGE 0798 ====
 
     profile_reports = []
 
@@ -19495,8 +15979,6 @@ async def rerun_quality(session_id: str, request: Request):
                 _gov["file_format"] = q["file_format"]
 
 
-# ==== SOURCE PAGE 0799 ====
-
                 governance_reports.append(_gov)
 
             _prof = q.get("profile")
@@ -19516,8 +15998,6 @@ async def rerun_quality(session_id: str, request: Request):
                     "columns":        _prof.get("columns", []),
                 })
 
-
-# ==== SOURCE PAGE 0800 ====
 
             # Anomaly + clustering
             # OCR-UNCERTAIN: nesting level of this inner try/except block (inside the outer
@@ -19549,8 +16029,6 @@ async def rerun_quality(session_id: str, request: Request):
         except Exception as exc:
 
 
-# ==== SOURCE PAGE 0801 ====
-
             _log(f"DQ failed for '{fname}': {exc}", "WARN")
 
     new_session_id = str(uuid.uuid4())
@@ -19570,8 +16048,6 @@ async def rerun_quality(session_id: str, request: Request):
         "lineage_reports": [], "excluded_cols": [],
     }
 
-
-# ==== SOURCE PAGE 0802 ====
 
     return templates.TemplateResponse(
         request=request,
@@ -19594,8 +16070,6 @@ async def rerun_quality(session_id: str, request: Request):
             "ref_log":       [],
 
 
-# ==== SOURCE PAGE 0803 ====
-
             "proc_logs":     proc_logs,
             "elapsed":       total_elapsed,
             "session_id":    new_session_id,
@@ -19617,8 +16091,6 @@ async def rerun_profile_json(session_id: str, request: Request):
         return JSONResponse({"error": "Session expired."}, status_code=404)
 
 
-# ==== SOURCE PAGE 0804 ====
-
     dataframes = [(item["name"], item["df"]) for item in stored["dataframes"]]
     if not dataframes:
         return JSONResponse({"error": "No dataframes."}, status_code=400)
@@ -19639,8 +16111,6 @@ async def rerun_profile_json(session_id: str, request: Request):
                 for _k in ("nullable_hints","key_hints","timeliness_hints"):
 
 
-# ==== SOURCE PAGE 0805 ====
-
                     if _ex4.get(_k): _hints[_k]=_ex4[_k]
     except Exception: pass
 
@@ -19659,8 +16129,6 @@ async def rerun_profile_json(session_id: str, request: Request):
 "key_candidates":_prof.get("key_candidates",[]),"near_key_cols":_prof.get("near_key_cols",[]),
 
 
-# ==== SOURCE PAGE 0806 ====
-
 "type_breakdown":_prof.get("type_breakdown",{}),"correlations":_prof.get("correlations",[]),
         "numeric_cols":sum(1 for c in cols if c.get("is_numeric") or c.get("mean") is not None),
         "columns":cols,
@@ -19678,8 +16146,6 @@ async def rerun_profile_json(session_id: str, request: Request):
             "min":    c.get("min"),
             "max":    c.get("max"),
 
-
-# ==== SOURCE PAGE 0807 ====
 
             "outlier_pct": c.get("outlier_pct",0),
             "is_numeric": c.get("is_numeric", c.get("mean") is not None),
@@ -19732,8 +16198,6 @@ async def rerun_governance_json(session_id: str, request: Request):
     import asyncio as _asyncio
 
 
-# ==== SOURCE PAGE 0809 ====
-
     stored = _results_store.get(session_id)
     if not stored or "dataframes" not in stored:
         return JSONResponse({"error": "Session expired."}, status_code=404)
@@ -19753,8 +16217,6 @@ async def rerun_governance_json(session_id: str, request: Request):
             import re as _re5
             _m5=_re5.search(r'\{.*\}',_raw,_re5.DOTALL)
 
-
-# ==== SOURCE PAGE 0810 ====
 
         if _m5:
             _ex5=json.loads(_m5.group(0))
@@ -19776,8 +16238,6 @@ async def rerun_governance_json(session_id: str, request: Request):
 
         # PII column details
 
-
-# ==== SOURCE PAGE 0811 ====
 
         pii_cols = [c for c in g.get("columns", []) if c.get("pii_detected")]
         clean_cols = [c for c in g.get("columns",[]) if not c.get("pii_detected")]
@@ -19829,8 +16289,6 @@ async def rerun_governance_json(session_id: str, request: Request):
 @app.post("/rerun-profile/{session_id}", response_class=HTMLResponse)
 
 
-# ==== SOURCE PAGE 0813 ====
-
 async def rerun_profile(session_id: str, request: Request):
     """Re-run Data Profile using AI Copilot conversation context."""
     import asyncio as _asyncio
@@ -19850,8 +16308,6 @@ async def rerun_profile(session_id: str, request: Request):
     try:
         _body = await request.json() if request.headers.get("content-type","").startswith("application/json") else {}
 
-
-# ==== SOURCE PAGE 0814 ====
 
         _conv = _body.get("conversation", "")
         if _conv:
@@ -19873,8 +16329,6 @@ async def rerun_profile(session_id: str, request: Request):
                         _profile_hints[_k] = _extracted2[_k]
 
 
-# ==== SOURCE PAGE 0815 ====
-
         if _profile_hints:
             _log(f"Profile AI hints from conversation: {list(_profile_hints.keys())}")
     except Exception as _he2:
@@ -19892,8 +16346,6 @@ async def rerun_profile(session_id: str, request: Request):
                     "total_rows": q["total_rows"], "total_cols": q.get("total_cols", len(df.columns)),
                     "memory_mb": _prof.get("memory_mb",0), "duplicate_rows": q["duplicate_rows"],
 
-
-# ==== SOURCE PAGE 0816 ====
 
                     "key_candidates": _prof.get("key_candidates",[]), "near_key_cols": _prof.get("near_key_cols",[]),
                     "type_breakdown": _prof.get("type_breakdown",{}), "correlations": _prof.get("correlations",[]),
@@ -19913,8 +16365,6 @@ async def rerun_profile(session_id: str, request: Request):
         "pairs":[],"mappings":[],"parse_reports":[],"lineage_reports":[],"excluded_cols":[]}
     return templates.TemplateResponse(request=request, name="index.html", context={
 
-
-# ==== SOURCE PAGE 0817 ====
 
         "action":"profile","di_scope":["profile"],"di_ai_enhanced":False,
         "file_names":[n for n,_ in dataframes],"pairs":[],"quality_reports":[],
@@ -19937,8 +16387,6 @@ async def rerun_governance(session_id: str, request: Request):
     if not dataframes:
 
 
-# ==== SOURCE PAGE 0818 ====
-
         raise HTTPException(400, "No dataframes in session.")
     t0 = time.time()
     proc_logs: list[dict] = []
@@ -19957,8 +16405,6 @@ async def rerun_governance(session_id: str, request: Request):
                     f"From this data governance conversation:\n{_conv}\n\n"
                     "Extract any columns identified as PII/sensitive or any overrides mentioned. "
 
-
-# ==== SOURCE PAGE 0819 ====
 
                     "Return JSON only:\n"
                     '{"pii_columns":"col1,col2","not_pii":"col3","sensitivity":"Confidential"}\n'
@@ -19980,8 +16426,6 @@ async def rerun_governance(session_id: str, request: Request):
         _log(f"Governance hint extraction skipped: {_he3}", "INFO")
 
 
-# ==== SOURCE PAGE 0820 ====
-
     governance_reports = []
     for fname, df in dataframes:
         _log(f"Governance analysis on '{fname}'")
@@ -20001,8 +16445,6 @@ async def rerun_governance(session_id: str, request: Request):
         "dataframes":stored["dataframes"],"proc_logs":proc_logs,"elapsed":elapsed,
         "pairs":[],"mappings":[],"parse_reports":[],"lineage_reports":[],"excluded_cols":[]}
 
-
-# ==== SOURCE PAGE 0821 ====
 
     return templates.TemplateResponse(request=request, name="index.html",
         context={
@@ -20024,8 +16466,6 @@ async def help_chat(request: Request):
     history  = body.get("history", [])
 
 
-# ==== SOURCE PAGE 0822 ====
-
     system   = body.get("system", "You are a helpful assistant for the AI Agent -- Data Validation.")
     if not question:
         return JSONResponse({"error": "Empty question"}, status_code=400)
@@ -20046,8 +16486,6 @@ async def chat(request: Request):
     history    = body.get("history", [])
     _chat_username = _ws_resolve_username(request) or "default"
 
-
-# ==== SOURCE PAGE 0823 ====
 
     if not question:
         return JSONResponse({"error": "Empty question"}, status_code=400)
@@ -20095,8 +16533,6 @@ async def chat(request: Request):
 
         existing_rules = context.get("saved_rules", [])
 
-
-# ==== SOURCE PAGE 0824 ====
 
         if existing_rules:
             saved_rule_text = "\n\nSaved rules for this schema (always apply these):\n" + "\n".join(
@@ -20148,8 +16584,6 @@ async def chat(request: Request):
                 context["saved_rules"] = _fp_get_rules(_chat_username, fp)
 
 
-# ==== SOURCE PAGE 0826 ====
-
             _chat_contexts[session_id] = context
             new_rule = rule_text
     else:
@@ -20169,7 +16603,6 @@ async def chat(request: Request):
         if new_rule:
             reply = f"✅ Rule saved: *{new_rule}*\n\n" + reply
 
-        # ==== SOURCE PAGE 0827 ====
         return JSONResponse({"reply": reply, "new_rule": new_rule})
 
     except Exception as exc:
@@ -20188,7 +16621,6 @@ def _parse_recon_rules_to_params(rules: list[dict], src_cols: list[str], tgt_col
     )
 
     if not rule_text.strip():
-        # ==== SOURCE PAGE 0828 ====
         return {}
 
     prompt = f"""You are a data reconciliation parameter extractor.
@@ -20289,7 +16721,6 @@ Key rules:
         if not result.get("key_cols") and result.get("key_col"):
             result["key_cols"] = [result["key_col"]]
 
-        # ==== SOURCE PAGE 0833 ====
         return result
     except Exception as exc:
         # Surface the failure instead of silently running a plain compare --
@@ -20313,9 +16744,6 @@ def _apply_recon_params(
     # This order ensures derived columns exist before renaming/aggregation.
 
 
-
-# ==== SOURCE PAGE 0834 ====
-
     df = df.copy()
 
     # 1. Regex-based column extraction from free-text fields
@@ -20335,8 +16763,6 @@ def _apply_recon_params(
         try:
             extracted = df[actual].astype(str).str.extract(pattern, expand=False)
 
-
-# ==== SOURCE PAGE 0835 ====
 
             if xform == "upper":
                 extracted = extracted.str.upper()
@@ -20359,8 +16785,6 @@ def _apply_recon_params(
         col_spec = t.get("col", "*")
 
 
-# ==== SOURCE PAGE 0836 ====
-
         cols = [col_spec] if col_spec != "*" else list(df.columns)
         for c in cols:
             if c not in df.columns:
@@ -20382,8 +16806,6 @@ def _apply_recon_params(
             elif op == "strip_prefix":
 
 
-# ==== SOURCE PAGE 0837 ====
-
                 prefix = str(t.get("arg", ""))
                 if prefix:
                     df[c] = df[c].astype(str).str.removeprefix(prefix).str.strip()
@@ -20403,8 +16825,6 @@ def _apply_recon_params(
                 # Replace NaN with numeric value in t["arg"] (default 0)
                 fill_val = t.get("arg", 0)
 
-
-# ==== SOURCE PAGE 0838 ====
 
                 df[c] = pd.to_numeric(df[c], errors="coerce").fillna(fill_val)
             elif op == "abs_numeric":
@@ -20427,8 +16847,6 @@ def _apply_recon_params(
                 if find:
 
 
-# ==== SOURCE PAGE 0839 ====
-
                     df[c] = df[c].astype(str).str.replace(find, repl, regex=False)
             elif op == "pad_left":
                 # Zero-pad to length in arg (default 9 for CUSIP)
@@ -20449,8 +16867,6 @@ def _apply_recon_params(
             elif op == "negate":
                 df[c] = pd.to_numeric(df[c], errors="coerce") * -1
 
-
-# ==== SOURCE PAGE 0840 ====
 
             elif op == "to_numeric":
                 # Strip commas/currency symbols then cast to float
@@ -20494,8 +16910,6 @@ def _apply_recon_params(
                 df[c] = pd.to_datetime(df[c], errors="coerce").dt.strftime("%Y-%m-%d")
 
 
-# ==== SOURCE PAGE 0841 ====
-
             # -- Financial / domain-specific ----------------------------------------
             elif op == "ticker_strip":
                 # Remove exchange suffix: .US .LN .HK /UN .A etc.
@@ -20515,8 +16929,6 @@ def _apply_recon_params(
                     "-1": "SELL", "SS": "SELL", "SHORT": "SELL",
                 }
 
-
-# ==== SOURCE PAGE 0842 ====
 
                 df[c] = df[c].astype(str).str.strip().str.upper().map(
                     lambda v: _side_map.get(v, v)
@@ -20539,8 +16951,6 @@ def _apply_recon_params(
                     except Exception:
 
 
-# ==== SOURCE PAGE 0843 ====
-
                         mapping = {}
                 if mapping:
                     df[c] = df[c].astype(str).str.strip().replace(mapping)
@@ -20561,8 +16971,6 @@ def _apply_recon_params(
         if group_by and agg_col:
 
 
-# ==== SOURCE PAGE 0844 ====
-
             # Keep only key + agg column after groupby -- drop extra columns so
             # auto-align in _prepare_recon can match the single value column.
             df = df.groupby(group_by, as_index=False).agg({agg_col: agg_fn})
@@ -20579,7 +16987,6 @@ def _resolve_keys(key_cols_raw: list[str], src_df: pd.DataFrame, tgt_df: pd.Data
     manual_keys: list[str] = []
     missing: list[str] = []
 
-    # ==== SOURCE PAGE 0845 ====
     for desired in key_cols_raw:
         src_match = next((c for c in src_df.columns if c.upper() == desired.upper()), None)
         tgt_match = next((c for c in tgt_df.columns if c.upper() == desired.upper()), None)
@@ -20599,8 +17006,6 @@ def _resolve_keys(key_cols_raw: list[str], src_df: pd.DataFrame, tgt_df: pd.Data
     return manual_keys, tgt_df, missing
 
 
-# ==== SOURCE PAGE 0846 ====
-
 def _prepare_recon(src_df: pd.DataFrame, tgt_df: pd.DataFrame, params: dict):
     # Apply the full pipeline: parse_cols -> col_map -> transforms -> agg -> key resolution.
     # Returns (src_df, tgt_df, manual_keys, exclude, key_warning).
@@ -20618,7 +17023,6 @@ def _prepare_recon(src_df: pd.DataFrame, tgt_df: pd.DataFrame, params: dict):
     tgt_df = _apply_recon_params(tgt_df, params.get("tgt_agg"), transforms, "tgt",
                                   col_map=col_map, parse_cols=parse_cols)
 
-    # ==== SOURCE PAGE 0847 ====
     # Align value columns so both sides share the same column name for comparison.
     # Priority: explicit src_value_col / tgt_value_col from params (LLM-extracted),
     # then fall back to auto-detecting a single unmatched column.
@@ -20636,7 +17040,6 @@ def _prepare_recon(src_df: pd.DataFrame, tgt_df: pd.DataFrame, params: dict):
             src_df = src_df.rename(columns={actual_src: explicit_tgt_val})
 
     if tgt_agg_col and tgt_agg_col in tgt_df.columns and tgt_agg_col not in src_df.columns:
-        # ==== SOURCE PAGE 0848 ====
         # Fall back: find the single non-key, non-excluded src column not in tgt -- rename it
         src_unmatched = [c for c in src_df.columns
                           if c.upper() not in key_cols_upper
@@ -20656,7 +17059,6 @@ def _prepare_recon(src_df: pd.DataFrame, tgt_df: pd.DataFrame, params: dict):
     # Resolve composite key
     manual_keys, tgt_df, missing = _resolve_keys(key_cols_raw, src_df, tgt_df)
 
-    # ==== SOURCE PAGE 0849 ====
     key_warning = None
     if missing:
         key_warning = (
@@ -20675,7 +17077,6 @@ def _prepare_recon(src_df: pd.DataFrame, tgt_df: pd.DataFrame, params: dict):
     # _split_meta_cols for them (aggregated numeric columns can look like surrogate keys).
     explicit_value_cols: set[str] = set()
 
-    # ==== SOURCE PAGE 0850 ====
     col_upper_final = {c.upper(): c for c in list(src_df.columns) + list(tgt_df.columns)}
     for agg in [params.get("tgt_agg"), params.get("src_agg")]:
         if agg and agg.get("agg_col"):
@@ -20875,8 +17276,6 @@ async def recon_run(session_id: str, request: Request):
     # Execute a reconciliation for a lineage session using the saved rules.
 
 
-    # ==== SOURCE PAGE 0851 ====
-
     # Reads the DataFrames from the session store, applies parse_cols + col_map +
     # transforms + pre-aggregation from saved rules, runs compare_dataframes,
     # and returns a structured result the Copilot can render.
@@ -20898,8 +17297,6 @@ async def recon_run(session_id: str, request: Request):
 
     try:
 
-
-# ==== SOURCE PAGE 0852 ====
 
         saved_rules = _fp_get_rules(
             _ws_resolve_username(request) or "default",
@@ -20923,8 +17320,6 @@ async def recon_run(session_id: str, request: Request):
             "params_parsed": params,
 
 
-# ==== SOURCE PAGE 0853 ====
-
             "src_cols_after": list(src_df.columns),
             "tgt_cols_after": list(tgt_df.columns),
             "manual_keys":    manual_keys,
@@ -20945,8 +17340,6 @@ async def recon_run(session_id: str, request: Request):
             "tgt_rows":    diff.get("file2_rows", len(tgt_df)),
             "added":       diff.get("added_count", 0),
 
-
-# ==== SOURCE PAGE 0854 ====
 
             "removed":    diff.get("removed_count", 0),
             "modified":   diff.get("modified_count", 0),
@@ -20969,8 +17362,6 @@ async def recon_run(session_id: str, request: Request):
         import traceback
 
 
-# ==== SOURCE PAGE 0855 ====
-
         return JSONResponse(
             {"error": f"{type(exc).__name__}: {exc}", "traceback": traceback.format_exc()},
             status_code=500,
@@ -20992,8 +17383,6 @@ async def recon_download(session_id: str, request: Request):
 
     dfs = stored.get("dataframes", [])
 
-
-# ==== SOURCE PAGE 0856 ====
 
     if len(dfs) < 2:
         raise HTTPException(400, "Two files are required for reconciliation.")
@@ -21018,8 +17407,6 @@ async def recon_download(session_id: str, request: Request):
             force_data_cols=force_data_cols,
 
 
-# ==== SOURCE PAGE 0857 ====
-
         )
     except Exception as exc:
         raise HTTPException(500, f"Comparison failed: {exc}")
@@ -21042,8 +17429,6 @@ async def recon_download(session_id: str, request: Request):
         (tgt_name,      tgt_name),
 
 
-# ==== SOURCE PAGE 0858 ====
-
         ("Key column(s)",   ", ".join(key_cols) or "content-based"),
         ("Key method",      diff.get("key_method", "")),
         (f"{src_name} rows", diff.get("file1_rows", len(src_df))),
@@ -21063,8 +17448,6 @@ async def recon_download(session_id: str, request: Request):
         summary_rows.append((f"{tgt_name} aggregation",
             f"{agg.get('agg_fn','sum')}({agg.get('agg_col','?')}) grouped by {', '.join(agg.get('group_by', []))}"))
 
-
-# ==== SOURCE PAGE 0859 ====
 
     if params.get("src_agg"):
         agg = params["src_agg"]
@@ -21086,8 +17469,6 @@ async def recon_download(session_id: str, request: Request):
     _autofit(ws)
 
 
-# ==== SOURCE PAGE 0860 ====
-
     # -- Value Breaks sheet
     mod_rows = diff.get("modified_rows", [])
     if mod_rows:
@@ -21107,8 +17488,6 @@ async def recon_download(session_id: str, request: Request):
                     diff_val = float(tgt_val) - float(src_val)
                     c = ws.cell(ri, 5, round(diff_val, 6))
 
-
-# ==== SOURCE PAGE 0861 ====
 
                     c.font = Font(color="006400" if diff_val >= 0 else "8B0000")
                 except (TypeError, ValueError):
@@ -21131,8 +17510,6 @@ async def recon_download(session_id: str, request: Request):
         data_cols = list(seen.keys())
 
 
-# ==== SOURCE PAGE 0862 ====
-
         all_cols = key_cols + [c for c in data_cols if c not in key_cols]
         _hdr(ws, 1, all_cols)
         for ri, row in enumerate(src_only, 2):
@@ -21154,8 +17531,6 @@ async def recon_download(session_id: str, request: Request):
             for col in row.get("row_data", {}).keys():
 
 
-# ==== SOURCE PAGE 0863 ====
-
                 seen[col] = True
         data_cols = list(seen.keys())
         all_cols = key_cols + [c for c in data_cols if c not in key_cols]
@@ -21175,8 +17550,6 @@ async def recon_download(session_id: str, request: Request):
     buf.seek(0)
     # Use actual file names (stripped of extension and unsafe chars) for the download filename
 
-
-# ==== SOURCE PAGE 0864 ====
 
     def _safe_stem(name: str) -> str:
         stem = re.sub(r"\.[^.]+$", "", name)     # drop extension
@@ -21199,8 +17572,6 @@ async def agent_chat(request: Request):
     # LangChain tool suite (compare_files, check_data_quality, map_columns,
 
 
-    # ==== SOURCE PAGE 0865 ====
-
     # run_governance_check, save_rule, list_rules, delete_rule).
 
     # Files are registered with the agent during /analyze so tools can reload
@@ -21222,8 +17593,6 @@ async def agent_chat(request: Request):
     if not question:
         return JSONResponse({"error": "Empty question"}, status_code=400)
 
-
-# ==== SOURCE PAGE 0866 ====
 
     if not session_id:
         return JSONResponse({"error": "session_id is required."}, status_code=400)
@@ -21266,8 +17635,6 @@ async def agent_chat(request: Request):
 # -- Dataset Memory REST endpoints
 
 
-# ==== SOURCE PAGE 0867 ====
-
 @app.get("/rules/{session_id}")
 async def get_rules_endpoint(session_id: str, request: Request):
     """Return saved rules for the dataset loaded in this session."""
@@ -21288,8 +17655,6 @@ async def get_rules_endpoint(session_id: str, request: Request):
     return JSONResponse({
         "fingerprint": resolved_fp,
 
-
-# ==== SOURCE PAGE 0868 ====
 
         "rules": _fp_get_rules(username, resolved_fp, cols1=cols1, cols2=cols2,
                                file_names=file_names, module=action),
@@ -21313,8 +17678,6 @@ async def dataset_controls_get_rules(session_id: str, request: Request, context:
     ctx_rules = [
 
 
-# ==== SOURCE PAGE 0869 ====
-
         {"rule": r["rule"], "category": r["category"],
          "base_cat": r["category"].replace(ctx_prefix, ""),
          "index": i + 1}  # i+1 = 1-based global index into all_rules -- matches /rules/delete
@@ -21336,8 +17699,6 @@ async def dataset_controls_apply(session_id: str, request: Request):
     # - filter:    optional JS filter expression to apply to the results table
 
 
-    # # ==== SOURCE PAGE 0870 ====
-
     # - feedback: user-facing confirmation message
 
     body = await request.json()
@@ -21358,7 +17719,6 @@ async def dataset_controls_apply(session_id: str, request: Request):
 The user is viewing {context} results for dataset: "{label}".
 Available columns (sample): {col_sample}
 
-# ==== SOURCE PAGE 0871 ====
 The user typed this instruction:
 "{instruction}"
 
@@ -21377,7 +17737,6 @@ Category guide:
 - nullable: user wants to mark columns as optional/nullable
 - rule: user is setting a validation rule (not-null, range, format etc.)
 
-# ==== SOURCE PAGE 0872 ====
 - override: user is overriding a classification (e.g. "not PII", change sensitivity)
 - pin: user wants to pin/highlight specific columns
 - general: anything else to remember
@@ -21398,8 +17757,6 @@ Return ONLY valid JSON, no explanation."""
         m = _re.search(r'\{.*\}', raw, _re.DOTALL)
 
 
-# ==== SOURCE PAGE 0873 ====
-
         parsed = json.loads(m.group(0)) if m else {}
     except Exception:
         parsed = {
@@ -21418,8 +17775,6 @@ Return ONLY valid JSON, no explanation."""
     # Namespace: prefix with context so rules don't bleed between recon/DQ/governance
     dc_category = f"dc_{context}_{base_cat}"
 
-
-# ==== SOURCE PAGE 0874 ====
 
     if fp and rule_text:
         _dca_username = _ws_resolve_username(request) or "default"
@@ -21443,8 +17798,6 @@ Return ONLY valid JSON, no explanation."""
     ]
 
 
-# ==== SOURCE PAGE 0875 ====
-
     return JSONResponse({
         "ok":        True,
         "category":  dc_category,
@@ -21464,8 +17817,6 @@ async def save_rule_endpoint(session_id: str, request: Request):
     rule   = body.get("rule", "").strip()
     category = body.get("category", "general")
 
-
-# ==== SOURCE PAGE 0876 ====
 
     username = _ws_resolve_username(request) or "default"
     fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
@@ -21491,8 +17842,6 @@ async def delete_rule_endpoint(session_id: str, request: Request):
     idx  = int(body.get("rule_index", 0))
 
 
-# ==== SOURCE PAGE 0877 ====
-
     fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
 
     if not fp:
@@ -21509,11 +17858,9 @@ async def delete_rule_endpoint(session_id: str, request: Request):
 async def update_rule_endpoint(session_id: str, request: Request):
 
 
-
     # Edit a rule in-place (rule_index, rule, category) or reorder (rule_index, direction: up|down).
 
     # Returns the full updated rules list.
-
 
 
     body      = await request.json()
@@ -21531,9 +17878,6 @@ async def update_rule_endpoint(session_id: str, request: Request):
     # from that module's context-filtered rule list.
     new_cat   = body.get("category")
 
-
-
-# ==== SOURCE PAGE 0878 ====
 
     username = _ws_resolve_username(request) or "default"
     fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
@@ -21568,9 +17912,6 @@ async def export_rules_endpoint(session_id: str, request: Request):
 
     file_names = _results_store.get(session_id, {}).get("file_names", [])
 
-
-
-# ==== SOURCE PAGE 0879 ====
 
     rules    = _fp_get_rules(username, fp, cols1=cols1, file_names=file_names)
 
@@ -21608,15 +17949,9 @@ async def export_rules_endpoint(session_id: str, request: Request):
 async def import_rules_endpoint(session_id: str, request: Request):
 
 
-
-# ==== SOURCE PAGE 0880 ====
-
-
-
     # Import rules from a JSON file (produced by /rules/export).
 
     # Merges rules into the current session's dataset fingerprint -- skips duplicates.
-
 
 
     username = _ws_resolve_username(request) or "default"
@@ -21649,9 +17984,6 @@ async def import_rules_endpoint(session_id: str, request: Request):
 
     if not isinstance(incoming, list):
 
-
-
-# ==== SOURCE PAGE 0881 ====
 
         raise HTTPException(400, "rules must be a JSON array.")
 
@@ -21688,9 +18020,6 @@ async def import_rules_endpoint(session_id: str, request: Request):
         imported += 1
 
 
-
-# ==== SOURCE PAGE 0882 ====
-
     return JSONResponse({
 
       "imported": imported,
@@ -21707,7 +18036,6 @@ async def import_rules_endpoint(session_id: str, request: Request):
 async def autofix_endpoint(session_id: str, request: Request):
 
 
-
     # Generate auto-fix suggestions and a corrected CSV download for common
 
     # fixable DQ issues: leading/trailing whitespace, mixed date formats,
@@ -21717,16 +18045,12 @@ async def autofix_endpoint(session_id: str, request: Request):
     # Returns a CSV of the corrected DataFrame.
 
 
-
     stored = _results_store.get(session_id, {})
 
     if not stored:
 
         raise HTTPException(404, "Session not found.")
 
-
-
-# ==== SOURCE PAGE 0883 ====
 
     body        = await request.json()
 
@@ -21764,9 +18088,6 @@ async def autofix_endpoint(session_id: str, request: Request):
     qr = next((q for q in quality_reports if q.get("file_name") == df_entry["name"]), {})
 
 
-
-# ==== SOURCE PAGE 0884 ====
-
     rule_results = qr.get("rule_results", [])
 
 
@@ -21800,9 +18121,6 @@ async def autofix_endpoint(session_id: str, request: Request):
 
             mask = df[col].astype(str).str.strip().str.lower().isin(_SENTINELS - {""})
 
-
-
-# ==== SOURCE PAGE 0885 ====
 
             changed = int(mask.sum())
 
@@ -21840,9 +18158,6 @@ async def autofix_endpoint(session_id: str, request: Request):
                     df[col] = df[col].apply(lambda v: v.strip().upper() if isinstance(v, str) else v)
 
 
-
-# ==== SOURCE PAGE 0886 ====
-
                     changed = int((df[col] != before_vals).sum())
 
                     if changed:
@@ -21876,9 +18191,6 @@ async def autofix_endpoint(session_id: str, request: Request):
 
                     except Exception:
 
-
-
-# ==== SOURCE PAGE 0887 ====
 
                         pass
 
@@ -21914,9 +18226,6 @@ async def autofix_endpoint(session_id: str, request: Request):
 
     )
 
-
-
-# ==== SOURCE PAGE 0888 ====
 
 @app.get("/download/{session_id}")
 
@@ -21981,7 +18290,6 @@ async def download(session_id: str, request: Request, fmt: str = "excel"):
 
     # Default: Excel
 
-# ==== SOURCE PAGE 0889 ====
 
     buf = io.BytesIO()
 
@@ -22009,7 +18317,6 @@ async def send_email(request: Request):
 
     body = await request.json()
 
-    # ==== SOURCE PAGE 0890 ====
     session_id = body.get("session_id", "")
     recipients = [e.strip() for e in body.get("emails", "").split(",") if e.strip()]
 
@@ -22029,7 +18336,6 @@ async def send_email(request: Request):
     _ACTION_LABELS = {
         "compare": "Reconciliation",
 
-        # ==== SOURCE PAGE 0891 ====
         "lineage": "Complex Recon",
         "quality": "Data Quality",
         "profile": "Data Profile",
@@ -22049,7 +18355,6 @@ async def send_email(request: Request):
         parse_idx = body.get("parse_idx")
         reports   = data.get("parse_reports", [])
 
-        # ==== SOURCE PAGE 0892 ====
         pr     = reports[int(parse_idx)] if parse_idx is not None and int(parse_idx) < len(reports) else (reports[0] if reports else None)
         if pr and pr.get("rows"):
             import csv as _csv
@@ -22069,7 +18374,6 @@ async def send_email(request: Request):
         try:
             context = _chat_contexts.get(session_id, {})
 
-            # ==== SOURCE PAGE 0895 ====
             dfs = data.get("dataframes", [])
             if len(dfs) >= 2 and context.get("mode") == "recon":
                 src_name = dfs[0]["name"]
@@ -22089,7 +18393,6 @@ async def send_email(request: Request):
                 # Summary sheet
                 ws = wb.create_sheet("Summary")
 
-                # ==== SOURCE PAGE 0896 ====
                 _hdr(ws, 1, ["Metric", "Value"])
                 for ri, (k, v) in enumerate([
                     (src_name, src_name), (tgt_name, tgt_name),
@@ -22110,7 +18413,6 @@ async def send_email(request: Request):
                     ri = 2
                     for mr in diff["modified_rows"]:
 
-                        # ==== SOURCE PAGE 0897 ====
                         key_str = " | ".join(f"{k}={v}" for k, v in mr.get("key_values", {}).items())
                         for col, chg in mr.get("changes", {}).items():
                             ws2.cell(ri, 1, key_str)
@@ -22130,7 +18432,6 @@ async def send_email(request: Request):
                 def _safe_stem(n):
                     import re as _re
 
-                    # ==== SOURCE PAGE 0898 ====
                     return _re.sub(r"[^a-zA-Z0-9_-]", "_", _re.sub(r"\.[^.]+$", "", n))[:30]
                 attach_name = f"recon_{_safe_stem(src_name)}_vs_{_safe_stem(tgt_name)}.xlsx"
             else:
@@ -22150,7 +18451,6 @@ async def send_email(request: Request):
         except Exception:
             pass
 
-    # ==== SOURCE PAGE 0899 ====
     if not from_email:
         return JSONResponse(
             {"error": "No From address provided. Set EMAIL_FROM in .env or supply from_email in the request."},
@@ -22181,7 +18481,6 @@ async def send_email(request: Request):
         encoders.encode_base64(part)
         part.add_header("Content-Disposition", f'attachment; filename="{attach_name}"')
 
-        # ==== SOURCE PAGE 0900 ====
         msg.attach(part)
 
     try:
@@ -22201,7 +18500,6 @@ async def send_email(request: Request):
     # Parse File -- dedicated standalone module
     # ------------------------------------------------------------------
 
-    # ==== SOURCE PAGE 0901 ====
 
 @app.get("/parse-file", response_class=HTMLResponse)
 
@@ -22217,11 +18515,9 @@ async def parse_file_page(request: Request):
 async def parse_file_api(request: Request):
 
 
-
     # Accept one or more uploaded files, parse each into a structured DataFrame,
 
     # and return JSON results suitable for the standalone Parse File UI.
-
 
 
     try:
@@ -22234,9 +18530,6 @@ async def parse_file_api(request: Request):
 
     files = [v for v in form.getlist("files") if hasattr(v, "filename") and v.filename]
 
-
-
-# ==== SOURCE PAGE 0902 ====
 
 # NOTE: page image very blurry/low-resolution; best-effort reconstruction below.  # OCR-UNCERTAIN
     if not files:
@@ -22271,9 +18564,6 @@ async def parse_file_api(request: Request):
 
             entry.update({
 
-
-
-# ==== SOURCE PAGE 0903 ====
 
               "format_detected": fmt,
 
@@ -22312,9 +18602,6 @@ async def parse_file_api(request: Request):
     return JSONResponse({"results": results})
 
 
-
-# ==== SOURCE PAGE 0904 ====
-
 #
 # ================================================================
 # ⚡ PERSONAL AUTOMATION WORKSPACE -- /api/ws/*
@@ -22337,9 +18624,6 @@ def _ws_check() -> None:
         raise HTTPException(status_code=503, detail="Workspace feature is not available.")
 
 
-
-# ==== SOURCE PAGE 0905 ====
-
 # -- connections
 # --------------------------------------------------------------------
 
@@ -22353,7 +18637,6 @@ async def ws_list_connections(request: Request):
     username = _ws_get_user(request)
 
     return JSONResponse(_ws_db.list_connections(username))
-
 
 
 @app.post("/api/ws/connections")
@@ -22374,9 +18657,6 @@ async def ws_save_connection(request: Request):
 
     conn_id     = body.get("id")
 
-
-
-# ==== SOURCE PAGE 0906 ====
 
     owner        = (body.get("owner") or "").strip() or None
 
@@ -22434,9 +18714,6 @@ async def ws_save_connection(request: Request):
         username, name, source_type, config, conn_id,
 
 
-
-# ==== SOURCE PAGE 0907 ====
-
         owner=owner, business_domain=business_domain,
 
         sensitivity=sensitivity, description=description,
@@ -22444,7 +18721,6 @@ async def ws_save_connection(request: Request):
     )
 
     return JSONResponse({"id": saved_id, "status": "ok"})
-
 
 
 @app.get("/api/ws/connections/{conn_id}")
@@ -22472,9 +18748,6 @@ async def ws_get_connection(conn_id: str, request: Request):
 rec["source_type"], "config": safe_config})
 
 
-
-# ==== SOURCE PAGE 0908 ====
-
 @app.delete("/api/ws/connections/{conn_id}")
 
 async def ws_delete_connection(conn_id: str, request: Request):
@@ -22486,7 +18759,6 @@ async def ws_delete_connection(conn_id: str, request: Request):
     _ws_db.delete_connection(conn_id, username)
 
     return JSONResponse({"status": "deleted"})
-
 
 
 @app.post("/api/ws/connections/{conn_id}/test")
@@ -22509,9 +18781,6 @@ async def ws_test_connection(conn_id: str, request: Request):
 
         ok = connector.test_connection()
 
-
-
-# ==== SOURCE PAGE 0909 ====
 
         return JSONResponse({"ok": ok, "message": "Connected successfully." if ok else "Connection failed."})
 
@@ -22576,7 +18845,6 @@ async def ws_list_rulesets(request: Request):
     return JSONResponse(_ws_db.list_rulesets(username))
 
 
-
 @app.post("/api/ws/rulesets")
 
 async def ws_save_ruleset(request: Request):
@@ -22585,9 +18853,6 @@ async def ws_save_ruleset(request: Request):
 
     username = _ws_get_user(request)
 
-
-
-# ==== SOURCE PAGE 0910 ====
 
     body = await request.json()
 
@@ -22614,7 +18879,6 @@ async def ws_save_ruleset(request: Request):
     return JSONResponse({"id": saved_id, "status": "ok"})
 
 
-
 @app.get("/api/ws/rulesets/{rs_id}")
 
 async def ws_get_ruleset(rs_id: str, request: Request):
@@ -22624,9 +18888,6 @@ async def ws_get_ruleset(rs_id: str, request: Request):
     username = _ws_get_user(request)
 
 
-
-# ==== SOURCE PAGE 0911 ====
-
     rec = _ws_db.get_ruleset(rs_id, username)
 
     if not rec:
@@ -22634,7 +18895,6 @@ async def ws_get_ruleset(rs_id: str, request: Request):
         raise HTTPException(404, "Rule set not found.")
 
     return JSONResponse(rec)
-
 
 
 @app.delete("/api/ws/rulesets/{rs_id}")
@@ -22659,15 +18919,11 @@ async def ws_delete_ruleset(rs_id: str, request: Request):
 async def ws_list_jobs(request: Request):
 
 
-
-# ==== SOURCE PAGE 0912 ====
-
     _ws_check()
 
     username = _ws_get_user(request)
 
     return JSONResponse(_ws_db.list_jobs(username))
-
 
 
 @app.post("/api/ws/jobs")
@@ -22698,9 +18954,6 @@ async def ws_save_job(request: Request):
 
     schedule_cron  = (body.get("schedule_cron") or "").strip() or None
 
-
-
-# ==== SOURCE PAGE 0913 ====
 
     from_email  = (body.get("from_email")   or "").strip() or None
 
@@ -22734,9 +18987,6 @@ async def ws_save_job(request: Request):
 
     sla_json = json.dumps(sla_raw) if sla_raw else None
 
-
-
-# ==== SOURCE PAGE 0914 ====
 
     ai_hints = body.get("ai_hints") or {}
 
@@ -22783,16 +19033,12 @@ async def ws_save_job(request: Request):
         _ws_schedule_job(saved_id, username, schedule_cron)
 
 
-
-# ==== SOURCE PAGE 0915 ====
-
     elif job_id:
 
         _ws_unregister_job(job_id)
 
 
     return JSONResponse({"id": saved_id, "status": "ok"})
-
 
 
 @app.get("/api/ws/jobs/{job_id}")
@@ -22824,7 +19070,6 @@ async def ws_delete_job(job_id: str, request: Request):
     return JSONResponse({"status": "deleted"})
 
 
-
 @app.post("/api/ws/jobs/{job_id}/run")
 
 async def ws_run_job(job_id: str, request: Request):
@@ -22833,9 +19078,6 @@ async def ws_run_job(job_id: str, request: Request):
 
     _ws_check()
 
-
-
-# ==== SOURCE PAGE 0916 ====
 
     username = _ws_get_user(request)
 
@@ -22889,8 +19131,6 @@ async def ws_dashboard(request: Request):
         "recent_runs": saved_runs,
     })
 
-
-# ==== SOURCE PAGE 0917 ====
 
 @app.get("/api/ws/jobs/{job_id}/sla")
 
@@ -22975,11 +19215,9 @@ async def ws_job_from_session(request: Request):
 async def ws_ai_suggest(request: Request):
 
 
-
     # Ask the LLM to suggest key columns, schedule, and SLA thresholds
 
     # for a new job based on the source schema.
-
 
 
     _ws_check()
@@ -22988,9 +19226,6 @@ async def ws_ai_suggest(request: Request):
 
     body = await request.json()
 
-
-
-# ==== SOURCE PAGE 0918 ====
 
     conn_a_id = body.get("conn_a_id") or body.get("source_conn_id")
 
@@ -23029,9 +19264,6 @@ async def ws_ai_suggest(request: Request):
       f"5. description: one sentence explaining what this job monitors.\n\n"
 
 
-
-# ==== SOURCE PAGE 0921 ====
-
       f"Return ONLY valid JSON: "
 
       f'{{\"key_columns\":\"\",\"schedule\":\"\",\"max_breaks\":null,'
@@ -23067,9 +19299,6 @@ async def ws_save_run(request: Request):
 
     _ws_check()
 
-
-
-# ==== SOURCE PAGE 0922 ====
 
     username = _ws_get_user(request)
 
@@ -23108,9 +19337,6 @@ async def ws_save_run(request: Request):
         username, name, action, sources, session_id, summary,
 
 
-
-# ==== SOURCE PAGE 0923 ====
-
         conn_a_id=conn_a_id, conn_b_id=conn_b_id, key_columns=key_columns,
 
         source_conn_id=source_conn_id,
@@ -23118,7 +19344,6 @@ async def ws_save_run(request: Request):
     )
 
     return JSONResponse({"id": run_id, "status": "saved"})
-
 
 
 @app.get("/api/ws/saved-runs")
@@ -23134,7 +19359,6 @@ async def ws_list_saved_runs(request: Request, limit: int = 100):
     return JSONResponse(runs)
 
 
-
 @app.patch("/api/ws/saved-runs/{run_id}")
 
 async def ws_update_saved_run(run_id: str, request: Request):
@@ -23146,9 +19370,6 @@ async def ws_update_saved_run(run_id: str, request: Request):
     body = await request.json()
 
 
-
-# ==== SOURCE PAGE 0924 ====
-
     new_name = str(body.get("name", "")).strip()
 
     if not new_name:
@@ -23158,7 +19379,6 @@ async def ws_update_saved_run(run_id: str, request: Request):
     _ws_db.rename_saved_run(run_id, username, new_name)
 
     return JSONResponse({"status": "updated"})
-
 
 
 @app.delete("/api/ws/saved-runs/{run_id}")
@@ -23180,9 +19400,6 @@ async def ws_delete_saved_run(run_id: str, request: Request):
 
 @app.get("/api/ws/me")
 
-
-
-# ==== SOURCE PAGE 0925 ====
 
 async def ws_me(request: Request):
 
@@ -23300,9 +19517,6 @@ try:
     _AUDIT_ENABLED = True
 
 
-
-# ==== SOURCE PAGE 0926 ====
-
 except Exception as _audit_import_err:
 
     import logging as _lg_audit
@@ -23317,11 +19531,9 @@ except Exception as _audit_import_err:
 async def audit_log_stream(request: Request):
 
 
-
     # SSE endpoint -- streams new audit log events as they happen.
 
     # Each event is a JSON object serialised as a 'data:' SSE line.
-
 
 
     if not _AUDIT_ENABLED:
@@ -23334,9 +19546,6 @@ async def audit_log_stream(request: Request):
 
     q = _audit_subscribe()
 
-
-
-# ==== SOURCE PAGE 0927 ====
 
     async def _event_generator():
 
@@ -23373,9 +19582,6 @@ async def audit_log_stream(request: Request):
                     except (asyncio.CancelledError, Exception):
 
 
-
-# ==== SOURCE PAGE 0928 ====
-
                         pass
 
                 if not done:
@@ -23411,9 +19617,6 @@ async def audit_log_stream(request: Request):
             _audit_unsubscribe(q)
 
 
-
-# ==== SOURCE PAGE 0929 ====
-
     return StreamingResponse(
 
         _event_generator(),
@@ -23429,7 +19632,6 @@ async def audit_log_stream(request: Request):
         },
 
     )
-
 
 
 @app.get("/api/logs")
@@ -23450,9 +19652,6 @@ async def audit_log_list(
 
     if not _AUDIT_ENABLED:
 
-
-
-# ==== SOURCE PAGE 0930 ====
 
         raise HTTPException(status_code=503, detail="Audit log not available.")
 
@@ -23475,18 +19674,12 @@ _sso_state_store: dict[str, str] = {}  # state -> "pending" (in-memory CSRF stor
 async def sso_login(request: Request):
 
 
-
     # Redirect the browser to the configured IdP login page.
 
     # Supports both SAML 2.0 (AD FS) and OIDC (Azure AD).
 
     # Returns 404 if SSO is not configured.
 
-
-
-
-
-# ==== SOURCE PAGE 0931 ====
 
     try:
 
@@ -23523,13 +19716,9 @@ async def sso_login(request: Request):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-
-# ==== SOURCE PAGE 0932 ====
-
 @app.post("/sso/saml/acs")
 
 async def sso_saml_acs(request: Request):
-
 
 
     # SAML Assertion Consumer Service endpoint.
@@ -23537,7 +19726,6 @@ async def sso_saml_acs(request: Request):
     # AD FS POSTs the SAML response here after successful login.
 
     # Creates a session cookie and redirects to the home page.
-
 
 
     try:
@@ -23560,9 +19748,6 @@ async def sso_saml_acs(request: Request):
 
         # Ensure user is in workspace DB
 
-
-
-# ==== SOURCE PAGE 0933 ====
 
         from workspace.db import ensure_user as _ensure_user
 
@@ -23609,9 +19794,6 @@ async def sso_saml_acs(request: Request):
     except Exception as exc:
 
 
-
-# ==== SOURCE PAGE 0934 ====
-
         raise HTTPException(status_code=401, detail=f"SAML authentication failed: {exc}") from exc
 
 
@@ -23630,11 +19812,9 @@ async def sso_oidc_callback(
 ):
 
 
-
     # OIDC authorisation code callback.
 
     # Azure AD redirects here after successful login with ?code=...&state=...
-
 
 
     try:
@@ -23645,9 +19825,6 @@ async def sso_oidc_callback(
 
         if error:
 
-
-
-# ==== SOURCE PAGE 0935 ====
 
             raise HTTPException(status_code=401, detail=f"OIDC error: {error}")
 
@@ -23687,9 +19864,6 @@ async def sso_oidc_callback(
           user_info.get("email", ""),
 
 
-
-# ==== SOURCE PAGE 0936 ====
-
         )
 
         from workspace.sso import SSO_ROLE_MAP as _SSO_ROLE_MAP
@@ -23728,9 +19902,6 @@ async def sso_oidc_callback(
 async def sso_logout():
 
 
-
-# ==== SOURCE PAGE 0937 ====
-
     """Clear the SSO session cookie and redirect to login."""
 
     response = RedirectResponse(url="/sso/login", status_code=302)
@@ -23766,5 +19937,4 @@ async def auth_me(request: Request):
       "sso_enabled": _sso_enabled(),
       "sso_mode":    _sso_mode(),
     })
-
 

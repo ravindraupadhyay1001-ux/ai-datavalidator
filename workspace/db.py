@@ -365,12 +365,6 @@ def delete_user(username):
     conn.commit()
 
 
-def count_users() -> int:
-    cur = _conn().cursor()
-    cur.execute("SELECT COUNT(*) FROM ws_users")
-    return list(cur.fetchall())[0][0]
-
-
 def count_local_users() -> int:
     """Count of users who have actually registered via local username/password
     auth (as opposed to being auto-provisioned by Windows Auth / SSO)."""
@@ -745,20 +739,6 @@ def list_audit(username=None, action=None, limit=200):
 # --------------------------------------------------------------------------
 # DQ score history
 # --------------------------------------------------------------------------
-def insert_dq_history(file_name, username, score, grade,
-                      completeness=None, uniqueness=None, validity=None):
-    conn = _conn()
-    cur = conn.cursor()
-    cur.execute(
-        f"INSERT INTO ws_dq_history "
-        f"(file_name, username, score, grade, completeness, uniqueness, validity, run_at) "
-        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
-        (file_name, username, score, grade, completeness, uniqueness, validity, _now()),
-    )
-    conn.commit()
-    return cur.lastrowid
-
-
 def save_dq_history(username, file_name, schema_fingerprint, dq_score, total_rows,
                     rule_fails, crit_fails, session_id=None, bfsi_pack=None, di_scope=None):
     """Persist a full DQ run's score breakdown for trend tracking. dq_score is

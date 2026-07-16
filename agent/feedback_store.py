@@ -344,9 +344,3 @@ def delete_user_data(username):
         if username in store:
             del store[username]
             _save(store)
-
-
-def invalidate_cache():
-    global _cache
-    with _LOCK:
-        _cache = None
