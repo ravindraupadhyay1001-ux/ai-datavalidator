@@ -8928,6 +8928,7 @@ def check_volume_and_freshness(
     file_name: str,
     volume_threshold_pct: float = 20.0,
     freshness_threshold_days: int = 2,
+    username: str = "default",
 ) -> dict:
 
     # Monte Carlo-style volume and freshness anomaly detection.
@@ -8964,7 +8965,7 @@ def check_volume_and_freshness(
 
     volume_status  = "NO_HISTORY"
 
-    saved = get_rules(fingerprint)
+    saved = get_rules(username, fingerprint)
 
     run_stat = next(
         (r for r in reversed(saved) if r.get("category") == "run_stats"), None
@@ -8999,6 +9000,7 @@ def check_volume_and_freshness(
 
     # Persist current run stats for next comparison
     save_rule(
+        username,
         fingerprint,
         f"row_count={row_count}, file={file_name}",
         category="run_stats",
@@ -15479,13 +15481,14 @@ async def get_recon_baseline_endpoint(fingerprint: str, request: Request):
 
 
 @app.get("/api/recon/rule-templates")
-async def list_rule_templates(exclude_fingerprint: str = ""):
+async def list_rule_templates(request: Request, exclude_fingerprint: str = ""):
     """Every schema with saved reconciliation rules -- usable as a template
     library: pick one and apply its rules onto a different (new) schema,
     instead of rules only ever auto-loading for the exact schema they were
     written for. exclude_fingerprint hides the current session's own schema
     from the list, since copying a schema's rules onto itself is a no-op."""
-    datasets = _fp_list_datasets()
+    username = _ws_resolve_username(request) or "default"
+    datasets = _fp_list_datasets(username)
     if exclude_fingerprint:
         datasets = [d for d in datasets if d["fingerprint"] != exclude_fingerprint]
     datasets.sort(key=lambda d: d.get("updated", ""), reverse=True)
@@ -15496,6 +15499,7 @@ async def list_rule_templates(exclude_fingerprint: str = ""):
 async def apply_rule_template(request: Request):
     """Copy every saved rule from one schema onto another. Duplicate rules
     (already present on the target) are skipped automatically."""
+    username = _ws_resolve_username(request) or "default"
     body = await request.json()
     from_fp = str(body.get("from_fingerprint", "")).strip()
     to_fp = str(body.get("to_fingerprint", "")).strip()
@@ -15503,7 +15507,7 @@ async def apply_rule_template(request: Request):
         raise HTTPException(400, "from_fingerprint and to_fingerprint are both required.")
     if from_fp == to_fp:
         raise HTTPException(400, "Source and target schema are the same -- nothing to apply.")
-    copied = _fp_copy_rules(from_fp, to_fp)
+    copied = _fp_copy_rules(username, from_fp, to_fp)
     return JSONResponse({"copied": copied})
 
 
@@ -16508,7 +16512,9 @@ async def xref_analyze(request: Request):
     }
 
     # Build AI-summary context
+    _xref_username = _ws_resolve_username(request) or "default"
     _dataset_fingerprint = _fp_resolve(
+        _xref_username,
         _fp_compute([c for s in sources for c in s[1].columns], []),
     )
     # Persist so /dataset-controls/*, /rules/*, and /xref/run-llm can resolve
@@ -16517,7 +16523,7 @@ async def xref_analyze(request: Request):
     # instead of this schema's real one (results_store.get(...,"") in every
     # rule endpoint), so saved rules never actually reloaded on a later run.
     _results_store[session_id]["dataset_fingerprint"] = _dataset_fingerprint
-    _saved_rules_text = _fp_rules_text(_dataset_fingerprint)
+    _saved_rules_text = _fp_rules_text(_xref_username, _dataset_fingerprint)
 
     _summary = xr.get("summary", {})
     _cov = xr.get("coverage_matrix", {})
@@ -16597,12 +16603,13 @@ Key rules:
 
 
 @app.post("/xref/run-llm/{session_id}")
-async def xref_run_llm(session_id: str):
+async def xref_run_llm(session_id: str, request: Request):
     """AI Copilot's "Run Cross Reference" -- reads saved rules for this
     schema, has the LLM turn them into key_col/compare_fields/exclude_cols/
     golden_source, reruns analyze_cross_reference() with them applied, and
     returns the same response shape /xref uses so the frontend can render it
     with the identical results UI."""
+    _xrl_username = _ws_resolve_username(request) or "default"
     stored = _results_store.get(session_id, {})
     if not stored or "dataframes" not in stored:
         raise HTTPException(404, "Session not found or missing stored sources -- please re-run Cross Reference.")
@@ -16616,9 +16623,10 @@ async def xref_run_llm(session_id: str):
     common_cols = list(set.intersection(*(set(df.columns) for _, df in sources))) if sources else []
 
     fingerprint = stored.get("dataset_fingerprint") or _fp_resolve(
+        _xrl_username,
         _fp_compute([c for s in sources for c in s[1].columns], []),
     )
-    saved_rules = _fp_get_rules(fingerprint, module="xref")
+    saved_rules = _fp_get_rules(_xrl_username, fingerprint, module="xref")
     params = _parse_xref_rules_to_params(saved_rules, [s[0] for s in sources], common_cols)
     llm_error = params.pop("_llm_error", None)
 
@@ -17966,17 +17974,22 @@ async def analyze(request: Request):
     # ==== SOURCE PAGE 0760 ====
 
     # Rules are filtered by module (action) so recon rules never bleed into DQ.
+    try:
+      _dm_username = _ws_resolve_username(request) or "default"
+    except Exception:
+      _dm_username = "default"
     _all_cols = [list(df.columns) for _, df in dataframes]
     _cols1 = _all_cols[0] if len(_all_cols) > 0 else []
     _cols2 = _all_cols[1] if len(_all_cols) > 1 else []
     _file_names = [n for n, _ in dataframes]
     _dataset_fingerprint = _fp_resolve(
+      _dm_username,
       _fp_compute(_cols1, _cols2),
       cols1=_cols1, cols2=_cols2,
       file_names=_file_names,
     )
 
-    _saved_rules_text = _fp_rules_text(_dataset_fingerprint, module=action)
+    _saved_rules_text = _fp_rules_text(_dm_username, _dataset_fingerprint, module=action)
 
 
     # -- Persist recon hints for this schema so next run auto-reloads them ------
@@ -17985,6 +17998,7 @@ async def analyze(request: Request):
       _hints_to_save = {k: v for k, v in user_hints.items() if v}
       if _hints_to_save:
         _fp_save(
+          _dm_username,
           _dataset_fingerprint,
 
 
@@ -18023,7 +18037,7 @@ async def analyze(request: Request):
         "tgt_rows":  _lr.get("tgt_rows",  len(dataframes[1][1]) if len(dataframes) > 1 else 0),
         "src_schema": _lr.get("src_schema") or (_chat_schema_summary(dataframes[0][1]) if dataframes else []),
         "tgt_schema": _lr.get("tgt_schema") or (_chat_schema_summary(dataframes[1][1]) if len(dataframes) > 1 else []),
-        "saved_rules": _fp_get_rules(_dataset_fingerprint, cols1=_cols1, cols2=_cols2,
+        "saved_rules": _fp_get_rules(_dm_username, _dataset_fingerprint, cols1=_cols1, cols2=_cols2,
                       file_names=_file_names, module="recon"),
         "dataset_fingerprint": _dataset_fingerprint,
       }
@@ -18177,7 +18191,7 @@ async def analyze(request: Request):
 
     # Deduplicated union of all columns across loaded files (for rerun panel)
     all_file_columns = sorted(set(c for _, df in dataframes for c in df.columns))
-    _resolved_fingerprint = _fp_resolve(_dataset_fingerprint, cols1=_cols1,
+    _resolved_fingerprint = _fp_resolve(_dm_username, _dataset_fingerprint, cols1=_cols1,
                                         cols2=_cols2, file_names=_file_names)
 
     # -- Build the JSON payload the frontend's fetch()-based UI expects for
@@ -18476,16 +18490,16 @@ async def analyze(request: Request):
         "file_names": [n for n, _ in dataframes],
         "all_file_columns": all_file_columns,
         "dataset_fingerprint": _resolved_fingerprint,
-        "saved_rules": _fp_get_rules(_dataset_fingerprint, cols1=_cols1,
+        "saved_rules": _fp_get_rules(_dm_username, _dataset_fingerprint, cols1=_cols1,
                                      cols2=_cols2, file_names=_file_names, module=action),
         "lineage_reports": lineage_reports,
         "message": "This mode is driven by the AI Copilot chat panel -- use the chat sidebar to continue.",
     }))
 
 
-def _load_saved_recon_hints(fingerprint: str) -> dict:
+def _load_saved_recon_hints(fingerprint: str, username: str = "default") -> dict:
     # Return the most recently saved recon_hints dict for this schema fingerprint.
-  for rule in reversed(_fp_get_rules(fingerprint)):
+  for rule in reversed(_fp_get_rules(username, fingerprint)):
     if rule.get("category") == "recon_hints":
       try:
         return json.loads(rule["rule"])
@@ -18813,9 +18827,10 @@ async def rerun_quality_json(session_id: str, request: Request):
     try:
         _fp_qj = stored.get("dataset_fingerprint", "")
         _file_names_qj = stored.get("file_names", [])
+        _rqj_username = _ws_resolve_username(request) or "default"
 
         # ==== SOURCE PAGE 0783 ====
-        _saved_qj = _fp_get_rules(_fp_qj, cols1=list(df.columns),
+        _saved_qj = _fp_get_rules(_rqj_username, _fp_qj, cols1=list(df.columns),
                     file_names=_file_names_qj, module="quality")
         _regex_entries: list[dict] = []
         for _r in _saved_qj:
@@ -19723,6 +19738,7 @@ async def chat(request: Request):
     session_id = body.get("session_id", "")
     question   = body.get("question", "").strip()
     history    = body.get("history", [])
+    _chat_username = _ws_resolve_username(request) or "default"
 
 
 # ==== SOURCE PAGE 0823 ====
@@ -19733,7 +19749,7 @@ async def chat(request: Request):
     context = _chat_contexts.get(session_id, {})
 
     if context.get("mode") == "recon" and re.match(r"^(please\s+)?run\s*recon(ciliation)?[.!]?$", question, re.IGNORECASE):
-        result = _run_llm_recon_full(session_id)
+        result = _run_llm_recon_full(session_id, _chat_username)
         if result is None:
             return JSONResponse({"reply": "I couldn't find both files for this session anymore -- please re-upload and try again."})
         c = result["counts"]
@@ -19821,9 +19837,9 @@ async def chat(request: Request):
             fp = context.get("dataset_fingerprint", "")
             if fp and rule_text:
                 label = f"{context.get('src_name','')} vs {context.get('tgt_name','')}"
-                _fp_save(fp, rule_text, category="recon_rule", dataset_label=label)
+                _fp_save(_chat_username, fp, rule_text, category="recon_rule", dataset_label=label)
                 # Refresh saved rules in context
-                context["saved_rules"] = _fp_get_rules(fp)
+                context["saved_rules"] = _fp_get_rules(_chat_username, fp)
 
 
 # ==== SOURCE PAGE 0826 ====
@@ -20369,7 +20385,7 @@ def _prepare_recon(src_df: pd.DataFrame, tgt_df: pd.DataFrame, params: dict):
     return src_df, tgt_df, manual_keys or None, exclude, key_warning, force_data_cols
 
 
-def _run_llm_recon_full(session_id: str) -> dict | None:
+def _run_llm_recon_full(session_id: str, username: str = "default") -> dict | None:
     """"run recon" -- the AI Copilot's fully automated reconciliation: reads the
     saved rules for this schema, has the LLM turn them into structured execution
     parameters (key_cols, col_map, parse_cols, transforms, aggregation, exclude),
@@ -20389,7 +20405,7 @@ def _run_llm_recon_full(session_id: str) -> dict | None:
     cmp_name, cmp_df = dataframes[1]
 
     fingerprint = stored.get("dataset_fingerprint") or context.get("dataset_fingerprint", "")
-    saved_rules = _fp_get_rules(fingerprint, cols1=list(base_df.columns), cols2=list(cmp_df.columns),
+    saved_rules = _fp_get_rules(username, fingerprint, cols1=list(base_df.columns), cols2=list(cmp_df.columns),
                                  file_names=[base_name, cmp_name])
     recon_rules = [r for r in saved_rules if r.get("category") not in ("recon_hints",)]
     params = _parse_recon_rules_to_params(recon_rules, list(base_df.columns), list(cmp_df.columns))
@@ -20536,11 +20552,12 @@ def _run_llm_recon_full(session_id: str) -> dict | None:
 
 
 @app.post("/recon/run-llm/{session_id}")
-async def recon_run_llm(session_id: str):
+async def recon_run_llm(session_id: str, request: Request):
     """Direct entry point for AI Copilot mode's "Run Reconciliation" button --
     same LLM-driven rule pipeline as typing "run recon" in chat, but triggered
     immediately on run instead of requiring a follow-up chat message."""
-    result = _run_llm_recon_full(session_id)
+    _rrl_username = _ws_resolve_username(request) or "default"
+    result = _run_llm_recon_full(session_id, _rrl_username)
     if result is None:
         raise HTTPException(404, "Session not found or missing stored files -- please re-upload.")
     return JSONResponse(_sanitize_json(result))
@@ -20579,6 +20596,7 @@ async def recon_run(session_id: str, request: Request):
 # ==== SOURCE PAGE 0852 ====
 
         saved_rules = _fp_get_rules(
+            _ws_resolve_username(request) or "default",
             stored.get("dataset_fingerprint", ""),
             cols1=list(src_df.columns),
             cols2=list(tgt_df.columns),
@@ -20654,7 +20672,7 @@ async def recon_run(session_id: str, request: Request):
 
 
 @app.get("/recon/download/{session_id}")
-async def recon_download(session_id: str):
+async def recon_download(session_id: str, request: Request):
 
     # Download the last recon run for a lineage session as a formatted Excel workbook.
     # Sheets: Summary, Value_Breaks, Source_Only, Target_Only.
@@ -20678,7 +20696,8 @@ async def recon_download(session_id: str):
     src_df  = dfs[0]["df"].copy()
     tgt_df  = dfs[1]["df"].copy()
 
-    saved_rules = _fp_get_rules(stored.get("dataset_fingerprint", ""))
+    saved_rules = _fp_get_rules(_ws_resolve_username(request) or "default",
+                                 stored.get("dataset_fingerprint", ""))
     recon_rules = [r for r in saved_rules if r.get("category") not in ("recon_hints",)]
     params = _parse_recon_rules_to_params(recon_rules, list(src_df.columns),
                                            list(tgt_df.columns))
@@ -20918,7 +20937,7 @@ async def agent_chat(request: Request):
 
         history = _agent_chat_history.get(session_id, [])
         fp = session_results.get("dataset_fingerprint", "")
-        extra_rules = _fp_rules_text(fp, module="agent") if fp else ""
+        extra_rules = _fp_rules_text(_ws_resolve_username(request) or "default", fp, module="agent") if fp else ""
 
         answer = run_agent(question, history, _tracked_dispatch, extra_rules)
 
@@ -20943,8 +20962,9 @@ async def agent_chat(request: Request):
 # ==== SOURCE PAGE 0867 ====
 
 @app.get("/rules/{session_id}")
-async def get_rules_endpoint(session_id: str):
+async def get_rules_endpoint(session_id: str, request: Request):
     """Return saved rules for the dataset loaded in this session."""
+    username = _ws_resolve_username(request) or "default"
     fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
     if not fp:
         return JSONResponse({"fingerprint": "", "rules": [], "label": ""})
@@ -20955,7 +20975,7 @@ async def get_rules_endpoint(session_id: str):
     # always operates on the fingerprint that actually holds the rules.
     file_names = _results_store.get(session_id, {}).get("file_names", [])
     action    = _results_store.get(session_id, {}).get("action", None)
-    resolved_fp = _fp_resolve(fp, cols1=cols1, cols2=cols2, file_names=file_names)
+    resolved_fp = _fp_resolve(username, fp, cols1=cols1, cols2=cols2, file_names=file_names)
     if resolved_fp != fp:
         _results_store[session_id]["dataset_fingerprint"] = resolved_fp
     return JSONResponse({
@@ -20964,15 +20984,16 @@ async def get_rules_endpoint(session_id: str):
 
 # ==== SOURCE PAGE 0868 ====
 
-        "rules": _fp_get_rules(resolved_fp, cols1=cols1, cols2=cols2,
+        "rules": _fp_get_rules(username, resolved_fp, cols1=cols1, cols2=cols2,
                                file_names=file_names, module=action),
-        "label": _fp_get_label(resolved_fp),
+        "label": _fp_get_label(username, resolved_fp),
     })
 
 
 @app.get("/dataset-controls/{session_id}/rules")
-async def dataset_controls_get_rules(session_id: str, context: str = "quality"):
+async def dataset_controls_get_rules(session_id: str, request: Request, context: str = "quality"):
     """Return saved Dataset Controls rules for this session + context only."""
+    username = _ws_resolve_username(request) or "default"
     fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
     if not fp:
         return JSONResponse({"ctx_rules": [], "count": 0})
@@ -20980,7 +21001,7 @@ async def dataset_controls_get_rules(session_id: str, context: str = "quality"):
     file_names = _results_store.get(session_id, {}).get("file_names", [])
     cols1 = list(dfs[0]["df"].columns) if len(dfs) > 0 else None
     cols2 = list(dfs[1]["df"].columns) if len(dfs) > 1 else None
-    all_rules = _fp_get_rules(fp, cols1=cols1, cols2=cols2, file_names=file_names)
+    all_rules = _fp_get_rules(username, fp, cols1=cols1, cols2=cols2, file_names=file_names)
     ctx_prefix = f"dc_{context}_"
     ctx_rules = [
 
@@ -21094,12 +21115,13 @@ Return ONLY valid JSON, no explanation."""
 # ==== SOURCE PAGE 0874 ====
 
     if fp and rule_text:
+        _dca_username = _ws_resolve_username(request) or "default"
         dfs  = _results_store.get(session_id, {}).get("dataframes", [])
         cols1 = list(dfs[0]["df"].columns) if len(dfs) > 0 else None
         cols2 = list(dfs[1]["df"].columns) if len(dfs) > 1 else None
-        idx, _ = _fp_save(fp, rule_text, dc_category, dataset_label=label, cols1=cols1,
+        idx, _ = _fp_save(_dca_username, fp, rule_text, dc_category, dataset_label=label, cols1=cols1,
                            cols2=cols2, file_names=file_names)
-        all_rules = _fp_get_rules(fp, cols1=cols1, cols2=cols2, file_names=file_names)
+        all_rules = _fp_get_rules(_dca_username, fp, cols1=cols1, cols2=cols2, file_names=file_names)
     else:
         idx, all_rules = 0, []
 
@@ -21138,6 +21160,7 @@ async def save_rule_endpoint(session_id: str, request: Request):
 
 # ==== SOURCE PAGE 0876 ====
 
+    username = _ws_resolve_username(request) or "default"
     fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
     if not fp:
         return JSONResponse({"error": "Session not found"}, status_code=404)
@@ -21147,15 +21170,16 @@ async def save_rule_endpoint(session_id: str, request: Request):
     dfs = _results_store.get(session_id, {}).get("dataframes", [])
     cols1 = list(dfs[0]["df"].columns) if len(dfs) > 0 else None
     cols2 = list(dfs[1]["df"].columns) if len(dfs) > 1 else None
-    idx, queued = _fp_save(fp, rule, category, dataset_label=label, cols1=cols1,
+    idx, queued = _fp_save(username, fp, rule, category, dataset_label=label, cols1=cols1,
                            cols2=cols2)
-    return JSONResponse({"index": idx, "rules": _fp_get_rules(fp, cols1=cols1,
+    return JSONResponse({"index": idx, "rules": _fp_get_rules(username, fp, cols1=cols1,
                          cols2=cols2), "queued": queued})
 
 
 @app.post("/rules/{session_id}/delete")
 async def delete_rule_endpoint(session_id: str, request: Request):
     """Delete a saved rule by 1-based index."""
+    username = _ws_resolve_username(request) or "default"
     body  = await request.json()
     idx  = int(body.get("rule_index", 0))
 
@@ -21168,9 +21192,9 @@ async def delete_rule_endpoint(session_id: str, request: Request):
 
         return JSONResponse({"error": "Session not found"}, status_code=404)
 
-    _, queued = _fp_delete(fp, idx)
+    _, queued = _fp_delete(username, fp, idx)
 
-    return JSONResponse({"rules": _fp_get_rules(fp), "queued": queued})
+    return JSONResponse({"rules": _fp_get_rules(username, fp), "queued": queued})
 
 
 @app.post("/rules/{session_id}/update")
@@ -21204,25 +21228,27 @@ async def update_rule_endpoint(session_id: str, request: Request):
 
 # ==== SOURCE PAGE 0878 ====
 
+    username = _ws_resolve_username(request) or "default"
     fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
 
     if not fp:
 
         return JSONResponse({"error": "Session not found"}, status_code=404)
 
-    _, queued = _fp_update(fp, idx, rule_text=new_rule or None, category=new_cat or None,
+    _, queued = _fp_update(username, fp, idx, rule_text=new_rule or None, category=new_cat or None,
 
                 direction=direction or None)
 
-    return JSONResponse({"rules": _fp_get_rules(fp), "queued": queued})
+    return JSONResponse({"rules": _fp_get_rules(username, fp), "queued": queued})
 
 
 @app.get("/rules/{session_id}/export")
 
-async def export_rules_endpoint(session_id: str):
+async def export_rules_endpoint(session_id: str, request: Request):
 
     """Export all saved rules for this session's dataset as a downloadable JSON file."""
 
+    username = _ws_resolve_username(request) or "default"
     fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
 
     if not fp:
@@ -21239,9 +21265,9 @@ async def export_rules_endpoint(session_id: str):
 
 # ==== SOURCE PAGE 0879 ====
 
-    rules    = _fp_get_rules(fp, cols1=cols1, file_names=file_names)
+    rules    = _fp_get_rules(username, fp, cols1=cols1, file_names=file_names)
 
-    label    = _fp_get_label(fp) or " / ".join(file_names[:2])
+    label    = _fp_get_label(username, fp) or " / ".join(file_names[:2])
 
     payload  = json.dumps({
 
@@ -21286,6 +21312,7 @@ async def import_rules_endpoint(session_id: str, request: Request):
 
 
 
+    username = _ws_resolve_username(request) or "default"
     fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
 
     if not fp:
@@ -21333,7 +21360,7 @@ async def import_rules_endpoint(session_id: str, request: Request):
     label     = "/".join(file_names[:2])
 
 
-    existing_texts = {r["rule"].strip().lower() for r in _fp_get_rules(fp)}
+    existing_texts = {r["rule"].strip().lower() for r in _fp_get_rules(username, fp)}
 
     imported = 0
 
@@ -21347,7 +21374,7 @@ async def import_rules_endpoint(session_id: str, request: Request):
 
             continue
 
-        _fp_save(fp, rule_text, category, dataset_label=label, cols1=cols1, cols2=cols2)
+        _fp_save(username, fp, rule_text, category, dataset_label=label, cols1=cols1, cols2=cols2)
 
         existing_texts.add(rule_text.lower())
 
@@ -21363,7 +21390,7 @@ async def import_rules_endpoint(session_id: str, request: Request):
 
       "skipped":  len(incoming) - imported,
 
-      "rules":    _fp_get_rules(fp, cols1=cols1, cols2=cols2, file_names=file_names),
+      "rules":    _fp_get_rules(username, fp, cols1=cols1, cols2=cols2, file_names=file_names),
 
     })
 
@@ -21740,7 +21767,8 @@ async def send_email(request: Request):
                 tgt_name = dfs[1]["name"]
                 src_df  = dfs[0]["df"].copy()
                 tgt_df  = dfs[1]["df"].copy()
-                saved_rules = _fp_get_rules(data.get("dataset_fingerprint", ""))
+                saved_rules = _fp_get_rules(_ws_resolve_username(request) or "default",
+                                             data.get("dataset_fingerprint", ""))
                 recon_rules = [r for r in saved_rules if r.get("category") not in ("recon_hints",)]
                 params = _parse_recon_rules_to_params(recon_rules, list(src_df.columns), list(tgt_df.columns))
                 src_df, tgt_df, manual_keys, exclude, _, force_data_cols = _prepare_recon(src_df, tgt_df, params)
