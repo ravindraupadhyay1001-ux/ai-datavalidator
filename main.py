@@ -22048,6 +22048,23 @@ async def ws_save_connection(request: Request):
 
         raise HTTPException(400, "config must be a JSON object.")
 
+    if conn_id:
+        # Editing an existing connection: GET /api/ws/connections/{id} never
+        # returns secret fields to the browser (by design), so an edit form
+        # that doesn't touch the password/key field submits it blank. Without
+        # this, a plain overwrite would silently wipe the working credential.
+        # Preserve the previously stored value for any secret-bearing field
+        # the incoming payload didn't include; everything else is a full
+        # replace, so intentionally clearing a non-secret field still works.
+        existing = _ws_db.get_connection(conn_id, username)
+        if existing:
+            for _secret_key in (
+                "password", "private_key_path", "aws_secret_access_key",
+                "client_secret", "security_token", "access_token",
+                "api_key", "sas_token", "credentials_json",
+            ):
+                if not config.get(_secret_key) and existing["config"].get(_secret_key):
+                    config[_secret_key] = existing["config"][_secret_key]
 
     saved_id = _ws_db.save_connection(
 

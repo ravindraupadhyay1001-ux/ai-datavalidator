@@ -437,7 +437,10 @@
             <summary class="cursor-pointer text-gray-400">Advanced: raw JSON overrides (merged on top of the fields above &mdash; use for things like custom headers)</summary>
             <textarea id="cn-config-adv" rows="2" placeholder='{"headers":{"Authorization":"Bearer ..."}}' class="inp w-full mt-1 font-mono text-xs"></textarea>
           </details>
-          <button onclick="saveConnection()" class="btn rounded-lg px-3 py-1 w-32 font-medium">Save</button>
+          <div class="col-span-2 flex items-center gap-3">
+            <button id="cn-save-btn" onclick="saveConnection()" class="btn rounded-lg px-3 py-1 w-40 font-medium">Save</button>
+            <a id="cn-cancel-edit" onclick="cancelCnEdit()" class="hidden text-xs text-gray-400 cursor-pointer hover:text-gray-200">Cancel edit</a>
+          </div>
         </div>
         <div id="cn-list"></div>
       </div>
@@ -2439,7 +2442,8 @@ const _CN_TABLE_LISTABLE = new Set(['mssql','postgres','mysql','oracle','snowfla
   'databricks','azure_sql','db2','redshift','teradata','bigquery']);
 async function loadConnections(){ const rows=await fetch('/api/ws/connections').then(r=>r.json());
   document.getElementById('cn-list').innerHTML=rows.length?rows.map(c=>row(`<span><b>${esc(c.name)}</b> <span class="text-gray-500">[${c.source_type}] #${c.id}</span></span>
-    <span class="flex gap-2"><button onclick="testConn(${c.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Test</button>
+    <span class="flex gap-2"><button onclick="editConn(${c.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Edit</button>
+    <button onclick="testConn(${c.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Test</button>
     <button onclick="previewConn(${c.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Preview</button>
     ${_CN_TABLE_LISTABLE.has(c.source_type)?`<button onclick="listTablesConn(${c.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Tables</button>`:''}
     <button onclick="delConn(${c.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join(''):'<div class="text-gray-500 text-sm">No connections.</div>'; }
@@ -2681,15 +2685,52 @@ function collectCnConfig(){
 }
 function onCnTypeChange(){ renderCnFields(); }
 onCnTypeChange();
+let _cnEditingId = null;
 async function saveConnection(){
   const cn_name=document.getElementById('cn-name'), cn_type=document.getElementById('cn-type');
   if(!cn_name.value.trim()){ alert('Connection name is required.'); return; }
   let cfg; try{ cfg = collectCnConfig(); }catch(e){ alert(e.message); return; }
-  await J('POST','/api/ws/connections',{name:cn_name.value,source_type:cn_type.value,config:cfg});
-  cn_name.value='';
+  const payload = {name:cn_name.value, source_type:cn_type.value, config:cfg};
+  if(_cnEditingId) payload.id = _cnEditingId;
+  await J('POST','/api/ws/connections',payload);
+  cancelCnEdit();
+  loadConnections(); loadConnDropdowns();
+}
+// Secret fields are never sent back by GET /api/ws/connections/{id} (by
+// design -- the browser shouldn't see stored passwords/keys), so editing a
+// connection leaves those fields blank. The backend preserves the existing
+// secret value when the submitted field is blank, so this is safe -- just
+// tell the user why the field looks empty rather than let them assume the
+// password itself is empty.
+const _CN_SECRET_FIELDS = new Set(['password','private_key_path','aws_secret_access_key',
+  'client_secret','security_token','access_token','api_key','sas_token','credentials_json']);
+async function editConn(id){
+  const r = await fetch(`/api/ws/connections/${id}`).then(x=>x.json());
+  if(r.detail){ alert(r.detail); return; }
+  _cnEditingId = id;
+  document.getElementById('cn-name').value = r.name;
+  document.getElementById('cn-type').value = r.source_type;
+  renderCnFields();
+  const specs = CN_FIELD_SPECS[r.source_type] || [];
+  specs.forEach(f=>{
+    const el = document.getElementById(`cn-f-${f.k}`);
+    if(!el) return;
+    if(_CN_SECRET_FIELDS.has(f.k)){ el.placeholder = '(unchanged -- leave blank to keep existing)'; return; }
+    const val = r.config[f.k];
+    if(val === undefined || val === null) return;
+    el.value = Array.isArray(val) ? val.join(', ') : val;
+  });
+  document.getElementById('cn-save-btn').textContent = `Update "${r.name}"`;
+  document.getElementById('cn-cancel-edit').classList.remove('hidden');
+  document.getElementById('cn-name').scrollIntoView({behavior:'smooth', block:'center'});
+}
+function cancelCnEdit(){
+  _cnEditingId = null;
+  document.getElementById('cn-name').value = '';
   document.querySelectorAll('#cn-fields input, #cn-fields textarea').forEach(el=>el.value='');
   const adv = document.getElementById('cn-config-adv'); if(adv) adv.value='';
-  loadConnections(); loadConnDropdowns();
+  document.getElementById('cn-save-btn').textContent = 'Save';
+  document.getElementById('cn-cancel-edit').classList.add('hidden');
 }
 async function testConn(id){ const r=await J('POST',`/api/ws/connections/${id}/test`); alert(r.ok?'✅ Connection OK':'❌ '+(r.error||'failed')); }
 async function previewConn(id){ const r=await fetch(`/api/ws/connections/${id}/preview`).then(x=>x.json()); if(r.detail){alert(r.detail);return;} alert('Columns: '+r.columns.join(', ')+'\n'+r.rows.length+' rows'); }
