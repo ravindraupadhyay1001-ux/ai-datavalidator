@@ -381,7 +381,7 @@ def _deliver_email(to_email: str, from_email: str, subject: str, html: str) -> N
     from email.mime.multipart import MIMEMultipart
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = from_email or "no-reply@datavalidation.local"
+    msg["From"] = from_email or os.getenv("EMAIL_FROM", "no-reply@datavalidation.local")
     msg["To"] = to_email
     msg.attach(MIMEText(html, "html"))
 
