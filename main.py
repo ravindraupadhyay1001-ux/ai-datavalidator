@@ -2629,8 +2629,15 @@ def _df_from_connection(conn_id: str, username: str) -> tuple[str, pd.DataFrame]
         except Exception as exc:
             _last_exc = exc
             if _attempt < _max_attempts:
-                _log(f"Connection '{rec['name']}' fetch attempt {_attempt}/{_max_attempts} failed "
-                     f"({exc}) -- retrying...", level="WARN")
+                # _log() is a per-request closure defined inside each route
+                # handler -- this is a module-level function with no access
+                # to it, so calling it here raised NameError on every retry
+                # (masking whatever the real connection error was).
+                import logging as _logging
+                _logging.getLogger(__name__).warning(
+                    "Connection '%s' fetch attempt %d/%d failed (%s) -- retrying...",
+                    rec["name"], _attempt, _max_attempts, exc,
+                )
                 time.sleep(0.5 * (2 ** (_attempt - 1)))
 
     raise HTTPException(

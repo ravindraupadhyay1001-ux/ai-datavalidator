@@ -1580,7 +1580,15 @@ function renderFuzzyResult(data, t0){
 async function runCompareAI(){
   const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Loading files for the AI Copilot&hellip;</span>';
   const t0 = performance.now();
-  const {ok,data}=await postForm('compare',[['files_a','cmp-f1'],['files_b','cmp-f2']], {}, null);
+  // Must mirror runCompare()'s field list exactly -- omitting the
+  // conn_a_ids/conn_b_ids (and N-way extra-source) entries here meant AI
+  // Copilot mode never sent a saved-connector selection at all, only file
+  // uploads, so choosing a Saved Connector with no file attached produced
+  // "0 upload(s) + 0 connection(s)" even though the connector chip showed
+  // as selected in the UI.
+  const {ok,data}=await postForm('compare',
+    [['files_a','cmp-f1','conn_a_ids','cmp-conn1'],['files_b','cmp-f2','conn_b_ids','cmp-conn2'],...cmpExtraFileInputs()],
+    {}, null);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
   out.innerHTML='<span class="text-gray-400">Applying saved rules and running the AI-driven reconciliation&hellip;</span>';
   let finalData = data;
