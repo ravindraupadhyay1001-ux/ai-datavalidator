@@ -338,10 +338,38 @@ def _deliver_email(to_email: str, from_email: str, subject: str, html: str) -> N
     msg["From"] = from_email or "no-reply@datavalidation.local"
     msg["To"] = to_email
     msg.attach(MIMEText(html, "html"))
-    host = os.getenv("SMTP_HOST", "localhost")
-    port = int(os.getenv("SMTP_PORT", "25"))
-    with smtplib.SMTP(host, port, timeout=20) as s:
-        s.send_message(msg)
+
+    host = os.getenv("SMTP_HOST", "")
+    if not host:
+        # Defaulting to localhost:25 here used to fail silently (caught by
+        # the caller's try/except and only ever printed to server logs) --
+        # a container platform like Railway has no local mail server at
+        # all, so every job's "successful" email delivery was actually
+        # failing every time with nothing telling the user why.
+        raise RuntimeError(
+            "SMTP_HOST is not configured -- set SMTP_HOST, SMTP_PORT (587 recommended; "
+            "port 25 is blocked outbound by most cloud platforms), SMTP_USERNAME and "
+            "SMTP_PASSWORD as environment variables to enable email delivery."
+        )
+    port = int(os.getenv("SMTP_PORT", "587"))
+    username = os.getenv("SMTP_USERNAME", "")
+    password = os.getenv("SMTP_PASSWORD", "")
+
+    if port == 465:
+        with smtplib.SMTP_SSL(host, port, timeout=20) as s:
+            if username and password:
+                s.login(username, password)
+            s.send_message(msg)
+    else:
+        # 587 (submission) and most other non-SSL ports expect STARTTLS --
+        # almost every real provider (Gmail, Outlook365, SendGrid, SES SMTP,
+        # etc.) rejects a plaintext, unauthenticated connection outright,
+        # which is what the previous code sent.
+        with smtplib.SMTP(host, port, timeout=20) as s:
+            s.starttls()
+            if username and password:
+                s.login(username, password)
+            s.send_message(msg)
 
 
 def _send_rich_email_report(job, result, sla_result=None):
