@@ -2161,10 +2161,11 @@ async function runParse(){
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   if(data.error){ out.innerHTML=`<div class="text-red-400">${esc(data.error)}</div>`; return; }
   setSession(data.session_id);
-  const resultsHTML = `<div class="text-sm text-gray-400 mb-2">${(data.columns||[]).length} columns &middot; ${(data.rows||[]).length} rows</div>
+  const parseCols = data.columns||[];
+  const resultsHTML = `<div class="text-sm text-gray-400 mb-2">${parseCols.length} columns &middot; ${(data.rows||[]).length} rows</div>
     <div class="card rounded-xl overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400"><tr>${
-      (data.columns||[]).map(c=>`<th class="p-2 text-left">${esc(c)}</th>`).join('')}</tr></thead><tbody>${
-      (data.rows||[]).slice(0,100).map(row=>`<tr class="border-t border-[var(--line)]">${row.map(v=>`<td class="p-1">${esc(v)}</td>`).join('')}</tr>`).join('')
+      parseCols.map(c=>`<th class="p-2 text-left">${esc(c)}</th>`).join('')}</tr></thead><tbody>${
+      (data.rows||[]).slice(0,100).map(row=>`<tr class="border-t border-[var(--line)]">${parseCols.map(c=>`<td class="p-1">${esc(row[c]??'')}</td>`).join('')}</tr>`).join('')
     }</tbody></table></div>`;
   const chips = [
     {label:'Summarize what this file contains', q:'Summarize what this parsed file contains and any anomalies you notice.'},
