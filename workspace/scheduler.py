@@ -128,10 +128,44 @@ def _run_compare(df_a, df_b, job):
         }
 
 
+def _generate_ai_hints(main, columns: list[str]) -> dict:
+    # Same LLM hint-generation the interactive AI Copilot run uses (see
+    # /rerun-quality-json) -- a scheduled job never had this at all, even
+    # though the DB/API have carried an ai_hints field since the job was
+    # created. Best-effort: any failure (no LLM configured, bad JSON, etc.)
+    # just means the job runs without AI-suggested hints, same as before.
+    try:
+        raw = main._ask_llm([{"role": "user", "content": [{"text":
+            "You are a data quality hint generator. Given these column names, suggest "
+            "helpful hints as a single JSON object with these optional keys: "
+            f"columns={columns}. "
+            '"nullable_hints" (comma-separated column names that may legitimately be blank), '
+            '"key_hints" (comma-separated column names likely to form a unique row key), '
+            '"timeliness_hints" (comma-separated "column_name max_age_days" pairs), '
+            '"bfsi_validators":["positive:price","allowed_values:side:BUY,SELL"]}'
+            "\nReturn {} if nothing specific."
+        }]}])
+        import re
+        m = re.search(r'\{.*\}', raw, re.DOTALL)
+        if m:
+            import json
+            return json.loads(m.group(0))
+    except Exception:
+        pass
+    return {}
+
+
 def _run_quality(df, job):
     try:
         main = importlib.import_module("main")
-        return main.analyze_quality(df, name=job.get("name", "job"))
+        hints = dict(job.get("ai_hints") or {})
+        if not hints:
+            # Manually-configured hints (set via the job's ai_hints field)
+            # take precedence and skip the LLM call entirely; otherwise
+            # auto-generate them so every scheduled run gets the same
+            # AI assistance an interactive AI Copilot run would.
+            hints = _generate_ai_hints(main, list(df.columns))
+        return main.analyze_quality(df, name=job.get("name", "job"), user_hints=hints)
     except Exception as e:
         return {"error": str(e), "rows": len(df), "columns": len(df.columns)}
 
@@ -238,6 +272,17 @@ def _execute_job(job_id, username):
         db.finish_run(run_id, "failed", error_msg=str(e))
         db.update_job_status(job_id, "error")
         print(f"[scheduler] job {job_id} failed: {e}")
+        # A job that silently stops working (bad credentials, connector down,
+        # unsupported action) previously never told anyone -- notify_email
+        # was only ever used on the success path. Best-effort: re-fetch the
+        # job for the notify_email address in case the failure happened
+        # before `job` was bound above (e.g. db.get_job itself failing).
+        try:
+            _job_for_alert = db.get_job(job_id, username)
+            if _job_for_alert and _job_for_alert.get("notify_email"):
+                _send_failure_email(_job_for_alert, str(e))
+        except Exception as _email_exc:
+            print(f"[scheduler] failure-alert email also failed for job {job_id}: {_email_exc}")
         return run_id
 
 
@@ -269,13 +314,7 @@ def _html_report(job, result, sla_result=None):
     """
 
 
-def _send_rich_email_report(job, result, sla_result=None):
-    to_email = job["notify_email"]
-    from_email = job.get("from_email") or os.getenv("EMAIL_FROM", "")
-    breached = bool(sla_result and sla_result.get("breached"))
-    subject = f"[Data Validation] {'SLA BREACH -- ' if breached else ''}{job.get('name')} — {job.get('action')}"
-    html = _html_report(job, result, sla_result)
-
+def _deliver_email(to_email: str, from_email: str, subject: str, html: str) -> None:
     if platform.system() == "Windows" and not os.getenv("SMTP_HOST"):
         try:
             import win32com.client
@@ -303,3 +342,33 @@ def _send_rich_email_report(job, result, sla_result=None):
     port = int(os.getenv("SMTP_PORT", "25"))
     with smtplib.SMTP(host, port, timeout=20) as s:
         s.send_message(msg)
+
+
+def _send_rich_email_report(job, result, sla_result=None):
+    to_email = job["notify_email"]
+    from_email = job.get("from_email") or os.getenv("EMAIL_FROM", "")
+    breached = bool(sla_result and sla_result.get("breached"))
+    subject = f"[Data Validation] {'SLA BREACH -- ' if breached else ''}{job.get('name')} — {job.get('action')}"
+    html = _html_report(job, result, sla_result)
+    _deliver_email(to_email, from_email, subject, html)
+
+
+def _send_failure_email(job, error_msg: str) -> None:
+    # Previously a job that started failing (bad credentials, connector
+    # down, unsupported action, anything) never told anyone -- notify_email
+    # was only ever wired to the success path, so "set it and forget it"
+    # automation could silently stop working indefinitely.
+    to_email = job["notify_email"]
+    from_email = job.get("from_email") or os.getenv("EMAIL_FROM", "")
+    subject = f"[Data Validation] JOB FAILED -- {job.get('name')} ({job.get('action')})"
+    html = f"""
+    <div style="background:#7f1d1d;color:#fff;padding:12px 16px;border-radius:6px;margin-bottom:12px;font-family:Arial">
+      <b>&#9888;&#65039; This scheduled job failed to run.</b>
+    </div>
+    <h2>Data Validation job failure — {job.get('name')}</h2>
+    <p>Action: <b>{job.get('action')}</b></p>
+    <p>Error: <code>{error_msg}</code></p>
+    <p style="color:#64748b;font-size:12px">Check Saved Runs in Workspace for full history, or fix the underlying
+    issue (credentials, connector availability, job configuration) and the next scheduled run will proceed normally.</p>
+    """
+    _deliver_email(to_email, from_email, subject, html)

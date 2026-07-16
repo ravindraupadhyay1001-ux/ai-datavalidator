@@ -458,17 +458,14 @@
       <div id="ws-jobs" class="ws-panel hidden">
         <div class="card rounded-xl p-4 mb-4 max-w-3xl grid grid-cols-2 gap-3 text-sm">
           <input id="jb-name" placeholder="Job name" class="inp">
-          <select id="jb-action" class="inp">
+          <select id="jb-action" class="inp" onchange="onJbActionChange()">
             <option value="compare">compare</option>
             <option value="quality">quality</option>
             <option value="profile">profile</option>
-            <option value="governance">governance</option>
-            <option value="lineage">lineage</option>
-            <option value="parse">parse</option>
-            <option value="xref">xref</option>
           </select>
-          <input id="jb-conna" placeholder="conn_a / source id" class="inp">
-          <input id="jb-connb" placeholder="conn_b id (compare)" class="inp">
+          <select id="jb-conna" class="inp conn-select"><option value="">&#128268; Saved Connector</option></select>
+          <select id="jb-connb" class="inp conn-select"><option value="">&#128268; Saved Connector</option></select>
+          <p id="jb-conn-help" class="col-span-2 text-[11px] text-gray-500 -mt-1">Left = conn_a / source connection. Right = conn_b (compare only -- ignored for quality/profile).</p>
           <div>
             <input id="jb-cron" placeholder="cron e.g. 0 6 * * *" class="inp w-full">
             <div class="flex flex-wrap gap-1 mt-1">
@@ -482,6 +479,7 @@
           </div>
           <input id="jb-email" placeholder="notify email" class="inp">
           <p class="col-span-2 text-[11px] text-gray-500 -mt-1">&#9889; Near real-time reconciliation: point conn_a/conn_b at Kafka connections (set a <code>group_id</code> in the connection config so each poll only reads new messages) and schedule at 1&ndash;5 minutes for continuous streaming reconciliation.</p>
+          <p class="col-span-2 text-[11px] text-gray-500 -mt-1">&#129302; Quality/profile jobs automatically get AI-suggested hints (nullable columns, key candidates, BFSI validators) on every run, same as the interactive AI Copilot mode -- no setup needed.</p>
           <label class="col-span-2 flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
             <input type="checkbox" id="jb-bulk-enable" class="accent-sky-500" onchange="document.getElementById('jb-bulk-panel').classList.toggle('hidden', !this.checked)">
             &#128230; Bulk (fan-out) &mdash; run this compare across many connection pairs at once, e.g. one per branch
@@ -489,8 +487,23 @@
           <div id="jb-bulk-panel" class="hidden col-span-2">
             <label class="text-xs text-gray-400">One pair per line: <code>conn_a_id,conn_b_id,label</code></label>
             <textarea id="jb-bulk-pairs" rows="4" placeholder="1,2,Branch NYC&#10;3,4,Branch LDN" class="inp w-full mt-1 font-mono text-xs"></textarea>
-            <p class="text-[11px] text-gray-500 mt-1">When set, conn_a/conn_b above are ignored and every pair listed here runs on the same schedule; results are aggregated into one run with a per-pair breakdown.</p>
+            <p class="text-[11px] text-gray-500 mt-1">When set, conn_a/conn_b above are ignored and every pair listed here runs on the same schedule; results are aggregated into one run with a per-pair breakdown. Use the "Saved Connectors" tab to look up connection IDs for each pair.</p>
           </div>
+          <details class="col-span-2 text-xs">
+            <summary class="cursor-pointer text-gray-400">&#128202; SLA thresholds (optional) &mdash; get emailed only when a run actually breaches one of these</summary>
+            <div class="grid grid-cols-2 gap-2 mt-2">
+              <label class="flex flex-col gap-1 text-xs text-gray-400">Max breaks (compare)
+                <input id="jb-sla-max-breaks" type="number" class="inp" placeholder="e.g. 50"></label>
+              <label class="flex flex-col gap-1 text-xs text-gray-400">Min DQ score (quality)
+                <input id="jb-sla-min-dq" type="number" class="inp" placeholder="e.g. 90"></label>
+              <label class="flex flex-col gap-1 text-xs text-gray-400">Max null % (any column)
+                <input id="jb-sla-max-null" type="number" class="inp" placeholder="e.g. 5"></label>
+              <label class="flex items-center gap-2 text-xs text-gray-400 mt-4">
+                <input type="checkbox" id="jb-sla-schema-drift" class="accent-sky-500"> Alert on schema drift</label>
+              <label class="col-span-2 flex items-center gap-2 text-xs text-gray-400">
+                <input type="checkbox" id="jb-sla-alert-only-on-fail" class="accent-sky-500"> Only email on SLA breach (otherwise every successful run also emails a report)</label>
+            </div>
+          </details>
           <button onclick="saveJob()" class="btn rounded-lg px-3 py-1 w-32 font-medium">Save</button>
         </div>
         <div id="jb-list"></div>
@@ -2461,7 +2474,7 @@ function wsTab(name){
   document.querySelectorAll('.ws-panel').forEach(p=>p.classList.add('hidden'));
   document.getElementById('ws-'+name).classList.remove('hidden');
   if(name==='savedconn')loadConnections(); if(name==='rules')loadRulesets();
-  if(name==='jobs')loadJobs(); if(name==='saved')loadSavedRuns();
+  if(name==='jobs'){loadJobs(); loadConnDropdowns();} if(name==='saved')loadSavedRuns();
 }
 const row=(inner)=>`<div class="card rounded-lg p-2 mb-2 flex items-center justify-between text-sm">${inner}</div>`;
 // Source types whose connector implements list_tables() -- everything else
@@ -2828,6 +2841,13 @@ async function loadJobs(){ const rows=await fetch('/api/ws/jobs').then(r=>r.json
     <span class="flex gap-2"><button onclick="runJob(${j.id})" class="btn rounded px-2 py-0.5 text-xs">Run</button>
     <button onclick="jobRuns(${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">History</button>
     <button onclick="delJob(${j.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join(''):'<div class="text-gray-500 text-sm">No jobs.</div>'; }
+function onJbActionChange(){
+  const action = document.getElementById('jb-action').value;
+  const help = document.getElementById('jb-conn-help');
+  if(help) help.textContent = action==='compare'
+    ? 'Left = conn_a. Right = conn_b.'
+    : 'Left = source connection. Right is unused for quality/profile.';
+}
 async function saveJob(){
   const jb_action=document.getElementById('jb-action'), jb_name=document.getElementById('jb-name'), jb_cron=document.getElementById('jb-cron'),
         jb_email=document.getElementById('jb-email'), jb_conna=document.getElementById('jb-conna'), jb_connb=document.getElementById('jb-connb');
@@ -2839,8 +2859,20 @@ async function saveJob(){
       .filter(p=>p.conn_a_id && p.conn_b_id);
     if(pairs.length) body.fan_out_pairs = pairs;
   }
+  const sla = {};
+  const maxBreaks = document.getElementById('jb-sla-max-breaks')?.value;
+  const minDq = document.getElementById('jb-sla-min-dq')?.value;
+  const maxNull = document.getElementById('jb-sla-max-null')?.value;
+  if(maxBreaks) sla.max_breaks = +maxBreaks;
+  if(minDq) sla.min_dq_score = +minDq;
+  if(maxNull) sla.max_null_pct = +maxNull;
+  if(document.getElementById('jb-sla-schema-drift')?.checked) sla.alert_on_schema_drift = true;
+  if(document.getElementById('jb-sla-alert-only-on-fail')?.checked) sla.alert_only_on_fail = true;
+  if(Object.keys(sla).length) body.sla = sla;
   await J('POST','/api/ws/jobs',body);
-  ['jb-name','jb-conna','jb-connb','jb-cron','jb-email','jb-bulk-pairs'].forEach(i=>document.getElementById(i).value='');
+  ['jb-name','jb-cron','jb-email','jb-bulk-pairs','jb-sla-max-breaks','jb-sla-min-dq','jb-sla-max-null'].forEach(i=>document.getElementById(i).value='');
+  ['jb-conna','jb-connb'].forEach(i=>document.getElementById(i).value='');
+  ['jb-sla-schema-drift','jb-sla-alert-only-on-fail'].forEach(i=>{ const el=document.getElementById(i); if(el) el.checked=false; });
   if(document.getElementById('jb-bulk-enable')){ document.getElementById('jb-bulk-enable').checked=false; document.getElementById('jb-bulk-panel').classList.add('hidden'); }
   loadJobs(); }
 async function runJob(id){ const r=await J('POST',`/api/ws/jobs/${id}/run`); alert('Run started: '+JSON.stringify(r)); loadJobs(); }
