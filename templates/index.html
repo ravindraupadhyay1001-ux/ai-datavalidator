@@ -409,6 +409,7 @@
       <h2 class="text-3xl font-bold mb-4 grad-text">Workspace</h2>
       <div class="flex gap-2 mb-4 text-sm">
         <button onclick="wsTab('conn')" class="ws-tab tab-btn tab-active px-3 py-1 rounded-lg">Connections</button>
+        <button onclick="wsTab('savedconn')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Saved Connectors</button>
         <button onclick="wsTab('rules')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Rulesets</button>
         <button onclick="wsTab('jobs')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Jobs</button>
         <button onclick="wsTab('saved')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Saved Runs</button>
@@ -442,8 +443,8 @@
             <a id="cn-cancel-edit" onclick="cancelCnEdit()" class="hidden text-xs text-gray-400 cursor-pointer hover:text-gray-200">Cancel edit</a>
           </div>
         </div>
-        <div id="cn-list"></div>
       </div>
+      <div id="ws-savedconn" class="ws-panel hidden"><div id="cn-list"></div></div>
       <div id="ws-rules" class="ws-panel hidden">
         <div class="card rounded-xl p-4 mb-4 max-w-3xl grid grid-cols-2 gap-3 text-sm">
           <input id="rs-name" placeholder="Ruleset name" class="inp">
@@ -2440,7 +2441,7 @@ function wsTab(name){
   document.querySelectorAll('.ws-tab').forEach(b=>b.classList.toggle('tab-active', b.getAttribute('onclick').includes(`'${name}'`)));
   document.querySelectorAll('.ws-panel').forEach(p=>p.classList.add('hidden'));
   document.getElementById('ws-'+name).classList.remove('hidden');
-  if(name==='conn')loadConnections(); if(name==='rules')loadRulesets();
+  if(name==='savedconn')loadConnections(); if(name==='rules')loadRulesets();
   if(name==='jobs')loadJobs(); if(name==='saved')loadSavedRuns();
 }
 const row=(inner)=>`<div class="card rounded-lg p-2 mb-2 flex items-center justify-between text-sm">${inner}</div>`;
@@ -2731,7 +2732,8 @@ async function saveConnection(){
   if(_cnEditingId) payload.id = _cnEditingId;
   await J('POST','/api/ws/connections',payload);
   cancelCnEdit();
-  loadConnections(); loadConnDropdowns();
+  loadConnDropdowns();
+  wsTab('savedconn'); // jump to the list so the save is immediately visible, instead of leaving the user staring at a now-empty form
 }
 // Secret fields are never sent back by GET /api/ws/connections/{id} (by
 // design -- the browser shouldn't see stored passwords/keys), so editing a
@@ -2744,6 +2746,7 @@ const _CN_SECRET_FIELDS = new Set(['password','private_key_path','aws_secret_acc
 async function editConn(id){
   const r = await fetch(`/api/ws/connections/${id}`).then(x=>x.json());
   if(r.detail){ alert(r.detail); return; }
+  wsTab('conn'); // Edit is clicked from the Saved Connectors list -- jump back to the form tab to actually show it
   _cnEditingId = id;
   document.getElementById('cn-name').value = r.name;
   document.getElementById('cn-type').value = r.source_type;
