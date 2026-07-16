@@ -16255,8 +16255,8 @@ body{{font-family:"Inter","Segoe UI",sans-serif;color:#0f172a;
  border-radius:16px;padding:2rem 2rem 1.75rem;
  box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 20px 50px -20px rgba(37,99,235,.25),0 2px 8px rgba(15,23,42,.06)}}
 .auth-logo{{display:flex;align-items:center;gap:.75rem;margin-bottom:1.75rem}}
-.auth-logo-mark{{width:42px;height:42px;background:linear-gradient(135deg,#2563eb,#7c3aed);border-radius:11px;
- display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:#fff;flex-shrink:0;
+.auth-logo-mark{{width:42px;height:42px;background:#ffffff;border:3px solid #2563eb;border-radius:12px;
+ display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;
  animation:glowPulse 4.5s ease-in-out infinite}}
 .auth-logo-text h1{{font-family:"Sora","Inter",sans-serif;font-size:1rem;font-weight:700;letter-spacing:.03em;
  background:linear-gradient(90deg,#2563eb,#7c3aed,#0284c7,#2563eb);background-size:300% auto;
@@ -16296,7 +16296,16 @@ body{{font-family:"Inter","Segoe UI",sans-serif;color:#0f172a;
 <div class="auth-wrap">
   <div class="auth-card">
     <div class="auth-logo">
-      <div class="auth-logo-mark">&#9670;</div>
+      <div class="auth-logo-mark"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <line x1="12" y1="2.6" x2="12" y2="5.2" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round"/>
+        <circle cx="12" cy="2" r="1.15" fill="#2563eb"/>
+        <rect x="4.5" y="5.6" width="15" height="12.4" rx="4" stroke="#2563eb" stroke-width="2"/>
+        <circle cx="9.3" cy="11.6" r="1.35" fill="#2563eb"/>
+        <circle cx="14.7" cy="11.6" r="1.35" fill="#2563eb"/>
+        <path d="M9.2 15.1h5.6" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+        <line x1="4.5" y1="10.5" x2="2.6" y2="10.5" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round"/>
+        <line x1="19.5" y1="10.5" x2="21.4" y2="10.5" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round"/>
+      </svg></div>
       <div class="auth-logo-text">
         <h1>AI Agent</h1>
         <p>Data Validation</p>
@@ -16328,8 +16337,8 @@ body{font-family:"Inter","Segoe UI",sans-serif;color:#0f172a;
  border-radius:16px;padding:2rem 2rem 1.75rem;
  box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 20px 50px -20px rgba(37,99,235,.25),0 2px 8px rgba(15,23,42,.06)}
 .auth-logo{display:flex;align-items:center;gap:.75rem;margin-bottom:1.75rem}
-.auth-logo-mark{width:42px;height:42px;background:linear-gradient(135deg,#2563eb,#7c3aed);border-radius:11px;
- display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:#fff;flex-shrink:0}
+.auth-logo-mark{width:42px;height:42px;background:#ffffff;border:3px solid #2563eb;border-radius:12px;
+ display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden}
 .auth-logo-text h1{font-family:"Sora","Inter",sans-serif;font-size:1rem;font-weight:700;letter-spacing:.03em;
  background:linear-gradient(90deg,#2563eb,#7c3aed,#0284c7,#2563eb);background-size:300% auto;
  -webkit-background-clip:text;background-clip:text;color:transparent}
@@ -16377,7 +16386,16 @@ def _render_forgot_password_page(message: str = "", error: str = "") -> str:
 <div class="auth-wrap">
   <div class="auth-card">
     <div class="auth-logo">
-      <div class="auth-logo-mark">&#9670;</div>
+      <div class="auth-logo-mark"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <line x1="12" y1="2.6" x2="12" y2="5.2" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round"/>
+        <circle cx="12" cy="2" r="1.15" fill="#2563eb"/>
+        <rect x="4.5" y="5.6" width="15" height="12.4" rx="4" stroke="#2563eb" stroke-width="2"/>
+        <circle cx="9.3" cy="11.6" r="1.35" fill="#2563eb"/>
+        <circle cx="14.7" cy="11.6" r="1.35" fill="#2563eb"/>
+        <path d="M9.2 15.1h5.6" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+        <line x1="4.5" y1="10.5" x2="2.6" y2="10.5" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round"/>
+        <line x1="19.5" y1="10.5" x2="21.4" y2="10.5" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round"/>
+      </svg></div>
       <div class="auth-logo-text"><h1>AI Agent</h1><p>Data Validation</p></div>
     </div>
     <div class="auth-title">Forgot username or password?</div>
@@ -16414,7 +16432,16 @@ def _render_reset_password_page(token: str, error: str = "") -> str:
 <div class="auth-wrap">
   <div class="auth-card">
     <div class="auth-logo">
-      <div class="auth-logo-mark">&#9670;</div>
+      <div class="auth-logo-mark"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <line x1="12" y1="2.6" x2="12" y2="5.2" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round"/>
+        <circle cx="12" cy="2" r="1.15" fill="#2563eb"/>
+        <rect x="4.5" y="5.6" width="15" height="12.4" rx="4" stroke="#2563eb" stroke-width="2"/>
+        <circle cx="9.3" cy="11.6" r="1.35" fill="#2563eb"/>
+        <circle cx="14.7" cy="11.6" r="1.35" fill="#2563eb"/>
+        <path d="M9.2 15.1h5.6" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+        <line x1="4.5" y1="10.5" x2="2.6" y2="10.5" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round"/>
+        <line x1="19.5" y1="10.5" x2="21.4" y2="10.5" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round"/>
+      </svg></div>
       <div class="auth-logo-text"><h1>AI Agent</h1><p>Data Validation</p></div>
     </div>
     <div class="auth-title">Set a new password</div>

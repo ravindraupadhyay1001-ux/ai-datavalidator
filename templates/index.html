@@ -3144,7 +3144,7 @@ function applyReadonlyUI(){
   hideSelectors.forEach(sel => document.querySelectorAll(sel).forEach(el => el.style.display = 'none'));
   const note = document.createElement('div');
   note.className = 'mx-3 mb-2 text-[11px] text-gray-500';
-  note.textContent = 'Run Only access — Workspace (connections, jobs, saved runs) isn\'t available for your role.';
+  note.textContent = 'Run Only access — you can run modules and view results, but downloading reports, emailing reports, and Workspace (connections, jobs, saved runs) aren\'t available for your role.';
   document.getElementById('licbar').before(note);
 }
 </script>
