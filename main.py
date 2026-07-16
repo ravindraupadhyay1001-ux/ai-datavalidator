@@ -2357,7 +2357,10 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
             df = pd.read_json(io.BytesIO(raw), lines=True, encoding=enc)
             return _labelled(df, "JSON Lines")
 
-        if ext in (".xlsx", ".xls"):
+        if ext in (".xlsx", ".xls", ".xlsm"):
+            # .xlsm (macro-enabled Excel) is the same OOXML zip container as
+            # .xlsx -- openpyxl reads the cell data fine, it just never
+            # touches the embedded VBA macros.
             return _labelled(pd.read_excel(io.BytesIO(raw)), "Excel")
 
         if ext == ".parquet":
@@ -2392,14 +2395,20 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
             df_pdf, pdf_text = _parse_pdf(raw)
             if not df_pdf.empty and len(df_pdf.columns) > 1:
                 return _labelled(df_pdf, "PDF")
-            # No embedded tables -- use Claude LLM to interpret the text
+            # No embedded tables -- use the LLM to interpret the text. `name`
+            # is this function's own filename parameter -- there is no
+            # `upload` object in scope here (that's the caller's parameter),
+            # referencing it raised a NameError on every text-only PDF.
             if pdf_text.strip():
-                result = parse_unstructured(pdf_text.encode("utf-8"), upload.filename or "file.pdf")  # OCR-UNCERTAIN: fallback filename literal cut off at photo edge, exact text uncertain
-
-            if not result.get("error") and result.get("rows"):
-                cols = result["columns"]
-                rows = [dict(zip(cols, r)) for r in result["rows"]]
-                return _labelled(pd.DataFrame(rows, columns=cols), "PDF (AI-parsed)")
+                result = parse_unstructured(pdf_text.encode("utf-8"), name or "file.pdf")
+                # parse_unstructured returns "rows" as a list of dicts already
+                # (record-oriented, keyed by column name) -- zipping them
+                # against `cols` treated each dict as an iterable of its own
+                # keys, silently producing {"col": "col"} garbage instead of
+                # the actual parsed values.
+                if not result.get("error") and result.get("rows"):
+                    cols = result["columns"]
+                    return _labelled(pd.DataFrame(result["rows"], columns=cols), "PDF (AI-parsed)")
             raise ValueError("Could not extract any structured data from this PDF.")
 
         # -- FpML (Financial products Markup Language)
