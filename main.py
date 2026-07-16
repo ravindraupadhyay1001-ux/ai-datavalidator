@@ -22451,6 +22451,20 @@ async def ws_save_job(request: Request):
 
 
 
+@app.get("/api/ws/jobs/{job_id}")
+async def ws_get_job(job_id: str, request: Request):
+    """Single-job fetch for the Edit flow -- mirrors GET /api/ws/connections/{id}.
+    get_job() already decodes sla_json/fan_out_pairs/ai_hints_json into plain
+    dicts/lists, unlike the raw list endpoint, so this is the version the
+    edit form should actually consume."""
+    _ws_check()
+    username = _ws_get_user(request)
+    job = _ws_db.get_job(job_id, username)
+    if not job:
+        raise HTTPException(404, f"Job '{job_id}' not found.")
+    return JSONResponse(_sanitize_json(job))
+
+
 @app.delete("/api/ws/jobs/{job_id}")
 
 async def ws_delete_job(job_id: str, request: Request):

@@ -466,6 +466,8 @@
           <select id="jb-conna" class="inp conn-select"><option value="">&#128268; Saved Connector</option></select>
           <select id="jb-connb" class="inp conn-select"><option value="">&#128268; Saved Connector</option></select>
           <p id="jb-conn-help" class="col-span-2 text-[11px] text-gray-500 -mt-1">Left = conn_a / source connection. Right = conn_b (compare only -- ignored for quality/profile).</p>
+          <input id="jb-keycols" placeholder="Key columns (optional, comma-separated)" class="inp">
+          <input id="jb-exclcols" placeholder="Exclude columns (optional, comma-separated)" class="inp">
           <div>
             <input id="jb-cron" placeholder="cron e.g. 0 6 * * *" class="inp w-full">
             <div class="flex flex-wrap gap-1 mt-1">
@@ -478,6 +480,10 @@
             </div>
           </div>
           <input id="jb-email" placeholder="notify email" class="inp">
+          <div class="col-span-2">
+            <button type="button" onclick="jbAiSuggest()" class="btn-ghost rounded-lg px-3 py-1.5 text-xs">&#10024; AI Suggest key columns, schedule &amp; SLA</button>
+            <span id="jb-ai-status" class="text-xs text-gray-500 ml-2"></span>
+          </div>
           <p class="col-span-2 text-[11px] text-gray-500 -mt-1">&#9889; Near real-time reconciliation: point conn_a/conn_b at Kafka connections (set a <code>group_id</code> in the connection config so each poll only reads new messages) and schedule at 1&ndash;5 minutes for continuous streaming reconciliation.</p>
           <p class="col-span-2 text-[11px] text-gray-500 -mt-1">&#129302; Quality/profile jobs automatically get AI-suggested hints (nullable columns, key candidates, BFSI validators) on every run, same as the interactive AI Copilot mode -- no setup needed.</p>
           <label class="col-span-2 flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
@@ -504,7 +510,10 @@
                 <input type="checkbox" id="jb-sla-alert-only-on-fail" class="accent-sky-500"> Only email on SLA breach (otherwise every successful run also emails a report)</label>
             </div>
           </details>
-          <button onclick="saveJob()" class="btn rounded-lg px-3 py-1 w-32 font-medium">Save</button>
+          <div class="col-span-2 flex items-center gap-3">
+            <button id="jb-save-btn" onclick="saveJob()" class="btn rounded-lg px-3 py-1 w-40 font-medium">Save</button>
+            <a id="jb-cancel-edit" onclick="cancelJbEdit()" class="hidden text-xs text-gray-400 cursor-pointer hover:text-gray-200">Cancel edit</a>
+          </div>
         </div>
         <div id="jb-list"></div>
       </div>
@@ -2834,13 +2843,18 @@ function _isFastCron(cron){
   const m = cron.trim().split(/\s+/)[0];
   return /^\*\/[1-5]$/.test(m) || m === '*';
 }
+let _jbEditingId = null;
 async function loadJobs(){ const rows=await fetch('/api/ws/jobs').then(r=>r.json());
-  document.getElementById('jb-list').innerHTML=rows.length?rows.map(j=>row(`<span><b>${esc(j.name)}</b> <span class="text-gray-500">[${j.action}] #${j.id} ${j.schedule_cron||'manual'} &middot; ${j.status||''}</span>
+  document.getElementById('jb-list').innerHTML=rows.length?rows.map(j=>`
+    ${row(`<span><b>${esc(j.name)}</b> <span class="text-gray-500">[${j.action}] #${j.id} ${j.schedule_cron||'manual'} &middot; ${j.status||''}</span>
     ${j.fan_out_pairs?'<span class="badge ml-1" style="background:rgba(31,111,107,.12);color:#1f6f6b">&#128230; bulk</span>':''}
     ${_isFastCron(j.schedule_cron)?'<span class="badge ml-1" style="background:rgba(2,132,199,.12);color:#0369a1">&#9889; near real-time</span>':''}</span>
     <span class="flex gap-2"><button onclick="runJob(${j.id})" class="btn rounded px-2 py-0.5 text-xs">Run</button>
-    <button onclick="jobRuns(${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">History</button>
-    <button onclick="delJob(${j.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join(''):'<div class="text-gray-500 text-sm">No jobs.</div>'; }
+    <button onclick="editJob(${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Edit</button>
+    <button onclick="toggleJobHistory(${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">History</button>
+    <button onclick="delJob(${j.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)}
+    <div id="jb-hist-${j.id}" class="hidden card rounded-lg p-2 -mt-1 mb-2 text-xs"></div>
+  `).join(''):'<div class="text-gray-500 text-sm">No jobs.</div>'; }
 function onJbActionChange(){
   const action = document.getElementById('jb-action').value;
   const help = document.getElementById('jb-conn-help');
@@ -2848,17 +2862,7 @@ function onJbActionChange(){
     ? 'Left = conn_a. Right = conn_b.'
     : 'Left = source connection. Right is unused for quality/profile.';
 }
-async function saveJob(){
-  const jb_action=document.getElementById('jb-action'), jb_name=document.getElementById('jb-name'), jb_cron=document.getElementById('jb-cron'),
-        jb_email=document.getElementById('jb-email'), jb_conna=document.getElementById('jb-conna'), jb_connb=document.getElementById('jb-connb');
-  const action=jb_action.value; const body={name:jb_name.value,action,schedule_cron:jb_cron.value||null,notify_email:jb_email.value||null};
-  if(action==='compare'){body.conn_a_id=+jb_conna.value||null;body.conn_b_id=+jb_connb.value||null;}else{body.source_conn_id=+jb_conna.value||null;}
-  if(action==='compare' && document.getElementById('jb-bulk-enable')?.checked){
-    const lines = (document.getElementById('jb-bulk-pairs').value||'').split('\n').map(l=>l.trim()).filter(Boolean);
-    const pairs = lines.map(l=>{ const [a,b,...labelParts]=l.split(','); return {conn_a_id:+((a||'').trim())||null, conn_b_id:+((b||'').trim())||null, label:(labelParts.join(',')||'').trim()||undefined}; })
-      .filter(p=>p.conn_a_id && p.conn_b_id);
-    if(pairs.length) body.fan_out_pairs = pairs;
-  }
+function _jbCollectSla(){
   const sla = {};
   const maxBreaks = document.getElementById('jb-sla-max-breaks')?.value;
   const minDq = document.getElementById('jb-sla-min-dq')?.value;
@@ -2868,15 +2872,102 @@ async function saveJob(){
   if(maxNull) sla.max_null_pct = +maxNull;
   if(document.getElementById('jb-sla-schema-drift')?.checked) sla.alert_on_schema_drift = true;
   if(document.getElementById('jb-sla-alert-only-on-fail')?.checked) sla.alert_only_on_fail = true;
+  return sla;
+}
+async function saveJob(){
+  const jb_action=document.getElementById('jb-action'), jb_name=document.getElementById('jb-name'), jb_cron=document.getElementById('jb-cron'),
+        jb_email=document.getElementById('jb-email'), jb_conna=document.getElementById('jb-conna'), jb_connb=document.getElementById('jb-connb');
+  const action=jb_action.value; const body={name:jb_name.value,action,schedule_cron:jb_cron.value||null,notify_email:jb_email.value||null,
+    key_columns:document.getElementById('jb-keycols')?.value||null, exclude_columns:document.getElementById('jb-exclcols')?.value||null};
+  if(action==='compare'){body.conn_a_id=+jb_conna.value||null;body.conn_b_id=+jb_connb.value||null;}else{body.source_conn_id=+jb_conna.value||null;}
+  if(action==='compare' && document.getElementById('jb-bulk-enable')?.checked){
+    const lines = (document.getElementById('jb-bulk-pairs').value||'').split('\n').map(l=>l.trim()).filter(Boolean);
+    const pairs = lines.map(l=>{ const [a,b,...labelParts]=l.split(','); return {conn_a_id:+((a||'').trim())||null, conn_b_id:+((b||'').trim())||null, label:(labelParts.join(',')||'').trim()||undefined}; })
+      .filter(p=>p.conn_a_id && p.conn_b_id);
+    if(pairs.length) body.fan_out_pairs = pairs;
+  }
+  const sla = _jbCollectSla();
   if(Object.keys(sla).length) body.sla = sla;
+  if(_jbEditingId) body.id = _jbEditingId;
   await J('POST','/api/ws/jobs',body);
-  ['jb-name','jb-cron','jb-email','jb-bulk-pairs','jb-sla-max-breaks','jb-sla-min-dq','jb-sla-max-null'].forEach(i=>document.getElementById(i).value='');
-  ['jb-conna','jb-connb'].forEach(i=>document.getElementById(i).value='');
-  ['jb-sla-schema-drift','jb-sla-alert-only-on-fail'].forEach(i=>{ const el=document.getElementById(i); if(el) el.checked=false; });
-  if(document.getElementById('jb-bulk-enable')){ document.getElementById('jb-bulk-enable').checked=false; document.getElementById('jb-bulk-panel').classList.add('hidden'); }
+  cancelJbEdit();
   loadJobs(); }
 async function runJob(id){ const r=await J('POST',`/api/ws/jobs/${id}/run`); alert('Run started: '+JSON.stringify(r)); loadJobs(); }
-async function jobRuns(id){ const r=await fetch(`/api/ws/jobs/${id}/runs`).then(x=>x.json()); alert(r.map(x=>`${x.started_at} &middot; ${x.status} ${x.error_msg||''}`).join('\n')||'No runs yet'); }
+async function toggleJobHistory(id){
+  const box = document.getElementById(`jb-hist-${id}`);
+  if(!box) return;
+  if(!box.classList.contains('hidden')){ box.classList.add('hidden'); return; }
+  box.classList.remove('hidden');
+  box.innerHTML = '<span class="text-gray-500">Loading&hellip;</span>';
+  const runs = await fetch(`/api/ws/jobs/${id}/runs`).then(x=>x.json()).catch(()=>[]);
+  if(!runs.length){ box.innerHTML = '<span class="text-gray-500">No runs yet.</span>'; return; }
+  box.innerHTML = `<table class="w-full text-xs"><thead class="text-gray-500"><tr>
+    <th class="text-left p-1">Started</th><th class="text-left p-1">Status</th><th class="text-left p-1">Summary / Error</th></tr></thead><tbody>${
+    runs.map(r=>{
+      let summary = '';
+      if(r.status==='success' && r.summary_json){ try{ summary = Object.entries(JSON.parse(r.summary_json)).map(([k,v])=>`${k}: ${v}`).join(', '); }catch(e){} }
+      const statusColor = r.status==='success' ? '#059669' : r.status==='failed' ? '#dc2626' : '#b45309';
+      return `<tr class="border-t border-[var(--line)]"><td class="p-1">${esc((r.started_at||'').replace('T',' ').slice(0,19))}</td>
+        <td class="p-1"><span style="color:${statusColor}">${esc(r.status||'')}</span></td>
+        <td class="p-1">${esc(r.error_msg || summary || '')}</td></tr>`;
+    }).join('')
+  }</tbody></table>`;
+}
+async function editJob(id){
+  const j = await fetch(`/api/ws/jobs/${id}`).then(x=>x.json());
+  if(j.detail){ alert(j.detail); return; }
+  _jbEditingId = id;
+  document.getElementById('jb-name').value = j.name || '';
+  document.getElementById('jb-action').value = j.action || 'compare';
+  onJbActionChange();
+  document.getElementById('jb-conna').value = j.action==='compare' ? (j.conn_a_id||'') : (j.source_conn_id||'');
+  document.getElementById('jb-connb').value = j.conn_b_id || '';
+  document.getElementById('jb-keycols').value = j.key_columns || '';
+  document.getElementById('jb-exclcols').value = j.exclude_columns || '';
+  document.getElementById('jb-cron').value = j.schedule_cron || '';
+  document.getElementById('jb-email').value = j.notify_email || '';
+  const sla = j.sla || {};
+  document.getElementById('jb-sla-max-breaks').value = sla.max_breaks ?? '';
+  document.getElementById('jb-sla-min-dq').value = sla.min_dq_score ?? '';
+  document.getElementById('jb-sla-max-null').value = sla.max_null_pct ?? '';
+  document.getElementById('jb-sla-schema-drift').checked = !!sla.alert_on_schema_drift;
+  document.getElementById('jb-sla-alert-only-on-fail').checked = !!sla.alert_only_on_fail;
+  const pairs = j.fan_out_pairs || [];
+  if(pairs.length){
+    document.getElementById('jb-bulk-enable').checked = true;
+    document.getElementById('jb-bulk-panel').classList.remove('hidden');
+    document.getElementById('jb-bulk-pairs').value = pairs.map(p=>`${p.conn_a_id},${p.conn_b_id}${p.label?','+p.label:''}`).join('\n');
+  }
+  document.getElementById('jb-save-btn').textContent = `Update "${j.name}"`;
+  document.getElementById('jb-cancel-edit').classList.remove('hidden');
+  document.getElementById('jb-name').scrollIntoView({behavior:'smooth', block:'center'});
+}
+function cancelJbEdit(){
+  _jbEditingId = null;
+  ['jb-name','jb-cron','jb-email','jb-bulk-pairs','jb-sla-max-breaks','jb-sla-min-dq','jb-sla-max-null','jb-keycols','jb-exclcols','jb-conna','jb-connb']
+    .forEach(i=>{ const el=document.getElementById(i); if(el) el.value=''; });
+  ['jb-sla-schema-drift','jb-sla-alert-only-on-fail'].forEach(i=>{ const el=document.getElementById(i); if(el) el.checked=false; });
+  if(document.getElementById('jb-bulk-enable')){ document.getElementById('jb-bulk-enable').checked=false; document.getElementById('jb-bulk-panel').classList.add('hidden'); }
+  document.getElementById('jb-save-btn').textContent = 'Save';
+  document.getElementById('jb-cancel-edit').classList.add('hidden');
+  const status = document.getElementById('jb-ai-status'); if(status) status.textContent = '';
+}
+async function jbAiSuggest(){
+  const action = document.getElementById('jb-action').value;
+  const connId = document.getElementById('jb-conna').value;
+  const status = document.getElementById('jb-ai-status');
+  if(!connId){ if(status) status.textContent = 'Pick a Saved Connector on the left first.'; return; }
+  if(status) status.textContent = 'Asking the AI…';
+  const body = action==='compare' ? {conn_a_id:+connId, action} : {source_conn_id:+connId, action};
+  const r = await J('POST','/api/ws/jobs/ai-suggest', body);
+  const s = r.suggestion || {};
+  if(!Object.keys(s).length){ if(status) status.textContent = 'No suggestion available (no LLM configured, or the call failed).'; return; }
+  if(s.key_columns) document.getElementById('jb-keycols').value = s.key_columns;
+  if(s.schedule) document.getElementById('jb-cron').value = s.schedule;
+  if(s.max_breaks != null) document.getElementById('jb-sla-max-breaks').value = s.max_breaks;
+  if(s.min_dq_score != null) document.getElementById('jb-sla-min-dq').value = s.min_dq_score;
+  if(status) status.textContent = s.description || 'Suggestion applied.';
+}
 async function delJob(id){ if(confirm('Delete job?')){await fetch(`/api/ws/jobs/${id}`,{method:'DELETE'});loadJobs();} }
 async function loadSavedRuns(){ const rows=await fetch('/api/ws/saved-runs').then(r=>r.json());
   document.getElementById('sv-list').innerHTML=rows.length?rows.map(s=>row(`<span><b>${esc(s.name)}</b> <span class="text-gray-500">[${s.action}] ${s.saved_at||''}</span></span>
