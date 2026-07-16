@@ -1193,6 +1193,28 @@ async function rerunCompare(prefix){
   renderCompareResult(data, t0);
   out.scrollTop = priorScroll;
 }
+// Renders the full row content for "only in X" exceptions -- the backend
+// already returns each row's complete column data (r.row), not just the
+// join-key value, but the table only ever displayed r.key. Column headers
+// come from the first row's own keys, so this works regardless of schema.
+function onlyInRowsTable(rows, sideName){
+  rows = rows || [];
+  if(!rows.length) return `<span class="text-gray-500">No rows exclusive to ${esc(sideName)}.</span>`;
+  const cols = Object.keys(rows[0].row || {});
+  if(!cols.length){
+    // Fallback for any legacy/unexpected shape without row data -- at least show the key.
+    return `<div class="card rounded-xl overflow-auto"><table class="w-full text-xs"><tbody>${
+      rows.slice(0,50).map(r=>`<tr class="border-t border-[var(--line)]"><td class="p-2 font-mono">${esc(r.key)}</td></tr>`).join('')
+    }</tbody></table></div>`;
+  }
+  return `<div class="card rounded-xl overflow-auto"><table class="w-full text-xs">
+    <thead class="text-gray-400"><tr>${cols.map(c=>`<th class="p-2 text-left whitespace-nowrap">${esc(c)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.slice(0,50).map(r=>`<tr class="border-t border-[var(--line)]">${
+      cols.map(c=>`<td class="p-2 font-mono whitespace-nowrap">${esc(r.row?.[c] ?? '')}</td>`).join('')
+    }</tr>`).join('')}</tbody>
+  </table></div>
+  ${rows.length>50?`<div class="text-[11px] text-gray-500 mt-1">Showing first 50 of ${rows.length} rows.</div>`:''}`;
+}
 function renderCompareResult(data, t0, mode){
   mode = mode || 'standard'; // 'standard' -> Summary/Exceptions/Logs; 'ai' -> AI Copilot (report + chat combined)/Logs
   const out=document.getElementById('cmp-out');
@@ -1276,17 +1298,13 @@ function renderCompareResult(data, t0, mode){
     ${(data.excluded_meta_cols||[]).length ? `<div class="card rounded-xl p-3 mb-4 text-xs bg-blue-50" style="background:rgba(37,99,235,.05)">
       &#8505;&#65039; <b>Auto-excluded metadata columns</b> &mdash; removed automatically because they are audit/ETL metadata and would cause spurious exceptions: ${data.excluded_meta_cols.map(esc).join(', ')}
     </div>` : ''}
-    <details class="mb-3" ${(c.file1_only||0)>0?'':'open'}>
+    <details class="mb-3" ${(c.file1_only||0)>0?'open':''}>
       <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(220,38,38,.06)">&times; Only in ${esc(f1.name||'File 1')} &mdash; not present in ${esc(f2.name||'File 2')} (${c.file1_only??0} rows)</summary>
-      <div class="mt-2 text-xs">${(data.only_in_file1||[]).length ? `<div class="card rounded-xl overflow-auto"><table class="w-full text-xs"><tbody>${
-        data.only_in_file1.slice(0,50).map(r=>`<tr class="border-t border-[var(--line)]"><td class="p-2 font-mono">${esc(r.key)}</td></tr>`).join('')
-      }</tbody></table></div>` : `<span class="text-gray-500">No rows exclusive to ${esc(f1.name||'File 1')}.</span>`}</div>
+      <div class="mt-2 text-xs">${onlyInRowsTable(data.only_in_file1, f1.name||'File 1')}</div>
     </details>
-    <details class="mb-3" ${(c.file2_only||0)>0?'':'open'}>
+    <details class="mb-3" ${(c.file2_only||0)>0?'open':''}>
       <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(217,119,6,.06)">&check; Only in ${esc(f2.name||'File 2')} &mdash; not present in ${esc(f1.name||'File 1')} (${c.file2_only??0} rows)</summary>
-      <div class="mt-2 text-xs">${(data.only_in_file2||[]).length ? `<div class="card rounded-xl overflow-auto"><table class="w-full text-xs"><tbody>${
-        data.only_in_file2.slice(0,50).map(r=>`<tr class="border-t border-[var(--line)]"><td class="p-2 font-mono">${esc(r.key)}</td></tr>`).join('')
-      }</tbody></table></div>` : `<span class="text-gray-500">No rows exclusive to ${esc(f2.name||'File 2')}.</span>`}</div>
+      <div class="mt-2 text-xs">${onlyInRowsTable(data.only_in_file2, f2.name||'File 2')}</div>
     </details>
     <details class="mb-4" ${(c.modified||0)>0?'open':''}>
       <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(217,119,6,.08)">&equals; Rows in both files with changed values (${c.modified??0})</summary>
