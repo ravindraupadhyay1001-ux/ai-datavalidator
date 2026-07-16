@@ -2902,23 +2902,62 @@ async function saveJob(){
   await J('POST','/api/ws/jobs',body);
   cancelJbEdit();
   loadJobs(); }
-async function runJob(id){
-  const r = await J('POST', `/api/ws/jobs/${id}/run`);
-  if(r && r.detail){ alert('❌ Run failed to start: ' + r.detail); loadJobs(); return; }
-  let msg;
-  if(r.status === 'success'){
-    const summaryLine = r.summary ? Object.entries(r.summary).map(([k,v])=>`${k}: ${v}`).join(', ') : '';
-    msg = '✅ Run completed successfully.' + (summaryLine ? '\n' + summaryLine : '');
-  } else if(r.status === 'failed'){
-    msg = '❌ Run failed: ' + (r.error || 'Unknown error.');
-  } else {
-    msg = 'Run finished with status: ' + (r.status || 'unknown');
+function _jbRunStatusEl(id){
+  let el = document.getElementById(`jb-runstatus-${id}`);
+  if(!el){
+    const histBox = document.getElementById(`jb-hist-${id}`);
+    el = document.createElement('div');
+    el.id = `jb-runstatus-${id}`;
+    el.className = 'text-xs text-gray-500 mb-1';
+    histBox.parentNode.insertBefore(el, histBox);
   }
-  if(r.email_sent) msg += '\n\n📧 Notification email sent.';
-  else if(r.email_error) msg += '\n\n⚠️ Notification email failed to send: ' + r.email_error;
-  else if(r.email_skipped_reason) msg += '\n\nℹ️ No email sent: ' + r.email_skipped_reason;
-  alert(msg);
-  loadJobs();
+  return el;
+}
+async function runJob(id){
+  const status = _jbRunStatusEl(id);
+  status.textContent = '⏳ Run started, waiting for it to finish (this can take a while for slow or unreachable data sources)…';
+  let started;
+  try{
+    started = await J('POST', `/api/ws/jobs/${id}/run`);
+  }catch(e){
+    status.textContent = '❌ Could not start the run: ' + e;
+    return;
+  }
+  if(started && started.detail){ status.textContent = '❌ Run failed to start: ' + started.detail; return; }
+  const runId = started.run_id;
+
+  // Poll instead of waiting on one long request -- a slow/unreachable
+  // connector can take minutes, and a platform proxy (Railway) will drop a
+  // held-open request well before that, making the button look dead even
+  // though the job is still running server-side. Give up after ~10 minutes
+  // and point the user at History instead of polling forever.
+  const maxAttempts = 200, intervalMs = 3000;
+  for(let attempt = 0; attempt < maxAttempts; attempt++){
+    await new Promise(res => setTimeout(res, intervalMs));
+    let r;
+    try{ r = await fetch(`/api/ws/runs/${runId}`).then(x=>x.json()); }
+    catch(e){ continue; }
+    if(r.status === 'running') continue;
+
+    let msg;
+    if(r.status === 'success'){
+      const summaryLine = r.summary ? Object.entries(r.summary).map(([k,v])=>`${k}: ${v}`).join(', ') : '';
+      msg = '✅ Run completed successfully.' + (summaryLine ? ' ' + summaryLine : '');
+    } else if(r.status === 'failed'){
+      msg = '❌ Run failed: ' + (r.error || 'Unknown error.');
+    } else {
+      msg = 'Run finished with status: ' + (r.status || 'unknown');
+    }
+    if(r.email_sent) msg += ' 📧 Email sent.';
+    else if(r.email_error) msg += ' ⚠️ Email failed: ' + r.email_error;
+    else if(r.email_skipped_reason) msg += ' ℹ️ No email: ' + r.email_skipped_reason;
+    // loadJobs() rebuilds the whole row (to refresh the ok/error badge), which
+    // wipes out our status element -- re-fetch/create it after, not before.
+    await loadJobs();
+    _jbRunStatusEl(id).textContent = msg;
+    return;
+  }
+  status.textContent = 'Still running after 10 minutes -- check History for the result once it finishes.';
 }
 async function toggleJobHistory(id){
   const box = document.getElementById(`jb-hist-${id}`);

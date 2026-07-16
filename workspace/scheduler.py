@@ -83,8 +83,26 @@ def unregister_job(job_id):
 
 def trigger_job_now(job_id, username):
     """Manual trigger -- runs synchronously, returns {"run_id", "email_sent",
-    "email_skipped_reason", "email_error"}."""
+    "email_skipped_reason", "email_error"}. Kept for callers that genuinely
+    want to block until finished; the "Run Now" button uses
+    trigger_job_now_background() instead so a slow/unreachable connector
+    can't hang the HTTP request."""
     return _execute_job(job_id, username)
+
+
+def trigger_job_now_background(job_id, username):
+    """Create the run row immediately (fast -- one DB insert) and hand the
+    actual fetch/analyze/email work to a background thread, returning the
+    run_id right away. The caller polls get_run(run_id) / list_runs() for
+    the real outcome instead of waiting on a request that could otherwise
+    take minutes for a slow or unreachable data source."""
+    import threading
+    run_id = db.create_run(job_id, username)
+    thread = threading.Thread(
+        target=_run_job_body, args=(run_id, job_id, username), daemon=True
+    )
+    thread.start()
+    return run_id
 
 
 # --------------------------------------------------------------------------
@@ -243,6 +261,18 @@ def _execute_job(job_id, username):
     meaningless "triggered" placeholder. The cron scheduler (APScheduler)
     calls this too but ignores the return value, so this stays safe there."""
     run_id = db.create_run(job_id, username)
+    return _run_job_body(run_id, job_id, username)
+
+
+def _run_job_body(run_id, job_id, username):
+    """The actual fetch + analyze + email work for an already-created run.
+    Split out from _execute_job so a manual "Run Now" can create the run row
+    (fast) and hand this off to a background thread instead of blocking the
+    HTTP request for however long the data fetch + email take -- a slow or
+    unreachable connector could take minutes, and Railway's own proxy will
+    drop the connection well before that, making the button look like it did
+    nothing even though the job may still finish (and the result would only
+    show up later in History)."""
     email_info = {"email_sent": False, "email_skipped_reason": None, "email_error": None}
     try:
         job = db.get_job(job_id, username)
@@ -262,7 +292,6 @@ def _execute_job(job_id, username):
             raise ValueError(f"Scheduled action '{action}' not supported.")
 
         summary = result.get("counts") or result.get("dimensions") or {}
-        db.finish_run(run_id, "success", summary=summary)
         db.update_job_status(job_id, "ok")
         sla = job.get("sla") or {}
         sla_result = _evaluate_sla(sla, result)
@@ -279,9 +308,9 @@ def _execute_job(job_id, username):
             except Exception as e:
                 print(f"[scheduler] email failed for job {job_id}: {e}")
                 email_info["email_error"] = str(e)
+        db.finish_run(run_id, "success", summary=summary, **email_info)
         return {"run_id": run_id, **email_info}
     except Exception as e:
-        db.finish_run(run_id, "failed", error_msg=str(e))
         db.update_job_status(job_id, "error")
         print(f"[scheduler] job {job_id} failed: {e}")
         # A job that silently stops working (bad credentials, connector down,
@@ -299,6 +328,7 @@ def _execute_job(job_id, username):
         except Exception as _email_exc:
             print(f"[scheduler] failure-alert email also failed for job {job_id}: {_email_exc}")
             email_info["email_error"] = str(_email_exc)
+        db.finish_run(run_id, "failed", error_msg=str(e), **email_info)
         return {"run_id": run_id, **email_info}
 
 

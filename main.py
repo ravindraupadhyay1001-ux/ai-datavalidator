@@ -128,6 +128,7 @@ try:
         schedule_job as _ws_schedule_job,
         unregister_job as _ws_unregister_job,
         trigger_job_now as _ws_trigger_now,
+        trigger_job_now_background as _ws_trigger_now_bg,
     )
 
     from workspace import connectors as _ws_connectors
@@ -19091,29 +19092,41 @@ async def ws_run_job(job_id: str, request: Request):
         raise HTTPException(404, "Job not found.")
 
     try:
-        # trigger_job_now() runs the job to completion synchronously (fetch
-        # + analyze + email) before returning, so the real pass/fail result
-        # is already known by the time we respond -- return it instead of a
-        # meaningless "triggered" placeholder that told the user nothing.
-        trigger_result = await asyncio.to_thread(_ws_trigger_now, job_id, username)
-        run_id = trigger_result["run_id"]
-        run = _ws_db.get_run(run_id, username)
-        if not run:
-            return JSONResponse({"run_id": run_id, "status": "unknown"})
-        summary = json.loads(run["summary_json"]) if run.get("summary_json") else None
-        return JSONResponse({
-            "run_id": run_id,
-            "status": run.get("status"),
-            "summary": summary,
-            "error": run.get("error_msg"),
-            "email_sent": trigger_result.get("email_sent", False),
-            "email_skipped_reason": trigger_result.get("email_skipped_reason"),
-            "email_error": trigger_result.get("email_error"),
-        })
+        # Fire-and-poll instead of blocking the request on the full fetch +
+        # analyze + email pipeline: a slow or unreachable connector can take
+        # minutes, and a platform proxy (e.g. Railway) will drop the
+        # connection well before that -- the button would look like it did
+        # nothing even though the job kept running server-side. The run row
+        # is created synchronously (fast) and returned immediately; the
+        # frontend polls GET /api/ws/runs/{run_id} for the real outcome.
+        run_id = await asyncio.to_thread(_ws_trigger_now_bg, job_id, username)
+        return JSONResponse({"run_id": run_id, "status": "running"})
 
     except Exception as exc:
 
         raise HTTPException(500, str(exc)) from exc
+
+
+@app.get("/api/ws/runs/{run_id}")
+async def ws_get_run(run_id: str, request: Request):
+    """Poll a single run's status -- used by the "Run Now" button to show
+    the real pass/fail/summary/email outcome once a background run finishes,
+    without blocking the original request on it."""
+    _ws_check()
+    username = _ws_get_user(request)
+    run = _ws_db.get_run(run_id, username)
+    if not run:
+        raise HTTPException(404, "Run not found.")
+    summary = json.loads(run["summary_json"]) if run.get("summary_json") else None
+    return JSONResponse({
+        "run_id": run["id"],
+        "status": run.get("status"),
+        "summary": summary,
+        "error": run.get("error_msg"),
+        "email_sent": bool(run.get("email_sent")),
+        "email_skipped_reason": run.get("email_skipped_reason"),
+        "email_error": run.get("email_error"),
+    })
 
 
 @app.get("/api/ws/jobs/{job_id}/runs")

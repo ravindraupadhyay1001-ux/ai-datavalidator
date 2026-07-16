@@ -196,6 +196,12 @@ _DDL = [
     "ALTER TABLE ws_saved_runs ADD COLUMN conn_a_id INTEGER",
     "ALTER TABLE ws_saved_runs ADD COLUMN conn_b_id INTEGER",
     "ALTER TABLE ws_saved_runs ADD COLUMN source_conn_id INTEGER",
+    # Email outcome per run -- a background-run job can't return this value
+    # to whoever triggered it (no one's still waiting on it), so it has to be
+    # persisted for the "Run Now" button to poll and show the real reason.
+    "ALTER TABLE ws_run_history ADD COLUMN email_sent INTEGER",
+    "ALTER TABLE ws_run_history ADD COLUMN email_skipped_reason TEXT",
+    "ALTER TABLE ws_run_history ADD COLUMN email_error TEXT",
     """CREATE TABLE IF NOT EXISTS ws_recon_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         dataset_label TEXT,
@@ -639,12 +645,16 @@ def create_run(job_id, username):
     return cur.lastrowid
 
 
-def finish_run(run_id, status, summary=None, error_msg=None):
+def finish_run(run_id, status, summary=None, error_msg=None,
+                email_sent=None, email_skipped_reason=None, email_error=None):
     conn = _conn()
     conn.cursor().execute(
         f"UPDATE ws_run_history SET finished_at={_ph()}, status={_ph()}, "
-        f"summary_json={_ph()}, error_msg={_ph()} WHERE id={_ph()}",
-        (_now(), status, _b64(summary) if summary else None, error_msg, run_id),
+        f"summary_json={_ph()}, error_msg={_ph()}, email_sent={_ph()}, "
+        f"email_skipped_reason={_ph()}, email_error={_ph()} WHERE id={_ph()}",
+        (_now(), status, _b64(summary) if summary else None, error_msg,
+         1 if email_sent else 0 if email_sent is not None else None,
+         email_skipped_reason, email_error, run_id),
     )
     conn.commit()
 
