@@ -724,6 +724,15 @@ function stat(label, val, color){
 }
 
 function actionBar(sessionId, elapsedSec){
+  // Run Only accounts can run modules and view results, but can't export
+  // data outside the app or push it into Workspace -- the backend rejects
+  // all three (download/email/save) for this role, so don't even show them.
+  if (CURRENT_ROLE === 'readonly') {
+    return `<div class="card rounded-xl p-3 mb-4 flex items-center gap-2 flex-wrap">
+      <span class="text-xs text-gray-500">Run Only access — download, email, and Save to Workspace aren't available for your role.</span>
+      ${elapsedSec!=null?`<span class="ml-auto text-xs text-gray-500">&#9201; ${elapsedSec}s</span>`:''}
+    </div>`;
+  }
   return `<div class="card rounded-xl p-3 mb-4 flex items-center gap-2 flex-wrap">
     <span class="text-xs font-semibold text-gray-400 mr-1">&#128190; EXPORT / SHARE:</span>
     <a href="/download/${sessionId}" class="btn-emerald btn rounded-lg px-3 py-1.5 text-xs">&#11015; Download Excel</a>

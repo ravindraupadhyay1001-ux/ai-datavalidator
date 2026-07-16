@@ -306,6 +306,24 @@ def _require_settings_admin(request: Request) -> None:
         raise HTTPException(403, "Admin access required to view or change Settings.")
 
 
+def _require_not_readonly(request: Request) -> None:
+    """Run Only (readonly) users can run analysis modules and view results on
+    screen, but cannot export data outside the app -- no file download, no
+    emailed report."""
+    try:
+        username = _ws_resolve_username(request) or ""
+    except Exception:
+        username = ""
+    role = "analyst"
+    if username:
+        try:
+            role = getattr(request.state, "role", None) or _ws_db.get_user_role(username)
+        except Exception:
+            role = "analyst"
+    if role == "readonly":
+        raise HTTPException(403, "Run Only accounts cannot download or email reports.")
+
+
 @app.post("/api/license/activate")
 async def license_activate(request: Request):
     """Activate a new license key. Client pastes their key into Settings UI. Admin only."""
@@ -15846,7 +15864,7 @@ async def index(request: Request):
 
 
 @app.get("/login", response_class=HTMLResponse)
-async def login_page(request: Request, error: str = "", registered: str = ""):
+async def login_page(request: Request, error: str = "", registered: str = "", reset: str = ""):
     """Serve the login page. Redirect to app if already logged in."""
     try:
         from workspace.local_auth import LOCAL_AUTH_ENABLED, verify_session, has_any_users
@@ -15879,6 +15897,7 @@ async def login_page(request: Request, error: str = "", registered: str = ""):
         error=error,
         show_register=show_register,
         registered=registered,
+        reset=reset,
     ))
 
 
@@ -15997,6 +16016,95 @@ async def register_submit(request: Request):
         ))
 
 
+@app.get("/forgot-password", response_class=HTMLResponse)
+async def forgot_password_page():
+    try:
+        from workspace.local_auth import LOCAL_AUTH_ENABLED
+        if not LOCAL_AUTH_ENABLED:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url="/login", status_code=302)
+    except Exception:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/login", status_code=302)
+    return HTMLResponse(_render_forgot_password_page())
+
+
+@app.post("/forgot-password", response_class=HTMLResponse)
+async def forgot_password_submit(request: Request):
+    """Look up the account by email, and if found (and an email is on file),
+    send the username plus a 30-minute password-reset link. Always shows the
+    same generic confirmation regardless of whether a match was found, so
+    this can't be used to enumerate registered emails/usernames."""
+    generic_message = (
+        "If that email matches an account, we've sent the username and a "
+        "password reset link to it. Check your inbox (and spam folder)."
+    )
+    try:
+        from workspace.local_auth import LOCAL_AUTH_ENABLED, request_password_reset
+        if not LOCAL_AUTH_ENABLED:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url="/login", status_code=302)
+        form = await request.form()
+        identifier = str(form.get("identifier", "")).strip()
+        if identifier:
+            result = request_password_reset(identifier)
+            if result:
+                username, email, token = result
+                reset_link = f"{request.url.scheme}://{request.url.netloc}/reset-password?token={token}"
+                html = (
+                    f"<p>Hello,</p>"
+                    f"<p>Your username is: <b>{username}</b></p>"
+                    f"<p><a href=\"{reset_link}\">Click here to reset your password</a> "
+                    f"(expires in 30 minutes).</p>"
+                    f"<p>If you didn't request this, you can safely ignore this email.</p>"
+                )
+                try:
+                    from workspace.scheduler import _deliver_email
+                    _deliver_email(email, os.getenv("EMAIL_FROM", ""),
+                                    "AI Agent -- Account Recovery", html)
+                except Exception as exc:
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning("Password reset email failed: %s", exc)
+    except Exception:
+        pass
+    return HTMLResponse(_render_forgot_password_page(message=generic_message))
+
+
+@app.get("/reset-password", response_class=HTMLResponse)
+async def reset_password_page(token: str = ""):
+    try:
+        from workspace.local_auth import LOCAL_AUTH_ENABLED, verify_reset_token
+        if not LOCAL_AUTH_ENABLED:
+            from fastapi.responses import RedirectResponse
+            return RedirectResponse(url="/login", status_code=302)
+        if not token or not verify_reset_token(token):
+            return HTMLResponse(_render_forgot_password_page(
+                error="This reset link is invalid or has expired. Please request a new one."))
+    except Exception:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/login", status_code=302)
+    return HTMLResponse(_render_reset_password_page(token))
+
+
+@app.post("/reset-password", response_class=HTMLResponse)
+async def reset_password_submit(request: Request, token: str = ""):
+    from fastapi.responses import RedirectResponse
+    try:
+        from workspace.local_auth import LOCAL_AUTH_ENABLED, reset_password, AuthError
+        if not LOCAL_AUTH_ENABLED:
+            return RedirectResponse(url="/login", status_code=302)
+        form = await request.form()
+        password = str(form.get("password", ""))
+        password2 = str(form.get("password2", ""))
+        if password != password2:
+            return HTMLResponse(_render_reset_password_page(token, error="Passwords do not match."))
+        reset_password(token, password)
+        return RedirectResponse(url="/login?reset=1", status_code=302)
+    except Exception as exc:
+        error_msg = str(exc) if hasattr(exc, "args") else "Password reset failed."
+        return HTMLResponse(_render_reset_password_page(token, error=error_msg))
+
+
 @app.get("/logout")
 async def logout(request: Request):
     from fastapi.responses import RedirectResponse
@@ -16052,6 +16160,7 @@ def _render_login_page(
     # ==== SOURCE PAGE 0687 ====
     show_register: bool = False,
     registered: str = "",
+    reset: str = "",
     prefill: dict = None,
 ) -> str:
     # ==== GAP: the source pages covering the rest of the registration form,
@@ -16064,7 +16173,12 @@ def _render_login_page(
     # wording/layout against the original if it becomes available.
     pf = prefill or {}
     err_html = f'<div class="auth-error">{error}</div>' if error else ""
-    ok_html = '<div class="auth-ok">&#9989; Account created -- please log in.</div>' if registered else ""
+    if reset:
+        ok_html = '<div class="auth-ok">&#9989; Password reset -- please log in with your new password.</div>'
+    elif registered:
+        ok_html = '<div class="auth-ok">&#9989; Account created -- please log in.</div>'
+    else:
+        ok_html = ""
 
     if show_register:
         form_html = f"""<form method="post" action="/register" autocomplete="off">
@@ -16109,6 +16223,7 @@ def _render_login_page(
 </div>
 <button type="submit" class="auth-btn">Sign In</button>
 </form>
+<div class="auth-switch"><a href="/forgot-password">Forgot username or password?</a></div>
 <div class="auth-switch">Need an account? <a href="/register">Create one</a></div>"""
         title = "Sign In"
         subtitle = "AI Agent -- Data Validation"
@@ -16190,6 +16305,133 @@ body{{font-family:"Inter","Segoe UI",sans-serif;color:#0f172a;
     <div class="auth-title">{title}</div>
     <div class="auth-subtitle">{subtitle}</div>
     {form_html}
+  </div>
+  <div class="auth-footer">&#128274; Your credentials are stored securely on this server.</div>
+</div>
+</body>
+</html>"""
+
+
+_AUTH_PAGE_STYLE = """
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:"Inter","Segoe UI",sans-serif;color:#0f172a;
+ min-height:100vh;display:flex;align-items:center;justify-content:center;
+ -webkit-font-smoothing:antialiased;
+ background:
+   radial-gradient(1100px 550px at 108% -8%, rgba(37,99,235,.10), transparent 60%),
+   radial-gradient(900px 480px at -8% 105%, rgba(124,58,237,.08), transparent 55%),
+   radial-gradient(700px 400px at 50% -15%, rgba(2,132,199,.06), transparent 60%),
+   #eef1f6;
+ background-attachment:fixed}
+.auth-wrap{width:100%;max-width:400px;padding:1.5rem}
+.auth-card{background:linear-gradient(180deg,#ffffff,#f6f8fb);border:1.5px solid rgba(15,23,42,.13);
+ border-radius:16px;padding:2rem 2rem 1.75rem;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.7),0 20px 50px -20px rgba(37,99,235,.25),0 2px 8px rgba(15,23,42,.06)}
+.auth-logo{display:flex;align-items:center;gap:.75rem;margin-bottom:1.75rem}
+.auth-logo-mark{width:42px;height:42px;background:linear-gradient(135deg,#2563eb,#7c3aed);border-radius:11px;
+ display:flex;align-items:center;justify-content:center;font-size:1.2rem;color:#fff;flex-shrink:0}
+.auth-logo-text h1{font-family:"Sora","Inter",sans-serif;font-size:1rem;font-weight:700;letter-spacing:.03em;
+ background:linear-gradient(90deg,#2563eb,#7c3aed,#0284c7,#2563eb);background-size:300% auto;
+ -webkit-background-clip:text;background-clip:text;color:transparent}
+.auth-logo-text p{font-size:.68rem;color:#64748b;margin-top:.15rem;letter-spacing:.06em;text-transform:uppercase}
+.auth-title{font-family:"Sora","Inter",sans-serif;font-size:1.2rem;font-weight:700;color:#0f172a;margin-bottom:.25rem}
+.auth-subtitle{font-size:.78rem;color:#64748b;margin-bottom:1.5rem}
+.auth-field{margin-bottom:.9rem}
+.auth-field label{display:block;font-size:.72rem;font-weight:700;color:#64748b;
+ text-transform:uppercase;letter-spacing:.04em;margin-bottom:.3rem}
+.auth-field input{width:100%;padding:.5rem .75rem;border:1.5px solid rgba(15,23,42,.13);border-radius:9px;
+ font-size:.86rem;background:#fff;color:#0f172a;outline:none;
+ transition:border-color .15s,box-shadow .15s;font-family:inherit}
+.auth-field input:focus{border-color:#2563eb;box-shadow:0 0 0 3.5px rgba(37,99,235,.12)}
+.auth-field input::placeholder{color:#94a3b8}
+.auth-btn{position:relative;overflow:hidden;width:100%;padding:.65rem;border:none;border-radius:10px;
+ background:linear-gradient(90deg,#2563eb,#4f46e5);color:#fff;font-weight:700;font-size:.88rem;cursor:pointer;
+ margin-top:.25rem;transition:filter .15s,transform .12s,box-shadow .2s;letter-spacing:.01em;
+ box-shadow:0 2px 10px -3px rgba(37,99,235,.5)}
+.auth-btn:hover{filter:brightness(1.1);box-shadow:0 6px 18px -4px rgba(37,99,235,.65);transform:translateY(-1.5px)}
+.auth-error{background:#fef2f2;border:1px solid #fecaca;
+ color:#dc2626;border-radius:7px;padding:.5rem .75rem;font-size:.8rem;margin-bottom:.9rem}
+.auth-ok{background:#f0fdf4;border:1px solid #bbf7d0;
+ color:#16a34a;border-radius:7px;padding:.5rem .75rem;font-size:.8rem;margin-bottom:.9rem}
+.auth-switch{margin-top:1.1rem;text-align:center;font-size:.76rem;color:#64748b}
+.auth-switch a{color:#2563eb;text-decoration:none;font-weight:600}
+.auth-switch a:hover{text-decoration:underline}
+.auth-footer{margin-top:1.25rem;text-align:center;font-size:.7rem;color:#94a3b8}
+"""
+
+
+def _render_forgot_password_page(message: str = "", error: str = "") -> str:
+    msg_html = f'<div class="auth-ok">{message}</div>' if message else ""
+    err_html = f'<div class="auth-error">{error}</div>' if error else ""
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Forgot Password -- AI Agent Data Validation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet"/>
+<style>{_AUTH_PAGE_STYLE}</style>
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-mark">&#9670;</div>
+      <div class="auth-logo-text"><h1>AI Agent</h1><p>Data Validation</p></div>
+    </div>
+    <div class="auth-title">Forgot username or password?</div>
+    <div class="auth-subtitle">Enter the email you registered with. If we find a match, we'll email you your username and a link to reset your password.</div>
+    <form method="post" action="/forgot-password" autocomplete="off">
+{err_html}{msg_html}
+<div class="auth-field">
+<label>Email</label>
+<input type="email" name="identifier" placeholder="you@example.com" autocomplete="email"/>
+</div>
+<button type="submit" class="auth-btn">Send Reset Instructions</button>
+</form>
+<div class="auth-switch"><a href="/login">&#8592; Back to sign in</a></div>
+  </div>
+  <div class="auth-footer">&#128274; Your credentials are stored securely on this server.</div>
+</div>
+</body>
+</html>"""
+
+
+def _render_reset_password_page(token: str, error: str = "") -> str:
+    err_html = f'<div class="auth-error">{error}</div>' if error else ""
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Reset Password -- AI Agent Data Validation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet"/>
+<style>{_AUTH_PAGE_STYLE}</style>
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="auth-logo-mark">&#9670;</div>
+      <div class="auth-logo-text"><h1>AI Agent</h1><p>Data Validation</p></div>
+    </div>
+    <div class="auth-title">Set a new password</div>
+    <div class="auth-subtitle">Choose a new password for your account.</div>
+    <form method="post" action="/reset-password?token={token}" autocomplete="off">
+{err_html}
+<div class="auth-field">
+<label>New Password</label>
+<input type="password" name="password" placeholder="Min 8 characters" autocomplete="new-password"/>
+</div>
+<div class="auth-field">
+<label>Confirm New Password</label>
+<input type="password" name="password2" placeholder="Re-enter password" autocomplete="new-password"/>
+</div>
+<button type="submit" class="auth-btn">Reset Password</button>
+</form>
+<div class="auth-switch"><a href="/login">&#8592; Back to sign in</a></div>
   </div>
   <div class="auth-footer">&#128274; Your credentials are stored securely on this server.</div>
 </div>
@@ -20710,6 +20952,7 @@ async def recon_run(session_id: str, request: Request):
 
 @app.get("/recon/download/{session_id}")
 async def recon_download(session_id: str, request: Request):
+    _require_not_readonly(request)
 
     # Download the last recon run for a lineage session as a formatted Excel workbook.
     # Sheets: Summary, Value_Breaks, Source_Only, Target_Only.
@@ -21650,9 +21893,10 @@ async def autofix_endpoint(session_id: str, request: Request):
 
 @app.get("/download/{session_id}")
 
-async def download(session_id: str, fmt: str = "excel"):
+async def download(session_id: str, request: Request, fmt: str = "excel"):
 
     """Download analysis results as Excel or JSON."""
+    _require_not_readonly(request)
 
     data = _results_store.get(session_id)
 
@@ -21734,6 +21978,7 @@ async def send_email(request: Request):
     # Send analysis report via Outlook (Windows) or SMTP fallback.
     # For parse action, parse_idx selects which parsed file's CSV to attach.
     # For all other actions, the Excel report is attached.
+    _require_not_readonly(request)
 
     body = await request.json()
 

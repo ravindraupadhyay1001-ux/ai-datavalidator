@@ -267,11 +267,13 @@ def ensure_user(username, display_name=None, email=None):
     cur = conn.cursor()
     cur.execute(f"SELECT username FROM ws_users WHERE username={_ph()}", (username,))
     if not cur.fetchall():
-        # bootstrap: the very first user ever seen becomes admin so there's
-        # always someone able to promote/demote others.
+        # No one is admin by default, not even the very first account --
+        # WORKSPACE_ADMIN_USERS is the only way to get admin access, an
+        # admin then promotes everyone else from the Users & Roles panel.
+        # Brand-new accounts start as readonly ("Run Only") until promoted.
         cur.execute("SELECT COUNT(*) FROM ws_users")
         is_first = list(cur.fetchall())[0][0] == 0
-        role = "admin" if is_first or username.lower() in _FORCED_ADMINS else "analyst"
+        role = "admin" if username.lower() in _FORCED_ADMINS else ("readonly" if is_first else "analyst")
         cur.execute(
             f"INSERT INTO ws_users (username, display_name, email, role, created_at) "
             f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
@@ -307,6 +309,19 @@ def list_users():
         "COALESCE(is_blocked, 0) AS is_blocked FROM ws_users ORDER BY created_at ASC"
     )
     return _rows(cur)
+
+
+def get_user_by_username_or_email(identifier):
+    """Look up a user by exact username or exact email match (case-insensitive
+    on email) -- used by the forgot-password/forgot-username flow."""
+    cur = _conn().cursor()
+    cur.execute(
+        f"SELECT username, display_name, email FROM ws_users "
+        f"WHERE username={_ph()} OR LOWER(email)={_ph()}",
+        (identifier, identifier.lower()),
+    )
+    rows = _rows(cur)
+    return rows[0] if rows else None
 
 
 def touch_last_active(username):
@@ -373,15 +388,17 @@ def get_user_password_hash(username):
 
 def create_local_user(username, password_hash, full_name="", email=""):
     """Register a new username/password user. Raises ValueError if the
-    username is already taken. The very first LOCAL user (not counting
-    Windows-Auth/SSO-provisioned rows with no password) becomes admin."""
+    username is already taken. No one is admin by default -- see
+    WORKSPACE_ADMIN_USERS in ensure_user(). The very first local account
+    starts as readonly ("Run Only") just like everyone else; an admin
+    promotes it from the Users & Roles panel."""
     conn = _conn()
     cur = conn.cursor()
     cur.execute(f"SELECT username FROM ws_users WHERE username={_ph()}", (username,))
     if cur.fetchall():
         raise ValueError(f"Username '{username}' is already taken.")
     is_first = count_local_users() == 0
-    role = "admin" if is_first else "analyst"
+    role = "admin" if username.lower() in _FORCED_ADMINS else ("readonly" if is_first else "analyst")
     cur.execute(
         f"INSERT INTO ws_users (username, display_name, email, role, created_at, password_hash) "
         f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
