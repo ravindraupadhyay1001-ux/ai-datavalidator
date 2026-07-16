@@ -360,13 +360,19 @@ def _html_report(job, result, sla_result=None):
     """
 
 
-def _deliver_email(to_email: str, from_email: str, subject: str, html: str) -> None:
-    if platform.system() == "Windows" and not os.getenv("SMTP_HOST"):
+def _deliver_email(to_email, from_email: str, subject: str, html: str,
+                    attachment: "tuple[bytes, str, str] | None" = None) -> None:
+    """to_email may be a single address or a comma-separated string of
+    several. attachment, if given, is (file_bytes, filename, mime_type)."""
+    to_list = [e.strip() for e in to_email.split(",") if e.strip()] if isinstance(to_email, str) else list(to_email)
+    to_header = ", ".join(to_list)
+
+    if platform.system() == "Windows" and not os.getenv("SMTP_HOST") and not attachment:
         try:
             import win32com.client
             outlook = win32com.client.Dispatch("Outlook.Application")
             mail = outlook.CreateItem(0)
-            mail.To = to_email
+            mail.To = to_header
             mail.Subject = subject
             mail.HTMLBody = html
             if from_email:
@@ -381,9 +387,23 @@ def _deliver_email(to_email: str, from_email: str, subject: str, html: str) -> N
     from email.mime.multipart import MIMEMultipart
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = from_email or "no-reply@datavalidation.local"
-    msg["To"] = to_email
+    # Every current caller already resolves EMAIL_FROM before calling this
+    # function, but check it here too rather than relying on that -- a
+    # caller that ever passes from_email=None directly shouldn't silently
+    # fall back to a placeholder address instead of the configured sender.
+    msg["From"] = from_email or os.getenv("EMAIL_FROM", "no-reply@datavalidation.local")
+    msg["To"] = to_header
     msg.attach(MIMEText(html, "html"))
+
+    if attachment:
+        from email.mime.base import MIMEBase
+        from email import encoders
+        attach_bytes, attach_name, attach_mime = attachment
+        part = MIMEBase(*attach_mime.split("/"))
+        part.set_payload(attach_bytes)
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", f'attachment; filename="{attach_name}"')
+        msg.attach(part)
 
     host = os.getenv("SMTP_HOST", "")
     if not host:

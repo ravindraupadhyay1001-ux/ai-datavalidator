@@ -18,13 +18,10 @@ from datetime import datetime
 from pathlib import Path
 
 
-import smtplib
 import time
 import uuid
 from collections import Counter
 from difflib import SequenceMatcher
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
 from itertools import combinations
 from typing import Optional
 import xml.etree.ElementTree as ET
@@ -18461,41 +18458,21 @@ async def send_email(request: Request):
             status_code=400,
         )
 
-    # ==== GAP: the local smtp_host/smtp_port/smtp_user/smtp_pass assignments were not
-    # recoverable from the scan (source pages 0899/0900 don't connect) -- RECONSTRUCTED
-    # (unverified) below using the same SMTP_HOST/SMTP_PORT/SMTP_USER/SMTP_PASSWORD env
-    # var names the /settings routes elsewhere in this file read and write; verify
-    # against source if available.
-    smtp_host = os.getenv("SMTP_HOST", "")
-    smtp_port = int(os.getenv("SMTP_PORT", "25") or 25)
-    smtp_user = os.getenv("SMTP_USER", "")
-    smtp_pass = os.getenv("SMTP_PASSWORD", "")
-
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"]    = from_email
-    msg["To"]      = ", ".join(recipients)
-    msg.attach(MIMEText(html_body, "html"))
-
-    if attach_bytes:
-        from email.mime.base import MIMEBase
-        from email import encoders
-        part = MIMEBase(*attach_mime.split("/"))
-        part.set_payload(attach_bytes)
-        encoders.encode_base64(part)
-        part.add_header("Content-Disposition", f'attachment; filename="{attach_name}"')
-
-        msg.attach(part)
-
+    # Reuse the scheduler's send path instead of a second, independently
+    # maintained SMTP implementation -- this one had drifted from it and
+    # picked up three real bugs: defaulted to port 25 (blocked outbound on
+    # Railway and most cloud platforms), used STARTTLS even for port 465
+    # (which needs implicit TLS via SMTP_SSL, not a plaintext-then-upgrade
+    # handshake), and never forced IPv4 DNS resolution (the same
+    # "[Errno 101] Network is unreachable" issue already fixed for scheduled
+    # jobs, since Outlook/Gmail's SMTP hosts resolve to IPv6 first and
+    # Railway has no outbound IPv6 route).
+    from workspace.scheduler import _deliver_email
+    attachment = (attach_bytes, attach_name, attach_mime) if attach_bytes else None
     try:
-        with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
-            server.ehlo()
-            if smtp_port in (587, 465):
-                server.starttls()
-                server.ehlo()
-            if smtp_user and smtp_pass:
-                server.login(smtp_user, smtp_pass)
-            server.sendmail(from_email, recipients, msg.as_string())
+        await asyncio.to_thread(
+            _deliver_email, ", ".join(recipients), from_email, subject, html_body, attachment
+        )
         return JSONResponse({"ok": True, "sent_to": recipients})
     except Exception as exc:
         return JSONResponse({"error": f"SMTP error: {exc}"}, status_code=500)
