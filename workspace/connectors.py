@@ -997,6 +997,75 @@ class CalypsoConnector(_TradingSystemRESTConnector):
 # REST API connector
 # ==========================================================================
 class APIConnector(BaseConnector):
+    """config: url, method (default GET), params, body, headers (all
+    pre-existing) plus:
+
+    Auth (auth_type: 'none' [default] | 'basic' | 'bearer' | 'oauth2' |
+    'api_key' | 'mtls' -- 'mtls' layers on top of any of the others, it's
+    not exclusive):
+      basic:   username, password
+      bearer:  bearer_token
+      oauth2:  token_url, client_id, client_secret, scope (optional),
+               token_field (optional, default 'access_token') -- client
+               credentials grant, token fetched once and reused across
+               every page of a single fetch() call.
+      api_key: api_key, api_key_header (optional, default 'X-API-Key')
+      mtls:    client_cert, client_key (paths) -- combinable with any auth_type
+               above, e.g. a bank API that requires both a client cert AND
+               a bearer token.
+
+    Pagination (pagination_style: 'cursor' [default, existing behaviour] |
+    'page_number' | 'offset'):
+      page_number: page_param (default 'page'), page_start (default 1) --
+                   increments until a page returns zero records.
+      offset:      offset_param (default 'offset'), limit_param (default
+                   'limit'), page_size (default 100) -- increments offset
+                   by page_size until a page returns fewer than page_size.
+
+    Request body (body_format: 'json' [default] | 'form'):
+      form sends `body` as application/x-www-form-urlencoded instead of JSON
+      -- required by most OAuth token endpoints and some legacy REST APIs.
+    """
+
+    def _oauth2_token(self, httpx) -> str:
+        c = self.config
+        data = {
+            "grant_type": "client_credentials",
+            "client_id": c["client_id"],
+            "client_secret": c["client_secret"],
+        }
+        if c.get("scope"):
+            data["scope"] = c["scope"]
+        with httpx.Client(timeout=30) as client:
+            r = client.post(c["token_url"], data=data)
+            r.raise_for_status()
+            return r.json()[c.get("token_field", "access_token")]
+
+    def _auth(self, httpx) -> tuple[dict, dict]:
+        # Returns (extra_headers, httpx.Client kwargs) for the configured
+        # auth_type. Unset/'none' relies purely on manually-set headers,
+        # same as before this method existed -- fully backward compatible.
+        c = self.config
+        headers = dict(c.get("headers") or {})
+        client_kwargs = {}
+        auth_type = (c.get("auth_type") or "").lower()
+
+        if auth_type == "basic":
+            client_kwargs["auth"] = (c.get("username", ""), c.get("password", ""))
+        elif auth_type == "bearer":
+            headers["Authorization"] = f"Bearer {c.get('bearer_token', '')}"
+        elif auth_type == "oauth2":
+            headers["Authorization"] = f"Bearer {self._oauth2_token(httpx)}"
+        elif auth_type == "api_key":
+            headers[c.get("api_key_header") or "X-API-Key"] = c.get("api_key", "")
+
+        # mTLS is additive -- a bank API commonly requires a client cert
+        # *and* a bearer token/API key at the same time, not one or the other.
+        if c.get("client_cert") and c.get("client_key"):
+            client_kwargs["cert"] = (c["client_cert"], c["client_key"])
+
+        return headers, client_kwargs
+
     def fetch(self) -> pd.DataFrame:
         import httpx
         c = self.config
@@ -1005,26 +1074,52 @@ class APIConnector(BaseConnector):
         url = c["url"]
         params = dict(c.get("params") or {})
         max_pages = int(c.get("max_pages", 50))
-        page_key = c.get("pagination_key")
         data_path = c.get("data_path")
+        headers, client_kwargs = self._auth(httpx)
 
-        with httpx.Client(timeout=30, follow_redirects=True) as client:
+        pagination_style = (c.get("pagination_style") or "cursor").lower()
+        page_key = c.get("pagination_key")
+        page_param = c.get("page_param", "page")
+        offset_param = c.get("offset_param", "offset")
+        limit_param = c.get("limit_param", "limit")
+        page_size = int(c.get("page_size", 100))
+        if pagination_style == "page_number":
+            params[page_param] = int(c.get("page_start", 1))
+        elif pagination_style == "offset":
+            params[offset_param] = 0
+            params[limit_param] = page_size
+
+        body_kwargs = ({"data": c["body"]} if (c.get("body_format") or "json").lower() == "form"
+                        else {"json": c.get("body")})
+
+        with httpx.Client(timeout=30, follow_redirects=True, **client_kwargs) as client:
             for _ in range(max_pages):
-                r = client.request(method, url, headers=c.get("headers") or {},
-                                   params=params, json=c.get("body"))
+                r = client.request(method, url, headers=headers, params=params, **body_kwargs)
                 r.raise_for_status()
                 fmt = self._detect_format(c, r)
-                if fmt == "json":
-                    payload = r.json()
-                    records = self._extract(payload, data_path)
-                    all_records.extend(records)
-                    # cursor pagination
+                if fmt != "json":
+                    return _parse_bytes(r.content, fmt_hint(fmt), c.get("delimiter"))
+
+                payload = r.json()
+                records = self._extract(payload, data_path)
+                all_records.extend(records)
+
+                if pagination_style == "cursor":
                     if page_key and isinstance(payload, dict) and payload.get(page_key):
                         params[page_key] = payload[page_key]
                         continue
                     break
-                else:
-                    return _parse_bytes(r.content, fmt_hint(fmt), c.get("delimiter"))
+                elif pagination_style == "page_number":
+                    if not records:
+                        break
+                    params[page_param] += 1
+                    continue
+                elif pagination_style == "offset":
+                    if len(records) < page_size:
+                        break
+                    params[offset_param] += page_size
+                    continue
+                break
         return pd.json_normalize(all_records).astype(str)
 
     @staticmethod
@@ -1066,10 +1161,10 @@ class APIConnector(BaseConnector):
     def test_connection(self) -> bool:
         import httpx
         c = self.config
-        with httpx.Client(timeout=15, follow_redirects=True) as client:
+        headers, client_kwargs = self._auth(httpx)
+        with httpx.Client(timeout=15, follow_redirects=True, **client_kwargs) as client:
             r = client.request((c.get("method") or "GET").upper(), c["url"],
-                               headers=c.get("headers") or {},
-                               params=c.get("params") or {})
+                               headers=headers, params=c.get("params") or {})
             return r.status_code < 400
 
 
