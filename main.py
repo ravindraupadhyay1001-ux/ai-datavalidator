@@ -18087,6 +18087,13 @@ async def analyze(request: Request):
       "quality_reports": quality_reports,
       "governance_reports": governance_reports,
       "mappings":    mappings,
+      # Which saved connector IDs (if any) fed this run -- needed so "Save to
+      # Workspace" can offer to turn this exact run into a recurring Job
+      # without the user re-picking connections from scratch. Empty when the
+      # session used file uploads instead, which POST /api/ws/jobs/from-session
+      # checks for and rejects with a clear message (a schedule needs a
+      # connector to re-fetch from, not a one-off uploaded file).
+      "conn_a_ids": _conn_a_ids, "conn_b_ids": _conn_b_ids, "conn_ids": _conn_ids,
 
 
 
@@ -22557,6 +22564,69 @@ async def ws_get_sla(job_id: str, request: Request):
     username = _ws_get_user(request)
 
     return JSONResponse(_ws_db.get_job_sla(job_id, username))
+
+
+@app.post("/api/ws/jobs/from-session")
+async def ws_job_from_session(request: Request):
+    """Turn an already-completed interactive run into a recurring scheduled
+    job, reusing the same saved connector(s) it used -- the "Save to
+    Workspace, then also keep it running automatically" flow, so the user
+    never has to re-pick connections from scratch in a separate form.
+    Requires the session to have used at least one Saved Connector (not a
+    raw file upload) for its source(s), since a schedule needs something to
+    re-fetch fresh data from on every run."""
+    _ws_check()
+    username = _ws_get_user(request)
+    body = await request.json()
+    session_id = body.get("session_id")
+    stored = _results_store.get(session_id)
+    if not stored:
+        raise HTTPException(404, "Session not found or expired -- please re-run the analysis.")
+
+    action = stored.get("action")
+    if action not in ("compare", "quality", "profile"):
+        raise HTTPException(400, f"Scheduling isn't supported for '{action}' yet (only compare/quality/profile).")
+
+    name = (body.get("name") or "").strip() or f"{action} job"
+    schedule_cron = (body.get("schedule_cron") or "").strip() or None
+    notify_email = (body.get("notify_email") or "").strip() or None
+    if schedule_cron and len(schedule_cron.split()) != 5:
+        raise HTTPException(400, "schedule_cron must be a 5-field cron expression (min hour day month dow).")
+
+    conn_a_id = conn_b_id = source_conn_id = None
+    if action == "compare":
+        conn_a_ids = stored.get("conn_a_ids") or []
+        conn_b_ids = stored.get("conn_b_ids") or []
+        if not conn_a_ids or not conn_b_ids:
+            raise HTTPException(
+                400,
+                "This run didn't use a Saved Connector on both Dataset A and B -- scheduling "
+                "needs a connector to re-fetch from, not a one-off file upload. Re-run using "
+                "Saved Connectors on both sides, then try again.",
+            )
+        conn_a_id, conn_b_id = int(conn_a_ids[0]), int(conn_b_ids[0])
+    else:
+        conn_ids = stored.get("conn_ids") or []
+        if not conn_ids:
+            raise HTTPException(
+                400,
+                "This run didn't use a Saved Connector -- scheduling needs a connector to "
+                "re-fetch from, not a one-off file upload. Re-run using a Saved Connector, "
+                "then try again.",
+            )
+        source_conn_id = int(conn_ids[0])
+
+    sla_raw = body.get("sla") or {}
+    sla_json = json.dumps(sla_raw) if sla_raw else None
+
+    job_id = _ws_db.save_job(
+        username=username, name=name, action=action,
+        source_conn_id=source_conn_id, conn_a_id=conn_a_id, conn_b_id=conn_b_id,
+        schedule_cron=schedule_cron, notify_email=notify_email, sla_json=sla_json,
+    )
+    if schedule_cron:
+        _ws_schedule_job(job_id, username, schedule_cron)
+    return JSONResponse({"job_id": job_id, "status": "ok"})
 
 
 # -- AI job assistant -- suggest key columns, schedule, thresholds

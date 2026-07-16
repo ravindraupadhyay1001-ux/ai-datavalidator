@@ -2977,8 +2977,21 @@ async function delSaved(id){ if(confirm('Delete saved run?')){await fetch(`/api/
 let _auditES=null;
 function startAudit(){ if(_auditES)return; _auditES=new EventSource('/api/logs/stream');
   _auditES.onmessage=e=>{ try{const d=JSON.parse(e.data); const au_log=document.getElementById('au-log'); au_log.innerHTML=`<div><span class="text-gray-500">${(d.created_at||'').slice(11,19)}</span> <span class="text-sky-300">${esc(d.action)}</span> ${esc(d.username||'')} &mdash; ${esc(d.detail||'')}</div>`+au_log.innerHTML;}catch(_){} }; }
-async function saveToWorkspace(){ if(!SESSION){alert('Run an analysis first.');return;} const name=prompt('Name this saved run:'); if(!name)return;
-  await J('POST','/api/ws/saved-runs',{session_id:SESSION,name}); alert('Saved to workspace.'); }
+async function saveToWorkspace(){
+  if(!SESSION){alert('Run an analysis first.');return;}
+  const name=prompt('Name this saved run:'); if(!name)return;
+  await J('POST','/api/ws/saved-runs',{session_id:SESSION,name});
+  if(!confirm('Saved. Also keep this running automatically and email you the results? (requires this run to have used a Saved Connector, not a direct file upload)')){
+    alert('Saved to workspace.'); return;
+  }
+  const cron = prompt('How often should it run? (cron expression, e.g. "0 6 * * *" = daily at 6am)', '0 6 * * *');
+  if(!cron) return;
+  const email = prompt('Email address for the report / alerts:');
+  if(!email) return;
+  const r = await J('POST','/api/ws/jobs/from-session', {session_id:SESSION, name, schedule_cron:cron, notify_email:email});
+  if(r.detail || r.error){ alert('Saved, but could not schedule it: '+(r.detail||r.error)); return; }
+  alert('Saved and scheduled — manage it anytime from Workspace → Jobs.');
+}
 
 // ---------- Settings ----------
 function showLlmProviderFields(provider){
