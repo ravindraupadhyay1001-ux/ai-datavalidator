@@ -2207,6 +2207,22 @@ def _extract_archive_members(raw: bytes, name: str) -> list[tuple[bytes, str]] |
     return None
 
 
+def _raise_if_looks_like_broken_xml(raw: bytes, enc: str, xml_exc: Exception) -> None:
+    # Auto-detection falls through to a generic delimited-text parser when
+    # XML parsing fails -- that parser never truly "fails", it just mangles
+    # tag fragments into meaningless columns and returns them silently. If
+    # the content clearly looks like XML (an <?xml declaration, a DOCTYPE,
+    # or a bare '<' as the first non-whitespace byte) but didn't parse, that
+    # silent garbage is worse than a clear error, so raise one instead of
+    # letting the cascade continue.
+    try:
+        sample = raw.lstrip()[:200].decode(enc, errors="replace").lstrip()
+    except Exception:
+        return
+    if sample.startswith(("<?xml", "<!DOCTYPE", "<")):
+        raise ValueError(f"This file looks like XML but is not well-formed: {xml_exc}")
+
+
 def _load_file(upload, delimiter=None) -> pd.DataFrame:
     # ==== SOURCE PAGE 0096 ====
     # Load any supported file format into a DataFrame.
@@ -2485,8 +2501,8 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
                     df = _parse_xml(raw)
                     if len(df.columns) > 1 or len(df) > 1:
                         return _labelled(df, "XML (auto-detected)")
-                except Exception:
-                    pass
+                except Exception as _xml_exc:
+                    _raise_if_looks_like_broken_xml(raw, enc, _xml_exc)
 
                 if _is_bloomberg_dlx(raw, enc):
                     return _labelled(_parse_bloomberg_dlx(raw, enc), "Bloomberg DLX (auto-detected)")
@@ -2529,8 +2545,8 @@ def _load_file_from_bytes(raw: bytes, name: str, delimiter=None) -> pd.DataFrame
                 df = _parse_xml(raw)
                 if len(df.columns) > 1 or len(df) > 1:
                     return _labelled(df, "XML (auto-detected)")
-            except Exception:
-                pass
+            except Exception as _xml_exc:
+                _raise_if_looks_like_broken_xml(raw, enc, _xml_exc)
 
             if _is_swift_mt(raw, enc):
                 return _labelled(_parse_swift_mt(raw, enc), "SWIFT MT (auto-detected)")
