@@ -17,7 +17,9 @@ from workspace.db import (
     count_local_users,
     create_local_user,
     get_user_password_hash,
+    is_user_blocked,
     set_user_password_hash,
+    touch_last_active,
 )
 
 LOCAL_AUTH_ENABLED = os.getenv("LOCAL_AUTH_ENABLED", "false").lower() == "true"
@@ -70,6 +72,9 @@ def login(username: str, password: str) -> str:
     password_hash = get_user_password_hash(username)
     if not password_hash or not _verify_password(password, password_hash):
         raise AuthError("Invalid username or password.")
+    if is_user_blocked(username):
+        raise AuthError("This account has been blocked. Contact your administrator.")
+    touch_last_active(username)
     return _make_token(username)
 
 

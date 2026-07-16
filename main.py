@@ -91,6 +91,7 @@ from agent.feedback_store import (
     list_all_datasets as _fp_list_datasets,
     _STORE_PATH as _feedback_store_path,
     copy_rules as _fp_copy_rules,
+    delete_user_data as _fp_delete_user,
 )
 
 app = FastAPI(title="Data Validation AGENT")
@@ -22926,13 +22927,26 @@ async def ws_me(request: Request):
 
 @app.get("/api/ws/users")
 async def ws_list_users(request: Request):
-    """List all workspace users and their roles. Admin only."""
+    """List all workspace users with role, last-active, token usage this
+    month, and Dataset Memory (saved rules) usage. Admin only."""
     _ws_check()
     username = _ws_get_user(request)
     role = getattr(request.state, "role", None) or _ws_db.get_user_role(username)
     if role != "admin":
         raise HTTPException(403, "Admin access required.")
-    return JSONResponse(_ws_db.list_users())
+    from datetime import datetime as _dt
+    month_key = _dt.utcnow().strftime("%Y-%m")
+    users = _ws_db.list_users()
+    for u in users:
+        try:
+            u["tokens_this_month"] = _ws_db.get_token_usage_month_total(u["username"], month_key)["total_tokens"]
+        except Exception:
+            u["tokens_this_month"] = 0
+        try:
+            u["dataset_memory_count"] = len(_fp_list_datasets(u["username"]))
+        except Exception:
+            u["dataset_memory_count"] = 0
+    return JSONResponse(users)
 
 
 @app.put("/api/ws/users/{username}/role")
@@ -22947,7 +22961,46 @@ async def ws_set_user_role(username: str, request: Request):
     role = str(body.get("role", "")).strip()
     if role not in ("admin", "analyst", "readonly"):
         raise HTTPException(400, "role must be one of: admin, analyst, readonly.")
+    if username == caller and role != "admin":
+        raise HTTPException(400, "You cannot remove your own admin access.")
     _ws_db.set_user_role(username, role)
+    return JSONResponse({"ok": True})
+
+
+@app.put("/api/ws/users/{username}/block")
+async def ws_set_user_blocked(username: str, request: Request):
+    """Block or unblock a user -- blocked users cannot log in and every
+    Workspace API call for them is rejected immediately. Admin only."""
+    _ws_check()
+    caller = _ws_get_user(request)
+    caller_role = getattr(request.state, "role", None) or _ws_db.get_user_role(caller)
+    if caller_role != "admin":
+        raise HTTPException(403, "Admin access required.")
+    if username == caller:
+        raise HTTPException(400, "You cannot block your own account.")
+    body = await request.json()
+    blocked = bool(body.get("blocked", True))
+    _ws_db.set_user_blocked(username, blocked)
+    return JSONResponse({"ok": True, "blocked": blocked})
+
+
+@app.delete("/api/ws/users/{username}")
+async def ws_delete_user(username: str, request: Request):
+    """Permanently delete a user and everything scoped to them (connections,
+    rulesets, jobs, run history, saved runs, audit log, token usage, and
+    Dataset Memory rules). Admin only."""
+    _ws_check()
+    caller = _ws_get_user(request)
+    caller_role = getattr(request.state, "role", None) or _ws_db.get_user_role(caller)
+    if caller_role != "admin":
+        raise HTTPException(403, "Admin access required.")
+    if username == caller:
+        raise HTTPException(400, "You cannot delete your own account.")
+    _ws_db.delete_user(username)
+    try:
+        _fp_delete_user(username)
+    except Exception:
+        pass
     return JSONResponse({"ok": True})
 
 

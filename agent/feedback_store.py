@@ -336,6 +336,16 @@ def get_dataset_label(username, fingerprint):
         return entry.get("label", "") if entry else ""
 
 
+def delete_user_data(username):
+    """Remove a user's entire Dataset Memory bucket (used when an admin
+    deletes that user's account). The shared __legacy__ bucket is untouched."""
+    with _LOCK:
+        store = _load()
+        if username in store:
+            del store[username]
+            _save(store)
+
+
 def invalidate_cache():
     global _cache
     with _LOCK:

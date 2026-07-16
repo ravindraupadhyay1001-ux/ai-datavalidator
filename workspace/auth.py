@@ -14,7 +14,7 @@ from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
-from workspace.db import ensure_user, get_user_role
+from workspace.db import ensure_user, get_user_role, is_user_blocked, touch_last_active
 
 WS_ENABLED = True
 
@@ -39,9 +39,25 @@ class WorkspaceAuthMiddleware(BaseHTTPMiddleware):
         display_name = request.headers.get("X-Display-Name", username)
         email = request.headers.get("X-User-Email", "")
         ensure_user(username, display_name, email)
+        if is_user_blocked(username):
+            return JSONResponse(
+                {"detail": "Your account has been blocked. Contact your administrator."},
+                status_code=403,
+            )
+        touch_last_active(username)
+        role = get_user_role(username)
+        # Three access tiers: admin (everything), analyst (Workspace + run
+        # modules), readonly (run modules only -- no Workspace access at all,
+        # /api/ws/me excepted since the frontend needs it to know who's logged
+        # in and render the right role-aware UI).
+        if role == "readonly" and request.url.path != f"{_API_PREFIX}/me":
+            return JSONResponse(
+                {"detail": "Your role does not have access to Workspace."},
+                status_code=403,
+            )
         request.state.username = username
         request.state.display_name = display_name
-        request.state.role = get_user_role(username)
+        request.state.role = role
         return await call_next(request)
 
 

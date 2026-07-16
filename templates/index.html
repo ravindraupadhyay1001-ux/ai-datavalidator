@@ -3048,21 +3048,54 @@ async function saveAppSettings(){
   loadSettings();
 }
 
+const ROLE_LABELS = {admin:'Admin', analyst:'Workspace User', readonly:'Run Only'};
+function timeAgo(iso){
+  if(!iso) return 'never';
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime())/1000);
+  if(s < 90) return 'just now';
+  if(s < 3600) return Math.floor(s/60)+'m ago';
+  if(s < 86400) return Math.floor(s/3600)+'h ago';
+  return Math.floor(s/86400)+'d ago';
+}
 async function loadUsers(){
   const box=document.getElementById('users-out');
   let users;
   try{ users=await fetch('/api/ws/users').then(r=>{ if(!r.ok) throw 0; return r.json(); }); }
   catch(e){ box.innerHTML='<span class="text-gray-500">Admin access required to view users, or workspace not enabled.</span>'; return; }
   if(!users.length){ box.innerHTML='<span class="text-gray-500">No users yet.</span>'; return; }
-  box.innerHTML=`<table class="w-full"><thead class="text-gray-400 text-xs"><tr><th class="text-left p-1">User</th><th class="text-left">Role</th><th></th></tr></thead><tbody>`+
-    users.map(u=>`<tr class="border-t border-[var(--line)]"><td class="p-1">${esc(u.display_name||u.username)}</td>
+  box.innerHTML=`<div style="overflow-x:auto"><table class="w-full"><thead class="text-gray-400 text-xs"><tr>
+      <th class="text-left p-1">User</th><th class="text-left">Role</th><th class="text-left">Last active</th>
+      <th class="text-left">Tokens (mo.)</th><th class="text-left">Dataset Memory</th><th class="text-left">Status</th><th></th>
+    </tr></thead><tbody>`+
+    users.map(u=>`<tr class="border-t border-[var(--line)]">
+      <td class="p-1">${esc(u.display_name||u.username)}</td>
       <td><select class="inp text-xs" onchange="setUserRole('${esc(u.username)}',this.value)">
-        ${['admin','analyst','readonly'].map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${r}</option>`).join('')}
-      </select></td><td></td></tr>`).join('')+`</tbody></table>`;
+        ${Object.keys(ROLE_LABELS).map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${ROLE_LABELS[r]}</option>`).join('')}
+      </select></td>
+      <td class="text-xs text-gray-500">${esc(timeAgo(u.last_active))}</td>
+      <td class="text-xs">${(u.tokens_this_month||0).toLocaleString()}</td>
+      <td class="text-xs">${u.dataset_memory_count||0}</td>
+      <td>${u.is_blocked?'<span class="badge" style="background:#ef444422;color:#ef4444">Blocked</span>':'<span class="badge" style="background:#10b98122;color:#10b981">Active</span>'}</td>
+      <td class="whitespace-nowrap">
+        <button class="btn-ghost rounded px-2 py-0.5 text-xs" onclick="blockUser('${esc(u.username)}',${u.is_blocked?'false':'true'})">${u.is_blocked?'Unblock':'Block'}</button>
+        <button class="btn-ghost rounded px-2 py-0.5 text-xs text-red-400" onclick="deleteUserConfirm('${esc(u.username)}')">Delete</button>
+      </td></tr>`).join('')+`</tbody></table></div>`;
 }
 async function setUserRole(username, role){
-  try{ await J('PUT', `/api/ws/users/${encodeURIComponent(username)}/role`, {role}); loadUsers(); }
-  catch(e){ alert('Failed to update role.'); }
+  const r = await J('PUT', `/api/ws/users/${encodeURIComponent(username)}/role`, {role});
+  if(r && r.detail){ alert(r.detail); }
+  loadUsers();
+}
+async function blockUser(username, blocked){
+  const r = await J('PUT', `/api/ws/users/${encodeURIComponent(username)}/block`, {blocked});
+  if(r && r.detail){ alert(r.detail); }
+  loadUsers();
+}
+async function deleteUserConfirm(username){
+  if(!confirm(`Permanently delete user "${username}" and all their connections, jobs, saved runs, and saved rules? This cannot be undone.`)) return;
+  const r = await J('DELETE', `/api/ws/users/${encodeURIComponent(username)}`);
+  if(r && r.detail){ alert(r.detail); }
+  loadUsers();
 }
 
 (async()=>{ try{ const d=await fetch('/api/license/status').then(r=>r.json());
@@ -3078,7 +3111,7 @@ const roleColor = {admin:'#f59e0b', analyst:'#38bdf8', readonly:'#94a3b8'};
   CURRENT_ROLE = me.role || 'analyst';
   const badge = document.createElement('div');
   badge.className = 'mx-3 mb-1 text-xs';
-  badge.innerHTML = `<span class="badge" style="background:${roleColor[CURRENT_ROLE]}22;color:${roleColor[CURRENT_ROLE]}">${esc(me.display_name||me.username)} &middot; ${esc(CURRENT_ROLE)}</span> <a href="/logout" class="text-gray-500 hover:text-gray-300 underline">Logout</a>`;
+  badge.innerHTML = `<span class="badge" style="background:${roleColor[CURRENT_ROLE]}22;color:${roleColor[CURRENT_ROLE]}">${esc(me.display_name||me.username)} &middot; ${esc(ROLE_LABELS[CURRENT_ROLE]||CURRENT_ROLE)}</span> <a href="/logout" class="text-gray-500 hover:text-gray-300 underline">Logout</a>`;
   document.getElementById('licbar').before(badge);
   if (CURRENT_ROLE === 'readonly') applyReadonlyUI();
   if (CURRENT_ROLE !== 'admin') {
@@ -3088,7 +3121,11 @@ const roleColor = {admin:'#f59e0b', analyst:'#38bdf8', readonly:'#94a3b8'};
 }catch(e){} })();
 
 function applyReadonlyUI(){
-  // Hide/disable write actions the backend also blocks for readonly users.
+  // "Run Only" role -- the backend rejects every /api/ws/* call except /me
+  // for this role, so hide the Workspace tab and any write buttons entirely
+  // rather than let the user hit a 403 after clicking them.
+  const workspaceTab = document.querySelector('button[data-tab="workspace"]');
+  if (workspaceTab) workspaceTab.style.display = 'none';
   const hideSelectors = [
     'button[onclick="saveToWorkspace()"]',
     'button[onclick="saveConnection()"]',
@@ -3098,7 +3135,7 @@ function applyReadonlyUI(){
   hideSelectors.forEach(sel => document.querySelectorAll(sel).forEach(el => el.style.display = 'none'));
   const note = document.createElement('div');
   note.className = 'mx-3 mb-2 text-[11px] text-gray-500';
-  note.textContent = 'Read-only access — analysis and saving are disabled.';
+  note.textContent = 'Run Only access — Workspace (connections, jobs, saved runs) isn\'t available for your role.';
   document.getElementById('licbar').before(note);
 }
 </script>

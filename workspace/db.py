@@ -22,6 +22,13 @@ _DB_KIND = os.getenv("WORKSPACE_DB", "sqlite").lower()
 _SQLITE_PATH = os.getenv("WORKSPACE_SQLITE_PATH", "workspace.db")
 _MSSQL_SERVER = os.getenv("MSSQL_SERVER", "")
 _MSSQL_DATABASE = os.getenv("MSSQL_DATABASE", "WorkspaceDB")
+# Comma-separated usernames that should always be admin, regardless of
+# registration order -- set once as a Railway env var so a specific person
+# doesn't depend on being the first to ever log in / can be restored to admin
+# after an accidental demotion. Re-applied every time ensure_user() runs.
+_FORCED_ADMINS = {
+    u.strip().lower() for u in os.getenv("WORKSPACE_ADMIN_USERS", "").split(",") if u.strip()
+}
 
 _local = threading.local()
 
@@ -221,6 +228,21 @@ _DDL = [
     "ALTER TABLE ws_connections ADD COLUMN business_domain TEXT",
     "ALTER TABLE ws_connections ADD COLUMN sensitivity TEXT",
     "ALTER TABLE ws_connections ADD COLUMN description TEXT",
+    # Admin user management -- block a user without deleting their data, and
+    # show when they were last seen in the admin panel.
+    "ALTER TABLE ws_users ADD COLUMN is_blocked INTEGER DEFAULT 0",
+    "ALTER TABLE ws_users ADD COLUMN last_active TEXT",
+    """CREATE TABLE IF NOT EXISTS ws_token_usage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL,
+        module TEXT,
+        call_type TEXT,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        model TEXT,
+        created_at TEXT
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_token_user ON ws_token_usage(username)",
 ]
 
 
@@ -249,11 +271,17 @@ def ensure_user(username, display_name=None, email=None):
         # always someone able to promote/demote others.
         cur.execute("SELECT COUNT(*) FROM ws_users")
         is_first = list(cur.fetchall())[0][0] == 0
-        role = "admin" if is_first else "analyst"
+        role = "admin" if is_first or username.lower() in _FORCED_ADMINS else "analyst"
         cur.execute(
             f"INSERT INTO ws_users (username, display_name, email, role, created_at) "
             f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
             (username, display_name or username, email or "", role, _now()),
+        )
+        conn.commit()
+    elif username.lower() in _FORCED_ADMINS:
+        cur.execute(
+            f"UPDATE ws_users SET role='admin' WHERE username={_ph()} AND role!='admin'",
+            (username,),
         )
         conn.commit()
 
@@ -274,8 +302,52 @@ def set_user_role(username, role):
 
 def list_users():
     cur = _conn().cursor()
-    cur.execute("SELECT username, display_name, email, role, created_at FROM ws_users ORDER BY created_at ASC")
+    cur.execute(
+        "SELECT username, display_name, email, role, created_at, last_active, "
+        "COALESCE(is_blocked, 0) AS is_blocked FROM ws_users ORDER BY created_at ASC"
+    )
     return _rows(cur)
+
+
+def touch_last_active(username):
+    conn = _conn()
+    conn.cursor().execute(
+        f"UPDATE ws_users SET last_active={_ph()} WHERE username={_ph()}", (_now(), username))
+    conn.commit()
+
+
+def is_user_blocked(username) -> bool:
+    cur = _conn().cursor()
+    cur.execute(f"SELECT is_blocked FROM ws_users WHERE username={_ph()}", (username,))
+    rows = _rows(cur)
+    return bool(rows[0].get("is_blocked")) if rows else False
+
+
+def set_user_blocked(username, blocked: bool):
+    conn = _conn()
+    conn.cursor().execute(
+        f"UPDATE ws_users SET is_blocked={_ph()} WHERE username={_ph()}",
+        (1 if blocked else 0, username),
+    )
+    conn.commit()
+
+
+def delete_user(username):
+    """Remove a user and every piece of data scoped to them across the
+    workspace tables. Feedback-store (Dataset Memory) rules are not touched
+    here -- those live in a separate JSON store, see agent.feedback_store."""
+    conn = _conn()
+    cur = conn.cursor()
+    for table in (
+        "ws_connections", "ws_rulesets", "ws_jobs", "ws_run_history",
+        "ws_saved_runs", "ws_dq_history", "ws_recon_history",
+        "ws_token_usage", "ws_audit_log", "ws_users",
+    ):
+        try:
+            cur.execute(f"DELETE FROM {table} WHERE username={_ph()}", (username,))
+        except Exception:
+            pass
+    conn.commit()
 
 
 def count_users() -> int:
@@ -771,3 +843,47 @@ def get_recon_baseline(schema_fingerprint, username):
     )
     rows = _rows(cur)
     return rows[0] if rows else None
+
+
+# --------------------------------------------------------------------------
+# LLM token usage (per user, for the /api/usage panel and admin user list)
+# --------------------------------------------------------------------------
+def log_token_usage(username, module, call_type, input_tokens, output_tokens, model=None):
+    conn = _conn()
+    conn.cursor().execute(
+        f"INSERT INTO ws_token_usage "
+        f"(username, module, call_type, input_tokens, output_tokens, model, created_at) "
+        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
+        (username, module, call_type, input_tokens, output_tokens, model, _now()),
+    )
+    conn.commit()
+
+
+def get_token_usage_month_total(username, month_key):
+    """Total input+output tokens for one user in one 'YYYY-MM' month."""
+    cur = _conn().cursor()
+    cur.execute(
+        f"SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0), COUNT(*) "
+        f"FROM ws_token_usage WHERE username={_ph()} AND created_at LIKE {_ph()}",
+        (username, f"{month_key}%"),
+    )
+    row = list(cur.fetchall())[0]
+    input_tokens, output_tokens, calls = row[0], row[1], row[2]
+    return {"input_tokens": input_tokens, "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens, "calls": calls}
+
+
+def get_token_usage_summary(username, months=3):
+    """Per-month token usage for the last `months` calendar months, oldest first."""
+    cur = _conn().cursor()
+    cur.execute(
+        f"SELECT substr(created_at,1,7) AS month, "
+        f"COALESCE(SUM(input_tokens),0) AS input_tokens, "
+        f"COALESCE(SUM(output_tokens),0) AS output_tokens, COUNT(*) AS calls "
+        f"FROM ws_token_usage WHERE username={_ph()} "
+        f"GROUP BY substr(created_at,1,7) ORDER BY month DESC LIMIT {int(months)}",
+        (username,),
+    )
+    rows = _rows(cur)
+    rows.reverse()
+    return rows
