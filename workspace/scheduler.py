@@ -364,11 +364,17 @@ def _deliver_email(to_email: str, from_email: str, subject: str, html: str) -> N
         # failing every time with nothing telling the user why.
         raise RuntimeError(
             "SMTP_HOST is not configured -- set SMTP_HOST, SMTP_PORT (587 recommended; "
-            "port 25 is blocked outbound by most cloud platforms), SMTP_USERNAME and "
-            "SMTP_PASSWORD as environment variables to enable email delivery."
+            "port 25 is blocked outbound by most cloud platforms), SMTP_USER (or "
+            "SMTP_USERNAME) and SMTP_PASSWORD as environment variables to enable email delivery."
         )
     port = int(os.getenv("SMTP_PORT", "587"))
-    username = os.getenv("SMTP_USERNAME", "")
+    # Accept both SMTP_USERNAME and SMTP_USER -- the Settings page and the
+    # manual "Send Email" button (main.py) write/read SMTP_USER, so a Railway
+    # deployment configured through Settings only ever has SMTP_USER set.
+    # Reading only SMTP_USERNAME here meant scheduled-job emails silently sent
+    # with no login at all (most real SMTP providers then reject the send)
+    # even though the exact same credentials worked fine for manual sends.
+    username = os.getenv("SMTP_USERNAME") or os.getenv("SMTP_USER", "")
     password = os.getenv("SMTP_PASSWORD", "")
 
     # Force IPv4 DNS resolution for the duration of the SMTP connection.

@@ -707,12 +707,25 @@ def save_manual_run(username, name, action, sources, session_id,
     return cur.lastrowid
 
 
-def list_saved_runs(username, limit=100):
+def list_saved_runs(username, limit=100, source_conn_id=None, conn_a_id=None, conn_b_id=None):
+    """source_conn_id / conn_a_id+conn_b_id let a caller narrow the list to
+    saved runs that used the same connector(s) as a given job -- there's no
+    direct job_id link (a saved run isn't necessarily tied to any job), but
+    matching on connector is a meaningful, honest proxy for "runs related to
+    this job" rather than a raw, unfiltered dump of every saved run ever."""
     cur = _conn().cursor()
+    clauses, params = [f"username={_ph()}"], [username]
+    if source_conn_id is not None:
+        clauses.append(f"source_conn_id={_ph()}")
+        params.append(source_conn_id)
+    if conn_a_id is not None and conn_b_id is not None:
+        clauses.append(f"conn_a_id={_ph()} AND conn_b_id={_ph()}")
+        params.extend([conn_a_id, conn_b_id])
     cur.execute(
-        f"SELECT id, name, action, session_id, key_columns, saved_at "
-        f"FROM ws_saved_runs WHERE username={_ph()} ORDER BY id DESC",
-        (username,),
+        f"SELECT id, name, action, session_id, key_columns, saved_at, "
+        f"conn_a_id, conn_b_id, source_conn_id "
+        f"FROM ws_saved_runs WHERE {' AND '.join(clauses)} ORDER BY id DESC",
+        params,
     )
     return _rows(cur)[:limit]
 

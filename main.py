@@ -19366,13 +19366,23 @@ async def ws_save_run(request: Request):
 
 @app.get("/api/ws/saved-runs")
 
-async def ws_list_saved_runs(request: Request, limit: int = 100):
+async def ws_list_saved_runs(request: Request, limit: int = 100, job_id: str = ""):
 
     _ws_check()
 
     username = _ws_get_user(request)
 
-    runs = _ws_db.list_saved_runs(username, limit=min(limit, 500))
+    source_conn_id = conn_a_id = conn_b_id = None
+    if job_id:
+        job = _ws_db.get_job(job_id, username)
+        if job:
+            source_conn_id = job.get("source_conn_id")
+            conn_a_id = job.get("conn_a_id")
+            conn_b_id = job.get("conn_b_id")
+
+    runs = _ws_db.list_saved_runs(username, limit=min(limit, 500),
+                                   source_conn_id=source_conn_id,
+                                   conn_a_id=conn_a_id, conn_b_id=conn_b_id)
 
     return JSONResponse(runs)
 

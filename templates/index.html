@@ -517,7 +517,7 @@
         </div>
         <div id="jb-list"></div>
       </div>
-      <div id="ws-saved" class="ws-panel hidden"><div id="sv-list"></div></div>
+      <div id="ws-saved" class="ws-panel hidden"><div id="sv-filter-note" class="text-xs text-gray-500 mb-2"></div><div id="sv-list"></div></div>
       <div id="ws-audit" class="ws-panel hidden">
         <div class="text-sm text-gray-400 mb-2">Live activity feed (SSE)</div>
         <div id="au-log" class="card rounded-xl p-3 text-xs font-mono space-y-1 h-96 overflow-auto"></div>
@@ -2487,12 +2487,12 @@ async function sendChat(){
 }
 
 // ---------- Workspace ----------
-function wsTab(name){
+function wsTab(name, jobId){
   document.querySelectorAll('.ws-tab').forEach(b=>b.classList.toggle('tab-active', b.getAttribute('onclick').includes(`'${name}'`)));
   document.querySelectorAll('.ws-panel').forEach(p=>p.classList.add('hidden'));
   document.getElementById('ws-'+name).classList.remove('hidden');
   if(name==='savedconn')loadConnections(); if(name==='rules')loadRulesets();
-  if(name==='jobs'){loadJobs(); loadConnDropdowns();} if(name==='saved')loadSavedRuns();
+  if(name==='jobs'){loadJobs(); loadConnDropdowns();} if(name==='saved')loadSavedRuns(jobId);
 }
 const row=(inner)=>`<div class="card rounded-lg p-2 mb-2 flex items-center justify-between text-sm">${inner}</div>`;
 // Source types whose connector implements list_tables() -- everything else
@@ -2861,7 +2861,7 @@ async function loadJobs(){ const rows=await fetch('/api/ws/jobs').then(r=>r.json
     <span class="flex gap-2"><button onclick="runJob(${j.id})" class="btn rounded px-2 py-0.5 text-xs">Run</button>
     <button onclick="editJob(${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Edit</button>
     <button onclick="toggleJobHistory(${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">History</button>
-    <button onclick="wsTab('saved')" class="btn-ghost rounded px-2 py-0.5 text-xs">Saved Runs</button>
+    <button onclick="wsTab('saved', ${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Saved Runs</button>
     <button onclick="delJob(${j.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)}
     <div id="jb-hist-${j.id}" class="hidden card rounded-lg p-2 -mt-1 mb-2 text-xs"></div>
   `).join(''):'<div class="text-gray-500 text-sm">No jobs.</div>'; }
@@ -2996,10 +2996,26 @@ async function jbAiSuggest(){
   if(status) status.textContent = s.description || 'Suggestion applied.';
 }
 async function delJob(id){ if(confirm('Delete job?')){await fetch(`/api/ws/jobs/${id}`,{method:'DELETE'});loadJobs();} }
-async function loadSavedRuns(){ const rows=await fetch('/api/ws/saved-runs').then(r=>r.json());
-  document.getElementById('sv-list').innerHTML=rows.length?rows.map(s=>row(`<span><b>${esc(s.name)}</b> <span class="text-gray-500">[${s.action}] ${s.saved_at||''}</span></span>
+function _fmtSavedAt(iso){
+  if(!iso) return '';
+  const d = new Date(iso);
+  if(isNaN(d.getTime())) return iso;
+  return d.toLocaleString(undefined, {year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
+}
+async function loadSavedRuns(jobId){
+  const note = document.getElementById('sv-filter-note');
+  const url = jobId ? `/api/ws/saved-runs?job_id=${jobId}` : '/api/ws/saved-runs';
+  const rows = await fetch(url).then(r=>r.json());
+  if(jobId){
+    note.innerHTML = `Showing saved runs that used the same connector(s) as this job. <a href="#" onclick="loadSavedRuns();return false;" class="text-sky-400 underline">Show all saved runs</a>`;
+  } else {
+    note.textContent = '';
+  }
+  document.getElementById('sv-list').innerHTML=rows.length?rows.map(s=>row(`<span><b>${esc(s.name)}</b> <span class="text-gray-500">[${s.action}] ${_fmtSavedAt(s.saved_at)}</span></span>
     <span class="flex gap-2"><a href="/download/${s.session_id}" class="btn-emerald btn rounded px-2 py-0.5 text-xs">Excel</a>
-    <button onclick="delSaved(${s.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join(''):'<div class="text-gray-500 text-sm">No saved runs.</div>'; }
+    <button onclick="delSaved(${s.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join(''):
+    `<div class="text-gray-500 text-sm">${jobId ? 'No saved runs use this job\'s connector(s) yet.' : 'No saved runs.'}</div>`;
+}
 async function delSaved(id){ if(confirm('Delete saved run?')){await fetch(`/api/ws/saved-runs/${id}`,{method:'DELETE'});loadSavedRuns();} }
 let _auditES=null;
 function startAudit(){ if(_auditES)return; _auditES=new EventSource('/api/logs/stream');
