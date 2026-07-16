@@ -84,6 +84,9 @@ from agent.feedback_store import (
 app = FastAPI(title="Data Validation AGENT")
 templates = Jinja2Templates(directory="templates")
 
+from starlette.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
 # Ensure tojson filter is available (Starlette includes it; add as fallback)
 import json as _json
 # NOTE (reconstruction): the source pages here duplicated this block twice (a
@@ -12575,9 +12578,9 @@ async def dq_suggest(files: list[UploadFile] = File(...)):
             "Suggest data quality rules. Return a JSON array only, no explanation outside the JSON."
         )
 
-        raw = _ask_llm(
+        raw = await asyncio.to_thread(
+            _ask_llm,
             [{"role": "user", "content": [{"text": user_prompt}]}],
-
             system=system_prompt,
         )
 
@@ -13607,7 +13610,7 @@ async def xref_run_llm(session_id: str, request: Request):
         _fp_compute([c for s in sources for c in s[1].columns], []),
     )
     saved_rules = _fp_get_rules(_xrl_username, fingerprint, module="xref")
-    params = _parse_xref_rules_to_params(saved_rules, [s[0] for s in sources], common_cols)
+    params = await asyncio.to_thread(_parse_xref_rules_to_params, saved_rules, [s[0] for s in sources], common_cols)
     llm_error = params.pop("_llm_error", None)
 
     key_col = params.get("key_col")
@@ -14071,7 +14074,7 @@ async def analyze(request: Request):
 
     # Load & auto-classify all reference documents
     _log(f"Loading {len(ref_uploads)} reference document(s)")
-    ref_result  = _load_and_classify_ref_docs(ref_uploads, kb_raw=kb_raw)
+    ref_result  = await asyncio.to_thread(_load_and_classify_ref_docs, ref_uploads, kb_raw=kb_raw)
     data_dict  = ref_result["data_dict"]
     rules    = ref_result["rules"]
     mapping_spec = ref_result["mapping_spec"]
@@ -14732,7 +14735,7 @@ async def analyze(request: Request):
           # Truly unstructured (single column or loading produced a flat blob) -- use LLM
           _log(f"Single-column result for '{fname}' -- falling back to LLM parser")
           raw = raw_file_bytes.get(fname, b"")
-          result = parse_unstructured(raw, fname, hints=user_hints)
+          result = await asyncio.to_thread(parse_unstructured, raw, fname, hints=user_hints)
           if result["error"]:
             _log(f"LLM parse '{fname}' → error: {result['error']}", level="WARN")
           else:
@@ -16472,7 +16475,7 @@ async def help_chat(request: Request):
     messages = [{"role": h["role"], "content": [{"text": h["text"]}]} for h in history[-8:]]
     messages.append({"role": "user", "content": [{"text": question}]})
     try:
-        reply = _ask_llm(messages, system=system)
+        reply = await asyncio.to_thread(_ask_llm, messages, system=system)
         return JSONResponse({"reply": reply})
     except Exception as exc:
         return JSONResponse({"reply": f"Error: {exc}"}, status_code=500)
@@ -16493,7 +16496,7 @@ async def chat(request: Request):
     context = _chat_contexts.get(session_id, {})
 
     if context.get("mode") == "recon" and re.match(r"^(please\s+)?run\s*recon(ciliation)?[.!]?$", question, re.IGNORECASE):
-        result = _run_llm_recon_full(session_id, _chat_username)
+        result = await asyncio.to_thread(_run_llm_recon_full, session_id, _chat_username)
         if result is None:
             return JSONResponse({"reply": "I couldn't find both files for this session anymore -- please re-upload and try again."})
         c = result["counts"]
@@ -16599,7 +16602,7 @@ async def chat(request: Request):
     messages.append({"role": "user", "content": [{"text": question}]})
 
     try:
-        reply = _ask_llm(messages, system=system)
+        reply = await asyncio.to_thread(_ask_llm, messages, system=system)
         if new_rule:
             reply = f"✅ Rule saved: *{new_rule}*\n\n" + reply
 
@@ -17264,7 +17267,7 @@ async def recon_run_llm(session_id: str, request: Request):
     same LLM-driven rule pipeline as typing "run recon" in chat, but triggered
     immediately on run instead of requiring a follow-up chat message."""
     _rrl_username = _ws_resolve_username(request) or "default"
-    result = _run_llm_recon_full(session_id, _rrl_username)
+    result = await asyncio.to_thread(_run_llm_recon_full, session_id, _rrl_username)
     if result is None:
         raise HTTPException(404, "Session not found or missing stored files -- please re-upload.")
     return JSONResponse(_sanitize_json(result))
@@ -17307,8 +17310,8 @@ async def recon_run(session_id: str, request: Request):
 
         recon_rules = [r for r in saved_rules if r.get("category") not in ("recon_hints",)]
 
-        params = _parse_recon_rules_to_params(
-            recon_rules, list(src_df.columns), list(tgt_df.columns)
+        params = await asyncio.to_thread(
+            _parse_recon_rules_to_params, recon_rules, list(src_df.columns), list(tgt_df.columns)
         )
 
         src_df, tgt_df, manual_keys, exclude, key_warning, force_data_cols = _prepare_recon(
@@ -17395,8 +17398,8 @@ async def recon_download(session_id: str, request: Request):
     saved_rules = _fp_get_rules(_ws_resolve_username(request) or "default",
                                  stored.get("dataset_fingerprint", ""))
     recon_rules = [r for r in saved_rules if r.get("category") not in ("recon_hints",)]
-    params = _parse_recon_rules_to_params(recon_rules, list(src_df.columns),
-                                           list(tgt_df.columns))
+    params = await asyncio.to_thread(_parse_recon_rules_to_params, recon_rules, list(src_df.columns),
+                                      list(tgt_df.columns))
 
     src_df, tgt_df, manual_keys, exclude, _, force_data_cols = _prepare_recon(
         src_df, tgt_df, params)
@@ -17752,7 +17755,7 @@ Examples:
 
 Return ONLY valid JSON, no explanation."""
     try:
-        raw = _ask_llm([{"role": "user", "content": [{"text": prompt}]}])
+        raw = await asyncio.to_thread(_ask_llm, [{"role": "user", "content": [{"text": prompt}]}])
         import re as _re
         m = _re.search(r'\{.*\}', raw, _re.DOTALL)
 
@@ -18383,7 +18386,7 @@ async def send_email(request: Request):
                 saved_rules = _fp_get_rules(_ws_resolve_username(request) or "default",
                                              data.get("dataset_fingerprint", ""))
                 recon_rules = [r for r in saved_rules if r.get("category") not in ("recon_hints",)]
-                params = _parse_recon_rules_to_params(recon_rules, list(src_df.columns), list(tgt_df.columns))
+                params = await asyncio.to_thread(_parse_recon_rules_to_params, recon_rules, list(src_df.columns), list(tgt_df.columns))
                 src_df, tgt_df, manual_keys, exclude, _, force_data_cols = _prepare_recon(src_df, tgt_df, params)
                 diff = compare_dataframes(src_df, tgt_df, manual_keys, True, exclude, force_data_cols=force_data_cols)
                 import openpyxl as _opxl
@@ -19274,7 +19277,7 @@ async def ws_ai_suggest(request: Request):
 
     try:
 
-        raw = _ask_llm([{"role": "user", "content": [{"text": prompt}]}])
+        raw = await asyncio.to_thread(_ask_llm, [{"role": "user", "content": [{"text": prompt}]}])
 
         import re as _re
 
