@@ -16013,6 +16013,9 @@ async def logout(request: Request):
         pass
     response = RedirectResponse(url="/login", status_code=302)
     response.delete_cookie("dv_local_session")
+    # Also clear the SSO session cookie so this one link works regardless of
+    # whether the user signed in via local auth or SAML/OIDC.
+    response.delete_cookie("dv_session")
     return response
 
 

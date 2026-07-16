@@ -3078,7 +3078,7 @@ const roleColor = {admin:'#f59e0b', analyst:'#38bdf8', readonly:'#94a3b8'};
   CURRENT_ROLE = me.role || 'analyst';
   const badge = document.createElement('div');
   badge.className = 'mx-3 mb-1 text-xs';
-  badge.innerHTML = `<span class="badge" style="background:${roleColor[CURRENT_ROLE]}22;color:${roleColor[CURRENT_ROLE]}">${esc(me.display_name||me.username)} &middot; ${esc(CURRENT_ROLE)}</span>`;
+  badge.innerHTML = `<span class="badge" style="background:${roleColor[CURRENT_ROLE]}22;color:${roleColor[CURRENT_ROLE]}">${esc(me.display_name||me.username)} &middot; ${esc(CURRENT_ROLE)}</span> <a href="/logout" class="text-gray-500 hover:text-gray-300 underline">Logout</a>`;
   document.getElementById('licbar').before(badge);
   if (CURRENT_ROLE === 'readonly') applyReadonlyUI();
   if (CURRENT_ROLE !== 'admin') {
