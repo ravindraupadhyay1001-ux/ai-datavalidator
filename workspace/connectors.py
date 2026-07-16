@@ -464,8 +464,35 @@ class SharePointConnector(BaseConnector):
 # SQL connectors
 # ==========================================================================
 class _SQLConnector(BaseConnector):
+    # Table-mode SELECTs (not a hand-written 'query') are capped at this many
+    # rows by default -- pointing a connection at a real production table
+    # with no limit meant `SELECT * FROM table` tried to pull the entire
+    # table into memory, which can hang for minutes and OOM-crash a small
+    # container on a large table. Set row_limit: 0 in config to explicitly
+    # opt out and fetch everything.
+    _DEFAULT_ROW_LIMIT = 100_000
+    _LIMIT_STYLE = "limit"  # "limit" (Postgres/MySQL/Snowflake/Databricks/Redshift) |
+                            # "top" (MSSQL/Azure SQL/Teradata) | "fetch_first" (Oracle/DB2)
+
     def _connect(self):
         raise NotImplementedError
+
+    def _row_limit(self) -> int:
+        return int(self.config.get("row_limit", self._DEFAULT_ROW_LIMIT) or 0)
+
+    def _build_table_query(self, table: str, where_clause: str = "") -> str:
+        limit = self._row_limit()
+        if self._LIMIT_STYLE == "top":
+            select = f"SELECT TOP {limit} * FROM {table}" if limit else f"SELECT * FROM {table}"
+            return f"{select} WHERE {where_clause}" if where_clause else select
+        select = f"SELECT * FROM {table}"
+        if where_clause:
+            select += f" WHERE {where_clause}"
+        if not limit:
+            return select
+        if self._LIMIT_STYLE == "fetch_first":
+            return f"{select} FETCH FIRST {limit} ROWS ONLY"
+        return f"{select} LIMIT {limit}"
 
     def _query_sql(self) -> str:
         # Incremental/watermark fetch: when both 'incremental_column' and
@@ -484,10 +511,11 @@ class _SQLConnector(BaseConnector):
             raise ValueError("Provide either 'query' or 'table'.")
         incremental_col = c.get("incremental_column")
         since = c.get("since")
+        where_clause = ""
         if incremental_col and since:
             since_escaped = str(since).replace("'", "''")
-            return f"SELECT * FROM {table} WHERE {incremental_col} > '{since_escaped}'"
-        return f"SELECT * FROM {table}"
+            where_clause = f"{incremental_col} > '{since_escaped}'"
+        return self._build_table_query(table, where_clause)
 
     def fetch(self) -> pd.DataFrame:
         conn = self._connect()
@@ -538,6 +566,7 @@ class _SQLConnector(BaseConnector):
 
 
 class MSSQLConnector(_SQLConnector):
+    _LIMIT_STYLE = "top"
     _DRIVERS = [
         "ODBC Driver 18 for SQL Server",
         "ODBC Driver 17 for SQL Server",
@@ -587,6 +616,8 @@ class MySQLConnector(_SQLConnector):
 
 
 class OracleConnector(_SQLConnector):
+    _LIMIT_STYLE = "fetch_first"
+
     def _connect(self):
         c = self.config
         dsn_args = dict(host=c["host"], port=int(c.get("port", 1521)),
@@ -639,6 +670,8 @@ class TeradataConnector(_SQLConnector):
     """config: host, username, password, database (optional), plus 'query'
     or 'table' (+ optional incremental_column/since) like the other SQL
     connectors. Uses Teradata's own teradatasql DB-API driver."""
+    _LIMIT_STYLE = "top"
+
     def _connect(self):
         import teradatasql
         c = self.config
@@ -689,7 +722,10 @@ class BigQueryConnector(BaseConnector):
     def fetch(self) -> pd.DataFrame:
         client = self._client()
         job = client.query(self._sql())
-        max_results = self.config.get("max_results")
+        # Same guard as _SQLConnector.row_limit -- default-capped so an
+        # unbounded table pull doesn't try to load millions of rows into
+        # memory; set max_results: 0 to explicitly fetch everything.
+        max_results = self.config.get("max_results", 100_000)
         rows = job.result(max_results=int(max_results)) if max_results else job.result()
         return rows.to_dataframe().astype(str)
 
@@ -778,6 +814,7 @@ class AzureSQLConnector(_SQLConnector):
     MSSQLConnector, but Azure SQL always requires Encrypt=yes and supports
     Azure AD auth modes on top of plain SQL login."""
     _DRIVERS = MSSQLConnector._DRIVERS
+    _LIMIT_STYLE = "top"
 
     def _connect(self):
         import pyodbc
@@ -808,6 +845,8 @@ class DB2Connector(_SQLConnector):
     """config: host, port (default 50000), database, username, password,
     plus 'query' or 'table' like the other SQL connectors. Uses IBM's
     ibm_db_dbi DB-API wrapper (pip install ibm_db) for DB2 for LUW/i/z-OS."""
+    _LIMIT_STYLE = "fetch_first"
+
     def _connect(self):
         import ibm_db
         import ibm_db_dbi

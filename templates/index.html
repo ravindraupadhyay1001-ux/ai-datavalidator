@@ -434,6 +434,7 @@
           <p class="col-span-2 text-[11px] text-gray-500 -mt-1">&#128197; Any path/query field supports date tokens for daily feeds: <code>{YYYYMMDD}</code>, <code>{D-1}</code> (yesterday), <code>{D+1}</code>, <code>{YYYYMMDD-2}</code>, <code>{YYYY}</code>, or <code>{strftime:%Y-%m-%d}</code> &mdash; e.g. <code>"remote_path": "/feeds/trades_{YYYYMMDD}.csv"</code>.</p>
           <p class="col-span-2 text-[11px] text-gray-500 -mt-1">&#128274; Any password/secret field supports <code>${ENV:VAR_NAME}</code> to pull a credential from the server environment instead of storing it here &mdash; e.g. <code>"password": "${ENV:PROD_DB_PASSWORD}"</code>.</p>
           <p class="col-span-2 text-[11px] text-gray-500 -mt-1">&#8635; SQL/BigQuery sources support incremental fetch: set <code>incremental_column</code> (e.g. <code>updated_at</code>) and <code>since</code> (a value or date token like <code>{YYYYMMDD-1}</code>) to pull only new/changed rows on each run.</p>
+          <p class="col-span-2 text-[11px] text-gray-500 -mt-1">&#9888;&#65039; Table mode defaults to a 100,000-row cap to protect against accidentally pulling an entire large production table into memory. Raise <code>row_limit</code> or set it to <code>0</code> for unlimited if you really need the whole table.</p>
           <details class="col-span-2 text-xs">
             <summary class="cursor-pointer text-gray-400">Advanced: raw JSON overrides (merged on top of the fields above &mdash; use for things like custom headers)</summary>
             <textarea id="cn-config-adv" rows="2" placeholder='{"headers":{"Authorization":"Bearer ..."}}' class="inp w-full mt-1 font-mono text-xs"></textarea>
@@ -2459,6 +2460,7 @@ async function loadConnections(){ const rows=await fetch('/api/ws/connections').
 // ---------- Connection config: per-type form fields (instead of raw JSON) ----------
 const _TABLE_OR_QUERY = [
   {k:'table', label:'Table (or use Query below)', type:'text'},
+  {k:'row_limit', label:'Row limit (Table mode only, 0 = unlimited)', type:'number', default:100000, placeholder:'100000'},
   {k:'incremental_column', label:'Incremental column (optional, Table mode only)', type:'text', placeholder:'updated_at'},
   {k:'since', label:'Since (optional, pairs with Incremental column)', type:'text', placeholder:'{YYYYMMDD-1} or a fixed value'},
   {k:'query', label:'Query (optional, overrides Table)', type:'textarea', wide:true},
