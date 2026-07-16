@@ -17033,6 +17033,18 @@ async def analyze(request: Request):
             _log(f"Fetching data from workspace connection '{cid}' (Dataset {label})")
             try:
                 cname, df = _df_from_connection(cid, _ws_username)
+                row_limit_hit = df.attrs.get("_row_limit_hit")
+                if row_limit_hit:
+                    # Silent truncation is worse than the row cap itself --
+                    # the user could draw conclusions from a partial dataset
+                    # without ever knowing rows were cut off. row_limit is
+                    # per-connection config; 0 disables the cap entirely.
+                    _log(
+                        f"⚠ '{cname}' hit its row_limit ({row_limit_hit}) -- the source "
+                        f"may have more rows than were fetched. Raise row_limit on this "
+                        f"connection (or set it to 0 for unlimited) if you need the full data.",
+                        level="WARN",
+                    )
                 _log(f"Fetched '{cname}' → {len(df)} rows × {len(df.columns)} cols")
                 result.append((cname, df))
             except HTTPException:

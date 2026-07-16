@@ -2506,6 +2506,7 @@ const CN_FIELD_SPECS = {
     {k:'region', label:'Region', type:'text', placeholder:'us-east-1'},
     {k:'aws_access_key_id', label:'Access key ID', type:'text'},
     {k:'aws_secret_access_key', label:'Secret access key', type:'password'},
+    {k:'max_file_mb', label:'Max file size MB (0 = unlimited)', type:'number', default:150, placeholder:'150'},
   ],
   sftp: [
     {k:'host', label:'Host', type:'text', required:true},
@@ -2513,6 +2514,7 @@ const CN_FIELD_SPECS = {
     {k:'username', label:'Username', type:'text'},
     {k:'password', label:'Password', type:'password'},
     {k:'remote_path', label:'Remote path', type:'text', required:true, wide:true, placeholder:'/feeds/trades_{YYYYMMDD}.csv'},
+    {k:'max_file_mb', label:'Max file size MB (0 = unlimited)', type:'number', default:150, placeholder:'150'},
   ],
   ftp: [
     {k:'host', label:'Host', type:'text', required:true},
@@ -2520,6 +2522,7 @@ const CN_FIELD_SPECS = {
     {k:'username', label:'Username', type:'text'},
     {k:'password', label:'Password', type:'password'},
     {k:'remote_path', label:'Remote path', type:'text', required:true, wide:true, placeholder:'/feeds/trades_{YYYYMMDD}.csv'},
+    {k:'max_file_mb', label:'Max file size MB (0 = unlimited)', type:'number', default:150, placeholder:'150'},
   ],
   mssql: [
     {k:'host', label:'Host', type:'text', required:true}, {k:'port', label:'Port', type:'number', default:1433},
@@ -2559,11 +2562,13 @@ const CN_FIELD_SPECS = {
     {k:'connection_string', label:'Connection string', type:'password', wide:true, placeholder:'DefaultEndpointsProtocol=...'},
     {k:'container', label:'Container', type:'text', required:true},
     {k:'blob', label:'Blob name / path', type:'text', required:true, placeholder:'trades_{YYYYMMDD}.csv'},
+    {k:'max_file_mb', label:'Max file size MB (0 = unlimited)', type:'number', default:150, placeholder:'150'},
   ],
   gcs: [
     {k:'bucket', label:'Bucket', type:'text', required:true},
     {k:'blob', label:'Blob name / path', type:'text', required:true, placeholder:'feeds/trades_{YYYYMMDD}.csv'},
     {k:'credentials_json', label:'Credentials JSON (optional)', type:'textarea', wide:true, placeholder:'path or inline service-account JSON'},
+    {k:'max_file_mb', label:'Max file size MB (0 = unlimited)', type:'number', default:150, placeholder:'150'},
   ],
   kafka: [
     {k:'bootstrap_servers', label:'Bootstrap servers', type:'text', required:true, wide:true, placeholder:'broker1:9092,broker2:9092'},

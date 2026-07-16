@@ -152,6 +152,37 @@ def _parse_bytes(raw: bytes, hint: str = "", delimiter: str = None) -> pd.DataFr
                        dtype=str, keep_default_na=False)
 
 
+# Same guard as _SQLConnector's row_limit, applied to the file-based
+# connectors (S3/Azure Blob/GCS/SFTP/FTP): each of these previously read an
+# entire remote object into memory unconditionally, with no size check at
+# all -- pointing one at a genuinely large file risks the same hang/OOM
+# failure mode the SQL row cap fixes for table-mode fetches. Checked via
+# each provider's own metadata call (HEAD/stat) before downloading the
+# body, so an oversized file is rejected with a clear error instead of
+# silently trying to load it. Set max_file_mb: 0 in config to opt out.
+#
+# 150 MB (raw, on-disk size) is deliberately conservative for a small
+# (~1 GB) container: pandas parsing overhead commonly runs 2-5x the raw
+# file size for string-heavy data, and the app's own baseline (FastAPI,
+# pandas, the LLM SDKs) already uses a few hundred MB before a single row
+# is fetched.
+_DEFAULT_MAX_FILE_MB = 150
+
+
+def _check_file_size(size_bytes, config: dict, source_desc: str) -> None:
+    if not size_bytes:
+        return  # provider couldn't report a size -- nothing to check against
+    max_mb = config.get("max_file_mb", _DEFAULT_MAX_FILE_MB)
+    if not max_mb:
+        return
+    max_bytes = int(max_mb) * 1024 * 1024
+    if size_bytes > max_bytes:
+        raise ValueError(
+            f"{source_desc} is {size_bytes / (1024 * 1024):.1f} MB, exceeding the "
+            f"{max_mb} MB limit (set max_file_mb: 0 in config to fetch it anyway)."
+        )
+
+
 # ==========================================================================
 # Base
 # ==========================================================================
@@ -218,7 +249,9 @@ class SFTPConnector(BaseConnector):
     def fetch(self) -> pd.DataFrame:
         sftp, transport = self._client()
         try:
-            with sftp.open(self.config["remote_path"], "rb") as fh:
+            remote_path = self.config["remote_path"]
+            _check_file_size(sftp.stat(remote_path).st_size, self.config, f"SFTP file '{remote_path}'")
+            with sftp.open(remote_path, "rb") as fh:
                 raw = fh.read()
         finally:
             sftp.close(); transport.close()
@@ -247,7 +280,13 @@ class FTPConnector(BaseConnector):
         ftp = self._client()
         buf = io.BytesIO()
         try:
-            ftp.retrbinary(f"RETR {self.config['remote_path']}", buf.write)
+            remote_path = self.config["remote_path"]
+            try:
+                size = ftp.size(remote_path)  # not every FTP server supports the SIZE command
+            except Exception:
+                size = None
+            _check_file_size(size, self.config, f"FTP file '{remote_path}'")
+            ftp.retrbinary(f"RETR {remote_path}", buf.write)
         finally:
             ftp.quit()
         return _parse_bytes(buf.getvalue(), self.config["remote_path"],
@@ -274,9 +313,12 @@ class S3Connector(BaseConnector):
 
     def fetch(self) -> pd.DataFrame:
         s3 = self._client()
-        obj = s3.get_object(Bucket=self.config["bucket"], Key=self.config["key"])
+        c = self.config
+        head = s3.head_object(Bucket=c["bucket"], Key=c["key"])
+        _check_file_size(head.get("ContentLength"), c, f"S3 object '{c['key']}'")
+        obj = s3.get_object(Bucket=c["bucket"], Key=c["key"])
         raw = obj["Body"].read()
-        return _parse_bytes(raw, self.config["key"], self.config.get("delimiter"))
+        return _parse_bytes(raw, c["key"], c.get("delimiter"))
 
     def test_connection(self) -> bool:
         s3 = self._client()
@@ -297,6 +339,7 @@ class AzureBlobConnector(BaseConnector):
     def fetch(self) -> pd.DataFrame:
         c = self.config
         blob = self._client().get_blob_client(container=c["container"], blob=c["blob"])
+        _check_file_size(blob.get_blob_properties().size, c, f"Blob '{c['blob']}'")
         raw = blob.download_blob().readall()
         return _parse_bytes(raw, c["blob"], c.get("delimiter"))
 
@@ -327,8 +370,10 @@ class GCSConnector(BaseConnector):
 
     def fetch(self) -> pd.DataFrame:
         c = self.config
-        bucket = self._client().bucket(c["bucket"])
-        raw = bucket.blob(c["blob"]).download_as_bytes()
+        blob = self._client().bucket(c["bucket"]).blob(c["blob"])
+        blob.reload()  # populates .size from the object's metadata
+        _check_file_size(blob.size, c, f"GCS blob '{c['blob']}'")
+        raw = blob.download_as_bytes()
         return _parse_bytes(raw, c["blob"], c.get("delimiter"))
 
     def test_connection(self) -> bool:
@@ -470,6 +515,13 @@ class _SQLConnector(BaseConnector):
     # table into memory, which can hang for minutes and OOM-crash a small
     # container on a large table. Set row_limit: 0 in config to explicitly
     # opt out and fetch everything.
+    #
+    # 100,000 matches the user's actual maximum data volume requirement.
+    # Note this is a real tradeoff on a ~1 GB container -- a wide table
+    # (30-50+ columns) of string data can use several hundred MB in pandas
+    # even at this row count, on top of the app's own few-hundred-MB
+    # baseline (FastAPI, pandas, the LLM SDKs). Lower row_limit per
+    # connection if a specific large/wide table needs more headroom.
     _DEFAULT_ROW_LIMIT = 100_000
     _LIMIT_STYLE = "limit"  # "limit" (Postgres/MySQL/Snowflake/Databricks/Redshift) |
                             # "top" (MSSQL/Azure SQL/Teradata) | "fetch_first" (Oracle/DB2)
@@ -520,12 +572,20 @@ class _SQLConnector(BaseConnector):
     def fetch(self) -> pd.DataFrame:
         conn = self._connect()
         try:
-            return pd.read_sql(self._query_sql(), conn).astype(str)
+            df = pd.read_sql(self._query_sql(), conn).astype(str)
         finally:
             try:
                 conn.close()
             except Exception:
                 pass
+        # Flag possible truncation so the caller can warn the user instead
+        # of silently handing back a partial table with no indication that
+        # row_limit was the reason -- only meaningful in table mode (a
+        # hand-written query's row count is entirely the user's own doing).
+        limit = self._row_limit()
+        if not self.config.get("query") and limit and len(df) == limit:
+            df.attrs["_row_limit_hit"] = limit
+        return df
 
     def test_connection(self) -> bool:
         conn = self._connect()
@@ -722,12 +782,14 @@ class BigQueryConnector(BaseConnector):
     def fetch(self) -> pd.DataFrame:
         client = self._client()
         job = client.query(self._sql())
-        # Same guard as _SQLConnector.row_limit -- default-capped so an
-        # unbounded table pull doesn't try to load millions of rows into
-        # memory; set max_results: 0 to explicitly fetch everything.
+        # Same guard as _SQLConnector.row_limit (same default, see its
+        # comment) -- set max_results: 0 to explicitly fetch everything.
         max_results = self.config.get("max_results", 100_000)
         rows = job.result(max_results=int(max_results)) if max_results else job.result()
-        return rows.to_dataframe().astype(str)
+        df = rows.to_dataframe().astype(str)
+        if not self.config.get("query") and max_results and len(df) == int(max_results):
+            df.attrs["_row_limit_hit"] = int(max_results)
+        return df
 
     def test_connection(self) -> bool:
         client = self._client()
