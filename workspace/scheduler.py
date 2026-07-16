@@ -355,21 +355,40 @@ def _deliver_email(to_email: str, from_email: str, subject: str, html: str) -> N
     username = os.getenv("SMTP_USERNAME", "")
     password = os.getenv("SMTP_PASSWORD", "")
 
-    if port == 465:
-        with smtplib.SMTP_SSL(host, port, timeout=20) as s:
-            if username and password:
-                s.login(username, password)
-            s.send_message(msg)
-    else:
-        # 587 (submission) and most other non-SSL ports expect STARTTLS --
-        # almost every real provider (Gmail, Outlook365, SendGrid, SES SMTP,
-        # etc.) rejects a plaintext, unauthenticated connection outright,
-        # which is what the previous code sent.
-        with smtplib.SMTP(host, port, timeout=20) as s:
-            s.starttls()
-            if username and password:
-                s.login(username, password)
-            s.send_message(msg)
+    # Force IPv4 DNS resolution for the duration of the SMTP connection.
+    # Real symptom this fixes: "[Errno 101] Network is unreachable" on
+    # Railway (and most container platforms) -- smtp-mail.outlook.com (and
+    # most real mail providers) resolve to both an IPv4 and IPv6 address,
+    # socket.create_connection() tries the IPv6 one first, and the
+    # container has no outbound IPv6 route at all, so it fails before ever
+    # trying the IPv4 address that would have worked. The hostname string
+    # itself is untouched (still passed to smtplib as host=host below), so
+    # STARTTLS certificate hostname verification is unaffected -- only the
+    # underlying address family smtplib's socket.create_connection resolves
+    # to is constrained, and only briefly, restored in `finally` either way.
+    import socket
+    _orig_getaddrinfo = socket.getaddrinfo
+    def _ipv4_only_getaddrinfo(host_, port_, family=0, type=0, proto=0, flags=0):
+        return _orig_getaddrinfo(host_, port_, socket.AF_INET, type, proto, flags)
+    socket.getaddrinfo = _ipv4_only_getaddrinfo
+    try:
+        if port == 465:
+            with smtplib.SMTP_SSL(host, port, timeout=20) as s:
+                if username and password:
+                    s.login(username, password)
+                s.send_message(msg)
+        else:
+            # 587 (submission) and most other non-SSL ports expect STARTTLS --
+            # almost every real provider (Gmail, Outlook365, SendGrid, SES SMTP,
+            # etc.) rejects a plaintext, unauthenticated connection outright,
+            # which is what the previous code sent.
+            with smtplib.SMTP(host, port, timeout=20) as s:
+                s.starttls()
+                if username and password:
+                    s.login(username, password)
+                s.send_message(msg)
+    finally:
+        socket.getaddrinfo = _orig_getaddrinfo
 
 
 def _send_rich_email_report(job, result, sla_result=None):
