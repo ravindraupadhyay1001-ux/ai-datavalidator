@@ -19091,10 +19091,25 @@ async def ws_run_job(job_id: str, request: Request):
         raise HTTPException(404, "Job not found.")
 
     try:
-
-        run_id = _ws_trigger_now(job_id, username)
-
-        return JSONResponse({"run_id": run_id, "status": "triggered"})
+        # trigger_job_now() runs the job to completion synchronously (fetch
+        # + analyze + email) before returning, so the real pass/fail result
+        # is already known by the time we respond -- return it instead of a
+        # meaningless "triggered" placeholder that told the user nothing.
+        trigger_result = await asyncio.to_thread(_ws_trigger_now, job_id, username)
+        run_id = trigger_result["run_id"]
+        run = _ws_db.get_run(run_id, username)
+        if not run:
+            return JSONResponse({"run_id": run_id, "status": "unknown"})
+        summary = json.loads(run["summary_json"]) if run.get("summary_json") else None
+        return JSONResponse({
+            "run_id": run_id,
+            "status": run.get("status"),
+            "summary": summary,
+            "error": run.get("error_msg"),
+            "email_sent": trigger_result.get("email_sent", False),
+            "email_skipped_reason": trigger_result.get("email_skipped_reason"),
+            "email_error": trigger_result.get("email_error"),
+        })
 
     except Exception as exc:
 

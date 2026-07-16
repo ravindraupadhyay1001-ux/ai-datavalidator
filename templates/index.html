@@ -2861,6 +2861,7 @@ async function loadJobs(){ const rows=await fetch('/api/ws/jobs').then(r=>r.json
     <span class="flex gap-2"><button onclick="runJob(${j.id})" class="btn rounded px-2 py-0.5 text-xs">Run</button>
     <button onclick="editJob(${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Edit</button>
     <button onclick="toggleJobHistory(${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">History</button>
+    <button onclick="wsTab('saved')" class="btn-ghost rounded px-2 py-0.5 text-xs">Saved Runs</button>
     <button onclick="delJob(${j.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)}
     <div id="jb-hist-${j.id}" class="hidden card rounded-lg p-2 -mt-1 mb-2 text-xs"></div>
   `).join(''):'<div class="text-gray-500 text-sm">No jobs.</div>'; }
@@ -2901,7 +2902,24 @@ async function saveJob(){
   await J('POST','/api/ws/jobs',body);
   cancelJbEdit();
   loadJobs(); }
-async function runJob(id){ const r=await J('POST',`/api/ws/jobs/${id}/run`); alert('Run started: '+JSON.stringify(r)); loadJobs(); }
+async function runJob(id){
+  const r = await J('POST', `/api/ws/jobs/${id}/run`);
+  if(r && r.detail){ alert('❌ Run failed to start: ' + r.detail); loadJobs(); return; }
+  let msg;
+  if(r.status === 'success'){
+    const summaryLine = r.summary ? Object.entries(r.summary).map(([k,v])=>`${k}: ${v}`).join(', ') : '';
+    msg = '✅ Run completed successfully.' + (summaryLine ? '\n' + summaryLine : '');
+  } else if(r.status === 'failed'){
+    msg = '❌ Run failed: ' + (r.error || 'Unknown error.');
+  } else {
+    msg = 'Run finished with status: ' + (r.status || 'unknown');
+  }
+  if(r.email_sent) msg += '\n\n📧 Notification email sent.';
+  else if(r.email_error) msg += '\n\n⚠️ Notification email failed to send: ' + r.email_error;
+  else if(r.email_skipped_reason) msg += '\n\nℹ️ No email sent: ' + r.email_skipped_reason;
+  alert(msg);
+  loadJobs();
+}
 async function toggleJobHistory(id){
   const box = document.getElementById(`jb-hist-${id}`);
   if(!box) return;

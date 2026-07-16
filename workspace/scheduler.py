@@ -82,7 +82,8 @@ def unregister_job(job_id):
 
 
 def trigger_job_now(job_id, username):
-    """Manual trigger — runs synchronously, returns run_id."""
+    """Manual trigger -- runs synchronously, returns {"run_id", "email_sent",
+    "email_skipped_reason", "email_error"}."""
     return _execute_job(job_id, username)
 
 
@@ -236,7 +237,13 @@ def _evaluate_sla(sla: dict, result: dict) -> dict:
 
 
 def _execute_job(job_id, username):
+    """Returns a dict describing what happened -- run_id plus enough about
+    the email outcome (sent / skipped-by-design / failed-to-send) that a
+    manual "Run Now" click can tell the user the real story instead of a
+    meaningless "triggered" placeholder. The cron scheduler (APScheduler)
+    calls this too but ignores the return value, so this stays safe there."""
     run_id = db.create_run(job_id, username)
+    email_info = {"email_sent": False, "email_skipped_reason": None, "email_error": None}
     try:
         job = db.get_job(job_id, username)
         if not job:
@@ -259,15 +266,20 @@ def _execute_job(job_id, username):
         db.update_job_status(job_id, "ok")
         sla = job.get("sla") or {}
         sla_result = _evaluate_sla(sla, result)
-        should_email = bool(job.get("notify_email")) and (
-            sla_result["breached"] or not sla.get("alert_only_on_fail")
-        )
-        if should_email:
+        if not job.get("notify_email"):
+            email_info["email_skipped_reason"] = "No notification email configured for this job."
+        elif not sla_result["breached"] and sla.get("alert_only_on_fail"):
+            email_info["email_skipped_reason"] = (
+                "This job only emails on SLA breach/failure, and this run passed with no breach."
+            )
+        else:
             try:
                 _send_rich_email_report(job, result, sla_result)
+                email_info["email_sent"] = True
             except Exception as e:
                 print(f"[scheduler] email failed for job {job_id}: {e}")
-        return run_id
+                email_info["email_error"] = str(e)
+        return {"run_id": run_id, **email_info}
     except Exception as e:
         db.finish_run(run_id, "failed", error_msg=str(e))
         db.update_job_status(job_id, "error")
@@ -281,9 +293,13 @@ def _execute_job(job_id, username):
             _job_for_alert = db.get_job(job_id, username)
             if _job_for_alert and _job_for_alert.get("notify_email"):
                 _send_failure_email(_job_for_alert, str(e))
+                email_info["email_sent"] = True
+            else:
+                email_info["email_skipped_reason"] = "No notification email configured for this job."
         except Exception as _email_exc:
             print(f"[scheduler] failure-alert email also failed for job {job_id}: {_email_exc}")
-        return run_id
+            email_info["email_error"] = str(_email_exc)
+        return {"run_id": run_id, **email_info}
 
 
 # --------------------------------------------------------------------------

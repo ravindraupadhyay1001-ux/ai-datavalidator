@@ -649,6 +649,18 @@ def finish_run(run_id, status, summary=None, error_msg=None):
     conn.commit()
 
 
+def _decode_run_summary(row):
+    # summary_json is stored base64-encoded (like config_json/rules_json
+    # elsewhere) -- re-serialise it back to a plain JSON string so callers
+    # (the History table's `JSON.parse(r.summary_json)`) get real JSON
+    # instead of a base64 blob that silently fails to parse.
+    raw = row.get("summary_json")
+    if raw:
+        decoded = _unb64(raw)
+        row["summary_json"] = json.dumps(decoded) if decoded is not None else None
+    return row
+
+
 def list_runs(username, job_id=None, limit=50):
     cur = _conn().cursor()
     if job_id:
@@ -662,7 +674,17 @@ def list_runs(username, job_id=None, limit=50):
             f"SELECT * FROM ws_run_history WHERE username={_ph()} ORDER BY id DESC",
             (username,),
         )
-    return _rows(cur)[:limit]
+    return [_decode_run_summary(r) for r in _rows(cur)[:limit]]
+
+
+def get_run(run_id, username):
+    cur = _conn().cursor()
+    cur.execute(
+        f"SELECT * FROM ws_run_history WHERE id={_ph()} AND username={_ph()}",
+        (run_id, username),
+    )
+    rows = _rows(cur)
+    return _decode_run_summary(rows[0]) if rows else None
 
 
 # --------------------------------------------------------------------------
