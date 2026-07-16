@@ -2433,10 +2433,15 @@ function wsTab(name){
   if(name==='jobs')loadJobs(); if(name==='saved')loadSavedRuns();
 }
 const row=(inner)=>`<div class="card rounded-lg p-2 mb-2 flex items-center justify-between text-sm">${inner}</div>`;
+// Source types whose connector implements list_tables() -- everything else
+// (files, APIs, streams) has no "tables" concept, so the button is hidden.
+const _CN_TABLE_LISTABLE = new Set(['mssql','postgres','mysql','oracle','snowflake',
+  'databricks','azure_sql','db2','redshift','teradata','bigquery']);
 async function loadConnections(){ const rows=await fetch('/api/ws/connections').then(r=>r.json());
   document.getElementById('cn-list').innerHTML=rows.length?rows.map(c=>row(`<span><b>${esc(c.name)}</b> <span class="text-gray-500">[${c.source_type}] #${c.id}</span></span>
     <span class="flex gap-2"><button onclick="testConn(${c.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Test</button>
     <button onclick="previewConn(${c.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Preview</button>
+    ${_CN_TABLE_LISTABLE.has(c.source_type)?`<button onclick="listTablesConn(${c.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Tables</button>`:''}
     <button onclick="delConn(${c.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join(''):'<div class="text-gray-500 text-sm">No connections.</div>'; }
 // ---------- Connection config: per-type form fields (instead of raw JSON) ----------
 const _TABLE_OR_QUERY = [
@@ -2688,6 +2693,15 @@ async function saveConnection(){
 }
 async function testConn(id){ const r=await J('POST',`/api/ws/connections/${id}/test`); alert(r.ok?'✅ Connection OK':'❌ '+(r.error||'failed')); }
 async function previewConn(id){ const r=await fetch(`/api/ws/connections/${id}/preview`).then(x=>x.json()); if(r.detail){alert(r.detail);return;} alert('Columns: '+r.columns.join(', ')+'\n'+r.rows.length+' rows'); }
+async function listTablesConn(id){
+  const r = await fetch(`/api/ws/connections/${id}/tables`).then(x=>x.json());
+  if(r.detail){ alert(r.detail); return; }
+  const tables = r.tables||[];
+  if(!tables.length){ alert('No tables found.'); return; }
+  const names = tables.map(t=>t.schema?`${t.schema}.${t.table}`:t.table);
+  const picked = prompt(`${names.length} table(s) found -- copy the one you want into the Table field:\n\n`+names.join('\n'), names[0]);
+  if(picked) navigator.clipboard?.writeText(picked).catch(()=>{});
+}
 async function delConn(id){ if(confirm('Delete connection?')){await fetch(`/api/ws/connections/${id}`,{method:'DELETE'});loadConnections();loadConnDropdowns();} }
 async function loadRulesets(){ const rows=await fetch('/api/ws/rulesets').then(r=>r.json());
   document.getElementById('rs-list').innerHTML=rows.length?rows.map(r=>row(`<span><b>${esc(r.name)}</b> <span class="text-gray-500">#${r.id} ${esc(r.description||'')}</span></span>

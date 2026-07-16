@@ -22140,6 +22140,25 @@ async def ws_test_connection(conn_id: str, request: Request):
         return JSONResponse({"ok": False, "message": str(exc)})
 
 
+@app.get("/api/ws/connections/{conn_id}/tables")
+async def ws_list_tables(conn_id: str, request: Request):
+    """List tables visible to a saved database connection, so the user can
+    pick a real table name instead of guessing one before running a job."""
+    _ws_check()
+    username = _ws_get_user(request)
+    rec = _ws_db.get_connection(conn_id, username)
+    if not rec:
+        raise HTTPException(404, "Connection not found.")
+    try:
+        connector = _ws_connectors.BaseConnector.from_type(rec["source_type"], rec["config"])
+        tables = connector.list_tables()
+        return JSONResponse({"tables": tables})
+    except NotImplementedError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise HTTPException(400, f"Could not list tables: {exc}")
+
+
 @app.get("/api/ws/connections/{conn_id}/preview")
 async def ws_preview_connection(conn_id: str, request: Request):
     """Fetch a small sample of data from a saved connection so the user can

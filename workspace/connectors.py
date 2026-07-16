@@ -167,6 +167,13 @@ class BaseConnector(ABC):
     def test_connection(self) -> bool:
         ...
 
+    def list_tables(self) -> list[dict]:
+        # Only meaningful for database-family connectors -- overridden by
+        # _SQLConnector (and BigQueryConnector, which isn't DB-API-based).
+        # File/API/stream connectors have no "tables" concept, so the
+        # default is a clear error rather than an AttributeError.
+        raise NotImplementedError(f"Listing tables isn't supported for '{type(self).__name__}'.")
+
     @staticmethod
     def from_type(source_type: str, config: dict) -> "BaseConnector":
         st = (source_type or "").lower()
@@ -505,6 +512,30 @@ class _SQLConnector(BaseConnector):
             except Exception:
                 pass
 
+    # Standard SQL (information_schema) works for Postgres/Redshift, MySQL,
+    # MSSQL/Azure SQL, Snowflake and Databricks -- the dialects that don't
+    # support it (Oracle, DB2, Teradata) override this with their own
+    # system-catalog query below.
+    _LIST_TABLES_SQL = (
+        "SELECT table_schema, table_name FROM information_schema.tables "
+        "WHERE table_type = 'BASE TABLE' AND table_schema NOT IN "
+        "('information_schema', 'pg_catalog', 'performance_schema', 'mysql', 'sys') "
+        "ORDER BY table_schema, table_name"
+    )
+
+    def list_tables(self) -> list[dict]:
+        conn = self._connect()
+        try:
+            cur = conn.cursor()
+            cur.execute(self._LIST_TABLES_SQL)
+            rows = cur.fetchall()
+            return [{"schema": r[0], "table": r[1]} for r in rows]
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
 
 class MSSQLConnector(_SQLConnector):
     _DRIVERS = [
@@ -570,6 +601,11 @@ class OracleConnector(_SQLConnector):
             dsn = cx_Oracle.makedsn(**dsn_args)
             return cx_Oracle.connect(c.get("username"), c.get("password"), dsn)
 
+    # Oracle has no information_schema -- list the caller's own tables from
+    # the always-available USER_TABLES view (no extra grants needed, unlike
+    # ALL_TABLES/DBA_TABLES which require access to other schemas).
+    _LIST_TABLES_SQL = "SELECT NULL, table_name FROM user_tables ORDER BY table_name"
+
 
 class SnowflakeConnector(_SQLConnector):
     def _connect(self):
@@ -610,6 +646,11 @@ class TeradataConnector(_SQLConnector):
         if c.get("database"):
             kw["database"] = c["database"]
         return teradatasql.connect(**kw)
+
+    _LIST_TABLES_SQL = (
+        "SELECT DatabaseName, TableName FROM DBC.TablesV WHERE TableKind = 'T' "
+        "ORDER BY DatabaseName, TableName"
+    )
 
 
 class BigQueryConnector(BaseConnector):
@@ -657,6 +698,20 @@ class BigQueryConnector(BaseConnector):
         job = client.query("SELECT 1")
         job.result()
         return True
+
+    def list_tables(self) -> list[dict]:
+        # Not DB-API based (uses the bigquery.Client SDK, not a cursor), so
+        # this can't reuse _SQLConnector's information_schema query -- list
+        # tables in the configured dataset, or across every dataset in the
+        # project if none was given.
+        client = self._client()
+        c = self.config
+        out: list[dict] = []
+        datasets = [c["dataset"]] if c.get("dataset") else [d.dataset_id for d in client.list_datasets()]
+        for ds in datasets:
+            for t in client.list_tables(ds):
+                out.append({"schema": ds, "table": t.table_id})
+        return out
 
 
 class MongoDBConnector(BaseConnector):
@@ -762,6 +817,11 @@ class DB2Connector(_SQLConnector):
                     f"UID={c.get('username')};PWD={c.get('password')};")
         raw = ibm_db.connect(conn_str, "", "")
         return ibm_db_dbi.Connection(raw)
+
+    _LIST_TABLES_SQL = (
+        "SELECT tabschema, tabname FROM syscat.tables "
+        "WHERE tabschema NOT LIKE 'SYS%' ORDER BY tabschema, tabname"
+    )
 
 
 # ==========================================================================
