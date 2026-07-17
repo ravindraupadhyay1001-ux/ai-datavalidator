@@ -461,12 +461,57 @@ def _html_report(job, result, sla_result=None):
     """
 
 
+def _deliver_email_brevo_api(to_list: list[str], from_email: str, subject: str, html: str,
+                              attachment: "tuple[bytes, str, str] | None" = None) -> None:
+    """Send via Brevo's transactional email HTTP API (POST /v3/smtp/email)
+    instead of SMTP. Railway (and most PaaS free/trial tiers) block outbound
+    SMTP ports (465/587/2525) entirely -- no SMTP_HOST/credentials combination
+    can work around that, since it's a network-layer block, not an auth
+    problem. This goes over plain HTTPS (443) instead, which isn't blocked,
+    using the same httpx dependency the rest of the app already uses for
+    outbound API calls (agent/llm.py, workspace/connectors.py)."""
+    import httpx, base64
+    api_key = os.getenv("BREVO_API_KEY", "")
+    body = {
+        "sender": {"email": from_email or os.getenv("EMAIL_FROM", "")},
+        "to": [{"email": e} for e in to_list],
+        "subject": subject,
+        "htmlContent": html,
+    }
+    if attachment:
+        attach_bytes, attach_name, _attach_mime = attachment
+        body["attachment"] = [{
+            "name": attach_name,
+            "content": base64.b64encode(attach_bytes).decode("ascii"),
+        }]
+    r = httpx.post(
+        "https://api.brevo.com/v3/smtp/email",
+        json=body,
+        headers={"api-key": api_key, "Content-Type": "application/json", "Accept": "application/json"},
+        timeout=20,
+    )
+    if r.status_code >= 300:
+        try:
+            err = r.json()
+            detail = err.get("message") or err.get("error") or str(err)
+        except Exception:
+            detail = r.text
+        raise RuntimeError(f"Brevo API error ({r.status_code}): {detail}")
+
+
 def _deliver_email(to_email, from_email: str, subject: str, html: str,
                     attachment: "tuple[bytes, str, str] | None" = None) -> None:
     """to_email may be a single address or a comma-separated string of
     several. attachment, if given, is (file_bytes, filename, mime_type)."""
     to_list = [e.strip() for e in to_email.split(",") if e.strip()] if isinstance(to_email, str) else list(to_email)
     to_header = ", ".join(to_list)
+
+    # BREVO_API_KEY takes priority over SMTP entirely when set -- see
+    # _deliver_email_brevo_api's docstring for why (Railway free/trial tiers
+    # block outbound SMTP at the network layer; no SMTP config can fix that).
+    if os.getenv("BREVO_API_KEY"):
+        _deliver_email_brevo_api(to_list, from_email, subject, html, attachment)
+        return
 
     if platform.system() == "Windows" and not os.getenv("SMTP_HOST") and not attachment:
         try:
