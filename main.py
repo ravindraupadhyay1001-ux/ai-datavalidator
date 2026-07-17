@@ -19665,72 +19665,26 @@ async def audit_log_stream(request: Request):
 
 
     async def _event_generator():
-
+        # Previously raced q.get() against request.is_disconnected() with
+        # asyncio.wait() -- but WorkspaceAuthMiddleware is a BaseHTTPMiddleware,
+        # and BaseHTTPMiddleware wraps the ASGI receive channel internally.
+        # A downstream is_disconnected() call (which itself reads from
+        # receive()) competes with that wrapper for the same channel, which
+        # hung this endpoint completely (confirmed locally -- not even the
+        # initial response headers were ever sent). Client disconnects are
+        # instead detected the normal way for a generator-based
+        # StreamingResponse: when the client goes away, Starlette stops
+        # iterating and throws GeneratorExit in here, which the `finally`
+        # below already handles -- no manual disconnect polling needed.
         try:
-
             while True:
-
-                # Race: next log event vs client disconnect
-
-                get_task  = asyncio.ensure_future(q.get())
-
-                disc_task = asyncio.ensure_future(request.is_disconnected())
-
-                done, pending = await asyncio.wait(
-
-                  [get_task, disc_task],
-
-                  timeout=15.0,
-
-                  return_when=asyncio.FIRST_COMPLETED,
-
-                )
-
-                # Cancel and await losing tasks to avoid "Task destroyed but pending" warnings
-
-                for t in pending:
-
-                    t.cancel()
-
-                    try:
-
-                        await t
-
-                    except (asyncio.CancelledError, Exception):
-
-
-                        pass
-
-                if not done:
-
-                    # timeout -- send keep-alive
-
+                try:
+                    result = await asyncio.wait_for(q.get(), timeout=15.0)
+                except asyncio.TimeoutError:
                     yield ": keep-alive\n\n"
-
                     continue
-
-                for fut in done:
-
-                    try:
-
-                        result = fut.result()
-
-                    except Exception:
-
-                        continue
-
-                    if result is True:
-
-                        # is_disconnected() returned True -- client gone
-
-                        return
-
-                    if isinstance(result, str):
-
-                        yield f"data: {result}\n\n"
-
+                yield f"data: {result}\n\n"
         finally:
-
             _audit_unsubscribe(q)
 
 
