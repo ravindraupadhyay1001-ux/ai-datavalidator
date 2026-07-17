@@ -254,6 +254,16 @@ _DDL = [
         created_at TEXT
     )""",
     "CREATE INDEX IF NOT EXISTS idx_token_user ON ws_token_usage(username)",
+    # Admin-controlled module visibility -- single-row table (id=1) holding a
+    # comma-separated list of nav data-tab values hidden from non-admin
+    # users while a module is still in development. Deliberately not in the
+    # .env-backed /api/settings mechanism -- that requires an app restart to
+    # take effect, which is a poor fit for something toggled live.
+    """CREATE TABLE IF NOT EXISTS ws_app_config (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        hidden_modules TEXT,
+        updated_at TEXT
+    )""",
 ]
 
 
@@ -310,6 +320,34 @@ def set_user_role(username, role):
     conn = _conn()
     conn.cursor().execute(
         f"UPDATE ws_users SET role={_ph()} WHERE username={_ph()}", (role, username))
+    conn.commit()
+
+
+def get_hidden_modules() -> list[str]:
+    """Global (not per-user) list of nav data-tab values hidden from
+    non-admin users -- admin-controlled via POST /api/ws/app-config."""
+    cur = _conn().cursor()
+    cur.execute("SELECT hidden_modules FROM ws_app_config WHERE id=1")
+    rows = _rows(cur)
+    val = rows[0].get("hidden_modules") if rows else None
+    return [m.strip() for m in val.split(",") if m.strip()] if val else []
+
+
+def set_hidden_modules(modules: list[str]) -> None:
+    conn = _conn()
+    cur = conn.cursor()
+    val = ",".join(modules)
+    cur.execute("SELECT id FROM ws_app_config WHERE id=1")
+    if _rows(cur):
+        cur.execute(
+            f"UPDATE ws_app_config SET hidden_modules={_ph()}, updated_at={_ph()} WHERE id=1",
+            (val, _now()),
+        )
+    else:
+        cur.execute(
+            f"INSERT INTO ws_app_config (id, hidden_modules, updated_at) VALUES (1,{_ph()},{_ph()})",
+            (val, _now()),
+        )
     conn.commit()
 
 

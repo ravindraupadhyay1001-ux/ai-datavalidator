@@ -557,6 +557,24 @@
         <div id="users-out" class="text-sm"></div>
       </div>
 
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid #16a34a">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="settings-icon" style="background:linear-gradient(135deg,#16a34a,#4ade80)">&#128065;</div>
+          <h3 class="settings-h">Module Visibility</h3>
+        </div>
+        <p class="text-xs text-gray-500 mb-3">Unchecked modules are hidden from Analyst/Run Only users. You (Admin) always see every module.</p>
+        <div id="mod-vis-fields" class="grid grid-cols-2 gap-2 text-sm mb-3">
+          <label class="flex items-center gap-2"><input type="checkbox" class="mod-vis-cb accent-emerald-500" value="compare" checked> Reconciliation</label>
+          <label class="flex items-center gap-2"><input type="checkbox" class="mod-vis-cb accent-emerald-500" value="quality" checked> Data Quality</label>
+          <label class="flex items-center gap-2"><input type="checkbox" class="mod-vis-cb accent-emerald-500" value="profile" checked> Data Profile</label>
+          <label class="flex items-center gap-2"><input type="checkbox" class="mod-vis-cb accent-emerald-500" value="governance" checked> Governance</label>
+          <label class="flex items-center gap-2"><input type="checkbox" class="mod-vis-cb accent-emerald-500" value="parse" checked> Parse</label>
+          <label class="flex items-center gap-2"><input type="checkbox" class="mod-vis-cb accent-emerald-500" value="xref" checked> Cross Reference</label>
+        </div>
+        <button onclick="saveModuleVisibility()" class="btn rounded-lg px-3 py-1 text-sm">Save</button>
+        <span id="mod-vis-status" class="text-xs text-gray-500 ml-2"></span>
+      </div>
+
       <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid #7c3aed">
         <div class="flex items-center gap-3 mb-3">
           <div class="settings-icon" style="background:linear-gradient(135deg,#7c3aed,#a855f7)">&#129302;</div>
@@ -3110,6 +3128,11 @@ async function loadSettings(){ const d=await fetch('/api/license/status').then(r
     (d.expires_at?` &middot; expires ${d.expires_at.slice(0,10)}`:'')+`<br><span class="text-gray-500">${esc(d.message||'')}</span>`;
   document.getElementById('set-out').textContent=JSON.stringify(d,null,2);
   try{
+    const me = await fetch('/api/ws/me').then(r=>r.ok?r.json():null);
+    const hidden = new Set(me?.hidden_modules || []);
+    document.querySelectorAll('.mod-vis-cb').forEach(cb => { cb.checked = !hidden.has(cb.value); });
+  }catch(e){}
+  try{
     const s = await fetch('/api/settings').then(r=>r.json());
     const set = (id,val) => { const el=document.getElementById(id); if(el && val!=null) el.value = val; };
     set('cfg-llm-provider', s.llm?.provider);
@@ -3133,6 +3156,15 @@ async function loadSettings(){ const d=await fetch('/api/license/status').then(r
 }
 async function activateLicense(){ const token=document.getElementById('lic-token').value.trim(); if(!token)return;
   const r=await J('POST','/api/license/activate',{token}); alert(r.ok?'✅ License activated':'❌ Activation failed'); loadSettings(); }
+async function saveModuleVisibility(){
+  const hidden = Array.from(document.querySelectorAll('.mod-vis-cb')).filter(cb=>!cb.checked).map(cb=>cb.value);
+  const status = document.getElementById('mod-vis-status');
+  status.textContent = 'Saving…';
+  try{
+    await J('POST', '/api/ws/app-config', {hidden_modules: hidden});
+    status.textContent = '✅ Saved.';
+  }catch(e){ status.textContent = '❌ Could not save: ' + e; }
+}
 
 async function saveAppSettings(){
   const v = id => document.getElementById(id)?.value?.trim() || '';
@@ -3216,6 +3248,13 @@ const roleColor = {admin:'#f59e0b', analyst:'#38bdf8', readonly:'#94a3b8'};
   if (CURRENT_ROLE !== 'admin') {
     const settingsTab = document.querySelector('button[data-tab="settings"]');
     if (settingsTab) settingsTab.style.display = 'none';
+    // Admin-controlled module visibility -- modules still in development can
+    // be hidden from non-admin users via Settings -> Module Visibility.
+    // Admins always see every module regardless of this list.
+    (me.hidden_modules || []).forEach(mod => {
+      const tab = document.querySelector(`button[data-tab="${mod}"]`);
+      if (tab) tab.style.display = 'none';
+    });
   }
 }catch(e){} })();
 

@@ -19486,7 +19486,26 @@ async def ws_me(request: Request):
         "username": username,
         "display_name": getattr(request.state, "display_name", username),
         "role": getattr(request.state, "role", None) or _ws_db.get_user_role(username),
+        "hidden_modules": _ws_db.get_hidden_modules(),
     })
+
+
+_MODULE_TAB_VALUES = {"compare", "quality", "profile", "governance", "parse", "xref"}
+
+
+@app.post("/api/ws/app-config")
+async def ws_set_app_config(request: Request):
+    """Admin-controlled module visibility -- which nav tabs are hidden from
+    non-admin users while a module is still in development. Deliberately
+    restricted to _MODULE_TAB_VALUES so this can never be used to hide
+    workspace/settings, which already have their own dedicated role gating."""
+    _ws_check()
+    _require_settings_admin(request)
+    body = await request.json()
+    requested = body.get("hidden_modules") or []
+    hidden = [m for m in requested if m in _MODULE_TAB_VALUES]
+    _ws_db.set_hidden_modules(hidden)
+    return JSONResponse({"hidden_modules": hidden, "status": "ok"})
 
 
 @app.get("/api/ws/users")
