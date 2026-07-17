@@ -429,7 +429,9 @@ llm["anthropic_model_id"])
         _set("LICENSE_SERVER_URL", body["license_server"])
 
     env_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return JSONResponse({"ok": True, "message": "Settings saved. Restart app to apply LLM/DB changes."})
+    return JSONResponse({"ok": True, "message": "Settings saved. Restart app to apply LLM/DB/Email changes -- "
+                          "and on platforms with an ephemeral filesystem (e.g. Railway without a mounted volume), "
+                          "set these as real environment variables instead so they survive the next deploy."})
 
 
 # ---------------------------------------------------------------------
@@ -7678,10 +7680,16 @@ def analyze_quality_full(
     _col_overrides: dict = {}
     _col_map_lc = {c.lower(): c for c in df.columns}
 
-    # Scan every fingerprint for dc_governance_* rules (override AND exclude)
-    for _fp_entry in _all_saved.values():
-
-
+    # Scan every fingerprint for dc_governance_* rules (override AND exclude).
+    # feedback_rules.json is nested {username: {fingerprint: entry}} (plus a
+    # "__legacy__" bucket of the same shape) since per-user isolation shipped
+    # -- both levels must be flattened or every rule here silently vanishes.
+    _all_fp_entries = [
+      _fp_entry
+      for _user_bucket in _all_saved.values() if isinstance(_user_bucket, dict)
+      for _fp_entry in _user_bucket.values() if isinstance(_fp_entry, dict)
+    ]
+    for _fp_entry in _all_fp_entries:
       for _r in _fp_entry.get("rules", []):
         _cat = _r.get("category", "")
         if not _cat.startswith("dc_governance_"):
@@ -12093,50 +12101,50 @@ def _build_email_html(data: dict) -> str:
 
 
     for q in data.get("quality_reports", []):
-        dq = q["dq_score"]
-        lines.append(f"<h3>DQ: {q['file_name']}</h3>")
-        lines.append(f"<p>Score: <strong>{dq['score']}/100</strong> (Grade {dq['grade']}) &nbsp;"
-                      f"Completeness: {dq['completeness']}% | Uniqueness: {dq['uniqueness']}% | "
-                      f"Validity: {dq['validity']}%</p>")
+        dq = q.get("dq_score") or {}
+        lines.append(f"<h3>DQ: {q.get('file_name','')}</h3>")
+        lines.append(f"<p>Score: <strong>{dq.get('score','?')}/100</strong> (Grade {dq.get('grade','?')}) &nbsp;"
+                      f"Completeness: {dq.get('completeness','?')}% | Uniqueness: {dq.get('uniqueness','?')}% | "
+                      f"Validity: {dq.get('validity','?')}%</p>")
         fails = [r for r in q.get("rule_results", []) if r.get("status") == "FAIL"]
         if fails:
             lines.append("<table border='1' cellpadding='4' style='border-collapse:collapse;font-size:12px'>")
             lines.append("<tr style='background:#1a1a2e;color:#fff'><th>Rule</th><th>Column</th><th>Failed</th></tr>")
             for r in fails:
-                lines.append(f"<tr style='background:#fee2e2'><td>{r['rule_name']}</td>"
-                              f"<td>{r['column_name']}</td><td>{r['failed']}</td></tr>")
+                lines.append(f"<tr style='background:#fee2e2'><td>{r.get('rule_name','')}</td>"
+                              f"<td>{r.get('column_name','')}</td><td>{r.get('failed',0)}</td></tr>")
             lines.append("</table>")
 
     for g in data.get("governance_reports", []):
-        lines.append(f"<h3>Governance: {g['file_name']}</h3>")
+        lines.append(f"<h3>Governance: {g.get('file_name','')}</h3>")
 
 
-        lines.append(f"<p>Classification: <strong>{g['overall_classification']}</strong> | "
-                      f"PII columns: {g['pii_column_count']} | Regulatory: {', '.join(g['regulatory_frameworks'])}</p>")
+        lines.append(f"<p>Classification: <strong>{g.get('overall_classification','')}</strong> | "
+                      f"PII columns: {g.get('pii_column_count',0)} | Regulatory: {', '.join(g.get('regulatory_frameworks',[]) or [])}</p>")
 
     for m in data.get("mappings", []):
-        lines.append(f"<h3>Mapping: {m['file1_name']} → {m['file2_name']}</h3>")
+        lines.append(f"<h3>Mapping: {m.get('file1_name','')} → {m.get('file2_name','')}</h3>")
         rw = m.get("relatedness_warning")
         if rw:
-            colour = "#7f1d1d" if rw["level"] == "HIGH" else "#78350f"
-            bg     = "#fef2f2" if rw["level"] == "HIGH" else "#fffbeb"
-            border = "#fca5a5" if rw["level"] == "HIGH" else "#fcd34d"
-            icon   = "&#9888;" if rw["level"] == "HIGH" else "&#9888;"
-            reasons_html = "".join(f"<li>{r}</li>" for r in rw["reasons"])
+            colour = "#7f1d1d" if rw.get("level") == "HIGH" else "#78350f"
+            bg     = "#fef2f2" if rw.get("level") == "HIGH" else "#fffbeb"
+            border = "#fca5a5" if rw.get("level") == "HIGH" else "#fcd34d"
+            icon   = "&#9888;"
+            reasons_html = "".join(f"<li>{r}</li>" for r in rw.get("reasons",[]) or [])
             lines.append(
                 f"<div style='border:2px solid {border};background:{bg};color:{colour};"
                 f"border-radius:6px;padding:12px 16px;margin:8px 0'>"
-                f"<strong>{icon} RELATEDNESS WARNING [{rw['level']}]:</strong> {rw['message']}"
+                f"<strong>{icon} RELATEDNESS WARNING [{rw.get('level','')}]:</strong> {rw.get('message','')}"
                 f"<ul style='margin:6px 0 0 16px'>{reasons_html}</ul></div>"
             )
 
 
         lines.append(f"<p>Completeness: "
-                      f"<strong>{m['mapping_completeness_pct']}%</strong> | "
-                      f"Exact: {len(m['exact'])} | Fuzzy: {len(m['fuzzy'])} | "
-                      f"Unmapped F1: {len(m['unmapped_f1'])} | Unmapped F2: {len(m['unmapped_f2'])}</p>")
+                      f"<strong>{m.get('mapping_completeness_pct','?')}%</strong> | "
+                      f"Exact: {len(m.get('exact',[]) or [])} | Fuzzy: {len(m.get('fuzzy',[]) or [])} | "
+                      f"Unmapped F1: {len(m.get('unmapped_f1',[]) or [])} | Unmapped F2: {len(m.get('unmapped_f2',[]) or [])}</p>")
 
-        lines.append("<hr/><p style='color:#9ca3af;font-size:11px'>Sent by Data Validation AGENT</p></body></html>")
+    lines.append("<hr/><p style='color:#9ca3af;font-size:11px'>Sent by Data Validation AGENT</p></body></html>")
 
     return "\n".join(lines)
 
@@ -14153,7 +14161,15 @@ async def analyze(request: Request):
           _all_dc = _json_dc.load(_fb_dc)
         # Build set of all columns present in the uploaded dataframes
         _all_df_cols = {c.lower(): c for df_tuple in dataframes for c in df_tuple[1].columns}
-        for _fp_entry in _all_dc.values():
+        # feedback_rules.json is nested {username: {fingerprint: entry}} (plus a
+        # "__legacy__" bucket of the same shape) since per-user isolation shipped
+        # -- both levels must be flattened or every rule here silently vanishes.
+        _all_dc_entries = [
+          _fp_entry
+          for _user_bucket in _all_dc.values() if isinstance(_user_bucket, dict)
+          for _fp_entry in _user_bucket.values() if isinstance(_fp_entry, dict)
+        ]
+        for _fp_entry in _all_dc_entries:
           for _r in _fp_entry.get("rules", []):
             if not _r.get("category", "").startswith(_dc_cat_prefix):
               continue
@@ -14707,8 +14723,15 @@ async def analyze(request: Request):
           _col_ov_sa: dict = {}
           _cm_sa = {c.lower(): c for c in df.columns}
 
-
-          for _fpe in _all2.values():
+          # feedback_rules.json is nested {username: {fingerprint: entry}} (plus a
+          # "__legacy__" bucket of the same shape) since per-user isolation shipped
+          # -- both levels must be flattened or every rule here silently vanishes.
+          _all2_entries = [
+            _fpe
+            for _user_bucket in _all2.values() if isinstance(_user_bucket, dict)
+            for _fpe in _user_bucket.values() if isinstance(_fpe, dict)
+          ]
+          for _fpe in _all2_entries:
             for _r in _fpe.get("rules", []):
               _cat2 = _r.get("category", "")
               if not _cat2.startswith("dc_governance_"):

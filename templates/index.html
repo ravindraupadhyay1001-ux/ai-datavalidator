@@ -809,7 +809,21 @@ async function postForm(action, fileInputs, extra, refDocInputId){
   const r = await fetch('/analyze',{method:'POST',body:fd});
   return { ok:r.ok, data: await r.json() };
 }
-const J = (m,u,b)=>fetch(u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined}).then(r=>r.json());
+// Never lets a caller's `await J(...)` silently vanish -- a server crash that
+// returns a non-JSON 500 (FastAPI's default unhandled-exception body is plain
+// text, not JSON) used to make r.json() throw, rejecting the promise with no
+// .catch() anywhere upstream, so the button just did nothing with no visible
+// error at all. Every failure mode now resolves to an object with `.error`
+// set, so existing `if(r.error)`/`if(r.detail)` checks across the app catch
+// it instead of it disappearing.
+const J = (m,u,b)=>fetch(u,{method:m,headers:{'Content-Type':'application/json'},body:b?JSON.stringify(b):undefined})
+  .then(async r=>{
+    let data = null;
+    try{ data = await r.json(); }catch(e){ /* non-JSON body, e.g. a raw 500 */ }
+    if(!r.ok) return { error: (data && (data.detail||data.error)) || `Request failed (HTTP ${r.status}).`, ...(data||{}) };
+    return data ?? {};
+  })
+  .catch(e=>({ error: 'Network error: '+e }));
 
 // ---------- Saved connections: populate every .conn-select dropdown ----------
 async function loadConnDropdowns(){
@@ -3179,7 +3193,7 @@ async function saveAppSettings(){
   };
   if(v('cfg-license-server')) body.license_server = v('cfg-license-server');
   const r = await J('POST','/api/settings', body);
-  alert(r.ok!==false ? '✅ Settings saved (may need a restart to fully apply).' : '❌ '+(r.error||'Failed to save'));
+  alert(r.ok!==false ? '✅ '+(r.message||'Settings saved (may need a restart to fully apply).') : '❌ '+(r.error||'Failed to save'));
   loadSettings();
 }
 
