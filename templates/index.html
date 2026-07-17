@@ -2293,9 +2293,20 @@ const HELP_CONTENT = {
   overview: `<h3 class="text-lg font-bold grad-text mb-2">AI Agent &mdash; Data Validation</h3>
     <p>Upload any BFSI data file and get instant reconciliation, data quality scoring, governance/PII scanning,
     profiling, parsing, and cross-reference analysis &mdash; with an AI Copilot mode powered by Claude.</p>
-    <p class="mt-2 text-gray-400">Use the tabs on the left for each module, or switch on "AI Copilot Mode" /
-    Agent mode in the chat panel on the right to ask free-form questions about your data instead of running a
-    fixed report.</p>`,
+    <div class="mt-4 card rounded-lg p-4" style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.25)">
+      <p class="font-semibold text-emerald-300 mb-2">&#128640; Getting Started (3 steps)</p>
+      <ol class="ml-4 list-decimal text-gray-400 space-y-1">
+        <li><b>Pick a module</b> on the left &mdash; not sure which? Reconciliation compares two files;
+        Data Quality scores one file; see the tabs on the left of this guide for the rest.</li>
+        <li><b>Add your file(s)</b> &mdash; drag &amp; drop, click to browse, or pick a Saved Connector if
+        you've already set one up in Workspace.</li>
+        <li><b>Click Run</b> &mdash; results appear on screen in seconds. From there you can download a report,
+        email it, or save it to Workspace to schedule it going forward.</li>
+      </ol>
+    </div>
+    <p class="mt-3 text-gray-400">Prefer to just ask questions instead of running a fixed report? Turn on
+    <b>"AI Copilot Mode"</b> (or Agent mode in the chat panel on the right) and describe what you want in plain
+    English.</p>`,
   compare: `<h3 class="font-semibold text-sky-300 mb-2">Reconciliation</h3>
     <p>Compares two files (or two saved Workspace connections) and reports matched rows, rows only in one side,
     and modified rows with per-field diffs. Keys are auto-inferred if left blank.</p>
@@ -2316,27 +2327,78 @@ const HELP_CONTENT = {
     <p class="mt-2 text-gray-400">Rules are saved against this file pair's schema and reload automatically next
     time you upload matching files &mdash; even in a new session. Type <code>run recon</code> in the chat anytime
     to re-apply all saved rules and refresh the report. Audit/ETL metadata columns (e.g. <code>created_at</code>,
-    <code>load_date</code>) and surrogate integer keys are auto-excluded with no rule needed.</p>`,
+    <code>load_date</code>) and surrogate integer keys are auto-excluded with no rule needed.</p>
+    <p class="mt-3 font-semibold text-emerald-300">Example</p>
+    <p class="text-gray-400">File A vs File B, key = <code>trade_id</code>:</p>
+    <table class="w-full text-xs mt-1" style="border-collapse:collapse">
+      <tr class="border-t border-[var(--line)]"><td class="p-1">trade_id</td><td class="p-1">amount (A)</td><td class="p-1">amount (B)</td></tr>
+      <tr class="border-t border-[var(--line)]"><td class="p-1">T1</td><td class="p-1">1000</td><td class="p-1">1000</td></tr>
+      <tr class="border-t border-[var(--line)]" style="color:#d97706"><td class="p-1">T2</td><td class="p-1">2000</td><td class="p-1">2500</td></tr>
+      <tr class="border-t border-[var(--line)]" style="color:#dc2626"><td class="p-1">T3</td><td class="p-1">500</td><td class="p-1">&mdash; (missing)</td></tr>
+    </table>
+    <p class="mt-1 text-gray-400">Result: 1 matched, 1 modified (T2 amount 2000&rarr;2500), 1 only-in-A (T3).</p>`,
   quality: `<h3 class="font-semibold text-sky-300 mb-2">Data Quality</h3>
     <p>Scores a file across Completeness, Uniqueness, Validity, Consistency, Conformity and Precision, with a
     letter grade and per-rule PASS/FAIL results. Pick a BFSI Rule Pack (Trade, Position, Payments, MiFID II,
     Reference Data, Risk) to apply domain-specific validators (ISIN/LEI/BIC/currency checks, etc).</p>
     <p class="mt-2 text-gray-400">"AI-Enhanced" asks the LLM to suggest extra rules from the column names.
-    Use <b>Dataset Controls</b> to teach it dataset-specific exceptions in plain English.</p>`,
+    Use <b>Dataset Controls</b> to teach it dataset-specific exceptions in plain English.</p>
+    <p class="mt-3 font-semibold text-emerald-300">Example</p>
+    <table class="w-full text-xs mt-1" style="border-collapse:collapse">
+      <tr class="border-t border-[var(--line)]"><td class="p-1">trade_id</td><td class="p-1">isin</td><td class="p-1">notional</td></tr>
+      <tr class="border-t border-[var(--line)]"><td class="p-1">T1</td><td class="p-1">US0378331005</td><td class="p-1">100000</td></tr>
+      <tr class="border-t border-[var(--line)]" style="color:#dc2626"><td class="p-1">T2</td><td class="p-1">BADISIN123</td><td class="p-1">&nbsp;</td></tr>
+    </table>
+    <p class="mt-1 text-gray-400">Result: Completeness 50% (T2's notional is blank), 1 rule FAIL &mdash;
+    "isin_format" on T2 (<code>BADISIN123</code> fails ISIN checksum). Grade: C.</p>`,
   profile: `<h3 class="font-semibold text-sky-300 mb-2">Data Profile</h3>
     <p>Column-level statistics (type, nulls, distinct count, min/max), near-key candidate columns, and
-    correlated column pairs &mdash; useful for understanding an unfamiliar file before reconciling it.</p>`,
+    correlated column pairs &mdash; useful for understanding an unfamiliar file before reconciling it.</p>
+    <p class="mt-3 font-semibold text-emerald-300">Example</p>
+    <table class="w-full text-xs mt-1" style="border-collapse:collapse">
+      <tr class="border-t border-[var(--line)]"><td class="p-1">trade_id</td><td class="p-1">side</td><td class="p-1">qty</td></tr>
+      <tr class="border-t border-[var(--line)]"><td class="p-1">T1</td><td class="p-1">BUY</td><td class="p-1">100</td></tr>
+      <tr class="border-t border-[var(--line)]"><td class="p-1">T2</td><td class="p-1">SELL</td><td class="p-1">250</td></tr>
+      <tr class="border-t border-[var(--line)]"><td class="p-1">T3</td><td class="p-1">BUY</td><td class="p-1">100</td></tr>
+    </table>
+    <p class="mt-1 text-gray-400">Result: <code>trade_id</code> &mdash; 100% unique, flagged as a key candidate.
+    <code>side</code> &mdash; 2 distinct values (BUY/SELL). <code>qty</code> &mdash; numeric, min 100, max 250,
+    duplicate value 100 appears twice (T1 &amp; T3).</p>`,
   governance: `<h3 class="font-semibold text-sky-300 mb-2">Governance &amp; PII</h3>
     <p>Detects PII and BFSI-sensitive identifiers per column, classifies overall sensitivity
     (Public &rarr; Highly Restricted), flags applicable regulatory frameworks (GDPR, HIPAA, MiFID II, CCPA),
-    and routes issues to the right steward/team. Download a PII-masked CSV directly from the results.</p>`,
+    and routes issues to the right steward/team. Download a PII-masked CSV directly from the results.</p>
+    <p class="mt-3 font-semibold text-emerald-300">Example</p>
+    <table class="w-full text-xs mt-1" style="border-collapse:collapse">
+      <tr class="border-t border-[var(--line)]"><td class="p-1">customer_id</td><td class="p-1">email</td><td class="p-1">ssn</td></tr>
+      <tr class="border-t border-[var(--line)]"><td class="p-1">C1</td><td class="p-1">john.doe@example.com</td><td class="p-1">123-45-6789</td></tr>
+    </table>
+    <p class="mt-1 text-gray-400">Result: <code>email</code> and <code>ssn</code> flagged as PII &rarr;
+    overall classification <b>Confidential</b>, regulatory frameworks: GDPR, CCPA. Masked export would show
+    <code>j***@example.com</code> and <code>***-**-6789</code>.</p>`,
   parse: `<h3 class="font-semibold text-sky-300 mb-2">Parse</h3>
     <p>Extracts a clean structured table from semi-structured or non-tabular files (SWIFT MT, ISO 20022, FIX,
-    NACHA, XBRL, PDF, plus standard CSV/XLSX/JSON/XML/Parquet).</p>`,
+    NACHA, XBRL, PDF, plus standard CSV/XLSX/JSON/XML/Parquet).</p>
+    <p class="mt-3 font-semibold text-emerald-300">Example</p>
+    <p class="text-gray-400">Input (free text / FIX-style tags):</p>
+    <p class="mt-1 font-mono text-xs text-gray-400" style="white-space:pre-wrap">Trade T1: BUY 100 AAPL @ 189.50, settled 2026-07-15</p>
+    <p class="mt-1 text-gray-400">Result &mdash; parsed into a table:</p>
+    <table class="w-full text-xs mt-1" style="border-collapse:collapse">
+      <tr class="border-t border-[var(--line)]"><td class="p-1">trade_id</td><td class="p-1">side</td><td class="p-1">qty</td><td class="p-1">symbol</td><td class="p-1">price</td><td class="p-1">settle_date</td></tr>
+      <tr class="border-t border-[var(--line)]"><td class="p-1">T1</td><td class="p-1">BUY</td><td class="p-1">100</td><td class="p-1">AAPL</td><td class="p-1">189.50</td><td class="p-1">2026-07-15</td></tr>
+    </table>`,
   xref: `<h3 class="font-semibold text-sky-300 mb-2">Cross Reference</h3>
     <p>Matches an identifier (ISIN, CUSIP, LEI, trade_id, etc.) across 2&ndash;5 sources, producing a coverage
     matrix and a conflicts list with a recommended "golden" value per field (majority-wins, or your chosen
-    authoritative source). Leave the identifier key blank to let the AI auto-detect it.</p>`,
+    authoritative source). Leave the identifier key blank to let the AI auto-detect it.</p>
+    <p class="mt-3 font-semibold text-emerald-300">Example</p>
+    <p class="text-gray-400">3 sources, key = <code>isin</code>, field = <code>price</code>:</p>
+    <table class="w-full text-xs mt-1" style="border-collapse:collapse">
+      <tr class="border-t border-[var(--line)]"><td class="p-1">isin</td><td class="p-1">Source A</td><td class="p-1">Source B</td><td class="p-1">Source C</td></tr>
+      <tr class="border-t border-[var(--line)]"><td class="p-1">US0378331005</td><td class="p-1">189.50</td><td class="p-1">189.50</td><td class="p-1">189.55</td></tr>
+    </table>
+    <p class="mt-1 text-gray-400">Result: conflict on <code>price</code> &mdash; golden value <b>189.50</b>
+    (majority: A &amp; B agree, C is the outlier).</p>`,
   memory: `<h3 class="font-semibold text-sky-300 mb-2">Dataset Memory</h3>
     <p>Every schema you upload gets a fingerprint from its column names, so plain-English rules you teach the
     AI Copilot are remembered and reload automatically next time you upload a matching file pair &mdash; even
