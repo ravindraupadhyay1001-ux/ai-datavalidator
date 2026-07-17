@@ -3326,7 +3326,7 @@ const roleColor = {admin:'#f59e0b', analyst:'#38bdf8', readonly:'#94a3b8'};
   if(!me) return;
   CURRENT_ROLE = me.role || 'analyst';
   const badge = document.createElement('div');
-  badge.className = 'mx-3 mb-1 text-xs';
+  badge.className = 'mt-auto mx-3 mb-3 pt-3 text-xs border-t border-[var(--line)]';
   badge.innerHTML = `<span class="badge" style="background:${roleColor[CURRENT_ROLE]}22;color:${roleColor[CURRENT_ROLE]}">${esc(me.display_name||me.username)} &middot; ${esc(ROLE_LABELS[CURRENT_ROLE]||CURRENT_ROLE)}</span> <a href="/logout" class="text-gray-500 hover:text-gray-300 underline">Logout</a>`;
   document.getElementById('licbar').before(badge);
   if (CURRENT_ROLE === 'readonly') applyReadonlyUI();
