@@ -9522,6 +9522,91 @@ _REGULATORY_DOMAIN_MAP),
 
 
 # ----------------------------------------------------------------------
+# PII masking -- shared by the manual "download masked CSV" endpoint
+# (mask_pii_data) and every place a dataframe sample is sent to an
+# external LLM (column mapping, DQ suggestions, AI Copilot chat context).
+# ----------------------------------------------------------------------
+def _infer_mask_strategy(col: str) -> str:
+    cl = col.lower()
+    if any(k in cl for k in ("email", "mail")):                    return "email"
+    if any(k in cl for k in ("phone", "tel", "mobile")):            return "phone"
+    if any(k in cl for k in ("ssn", "social", "tax_id", "nin")):    return "ssn"
+    if any(k in cl for k in ("card", "cc_num", "credit")):          return "credit_card"
+    if any(k in cl for k in ("name", "firstname", "lastname", "fullname")): return "name"
+    if any(k in cl for k in ("dob", "birth", "birthdate")):         return "dob"
+    if any(k in cl for k in ("address", "addr", "street", "zip", "postal")): return "address"
+    if any(k in cl for k in ("iban", "account_no")):                return "iban"
+    return "generic"
+
+
+def _mask_value(val: str, col_name: str, strategy: str) -> str:
+    if not val or val in ("nan", "None", ""):
+        return val
+    s = strategy or _infer_mask_strategy(col_name)
+    if s == "email":
+        m = re.match(r'^([^@]+)(@[^@]+)$', val)
+        return (m.group(1)[0] + "***" + m.group(2)) if m else "***@***.com"
+    if s == "phone":
+        digits = re.sub(r'\D', '', val)
+        return f"***-***-{digits[-4:]}" if len(digits) >= 4 else "***-***-****"
+    if s == "ssn":
+        parts = re.sub(r'\D', '', val)
+        return f"***-**-{parts[-4:]}" if len(parts) >= 4 else "***-**-****"
+    if s == "credit_card":
+        digits = re.sub(r'\D', '', val)
+        return f"****-****-****-{digits[-4:]}" if len(digits) >= 4 else "****-****-****-****"
+    if s == "name":
+        return "[MASKED]"
+    if s == "dob":
+        m = re.match(r'^(\d{4})([-/]\d{2}[-/]\d{2})$', val)
+        return (m.group(1) + "-**-**") if m else "[DOB MASKED]"
+    if s == "address":
+        return "[ADDRESS MASKED]"
+    if s == "iban":
+        clean = re.sub(r'[\s-]', '', val.upper())
+        return f"{clean[:4]}-****-****-{clean[-4:]}" if len(clean) >= 8 else "[IBAN MASKED]"
+    return "[REDACTED]"
+
+
+def _pii_columns_for_masking(df: pd.DataFrame) -> set[str]:
+    """Local (no LLM) governance scan to find PII columns before any
+    dataframe sample reaches an external LLM call."""
+    try:
+        gov = analyze_governance(df, name="_llm_pre_scan")
+        return {f["column"] for f in gov.get("columns", []) if f.get("pii_detected")}
+    except Exception:
+        return set()
+
+
+def _masked_samples(df: pd.DataFrame, col: str, n: int, pii_cols: set[str]) -> list[str]:
+    """Sample column values for an LLM prompt, redacting columns flagged as
+    PII by _pii_columns_for_masking() first."""
+    vals = df[col].dropna().astype(str).head(n).tolist()
+    if col in pii_cols:
+        strategy = _infer_mask_strategy(col)
+        return [_mask_value(v, col, strategy) for v in vals]
+    return vals
+
+
+_LLM_TEXT_MASK_TYPES = ("email", "phone", "ssn", "credit_card", "iban")
+
+
+def _mask_raw_text_pii(text: str) -> str:
+    """Coarse redaction of raw file text before it's sent to an external LLM
+    for unstructured parsing -- there's no column structure yet to run
+    governance's per-column detection on, so this sweeps the same
+    value-shape patterns governance uses for content scanning (_PII_REGEX)
+    directly over the text. Deliberately excludes date_dob/ip_address (too
+    broad -- dates are core structural content parse_unstructured needs to
+    keep) and the BFSI reference-data regexes (ISIN/LEI/CUSIP/etc. are not
+    personal data and are exactly what a reconciliation tool needs to see)."""
+    masked = text
+    for pii_type in _LLM_TEXT_MASK_TYPES:
+        masked = _PII_REGEX[pii_type].sub(f"[{pii_type.upper()}_REDACTED]", masked)
+    return masked
+
+
+# ----------------------------------------------------------------------
 # Data Lineage – auto column alignment + transform + reconciliation
 # ----------------------------------------------------------------------
 
@@ -9798,9 +9883,10 @@ def _llm_lineage_mapping(df_src: pd.DataFrame, df_tgt: pd.DataFrame,
 
     def _col_sample(df: pd.DataFrame) -> str:
         cols = list(df.columns)[:_MAX_COLS]
+        pii_cols = _pii_columns_for_masking(df)
         lines = []
         for c in cols:
-            vals = df[c].dropna().astype(str).head(_SAMPLE_ROWS).tolist()
+            vals = _masked_samples(df, c, _SAMPLE_ROWS, pii_cols)
             lines.append(f"  {c}: {vals}")
         return "\n".join(lines)
 
@@ -11219,6 +11305,7 @@ def parse_unstructured(raw_bytes: bytes, filename: str,
     try:
         encoding = chardet.detect(raw_bytes).get("encoding") or "utf-8"
         raw_text = raw_bytes.decode(encoding, errors="replace")
+        raw_text = _mask_raw_text_pii(raw_text)
     except Exception as exc:
         return {
             "file_name": filename, "columns": [], "rows": [],
@@ -12390,7 +12477,7 @@ async def mask_pii_data(session_id: str, request: Request):
     # Returns a masked CSV file for download.
 
 
-    import io, re as _re
+    import io
 
     body = await request.json()
     columns_to_mask: list[str] = body.get("columns", [])  # list of column names to mask
@@ -12417,50 +12504,8 @@ async def mask_pii_data(session_id: str, request: Request):
                 if col_finding.get("pii_detected"):
                     columns_to_mask.append(col_finding["column"])
 
-    def _mask_value(val: str, col_name: str, strategy: str) -> str:
-        if not val or val in ("nan", "None", ""):
-            return val
-        s = strategy or _infer_mask_strategy(col_name)
-        if s == "email":
-            m = _re.match(r'^([^@]+)(@[^@]+)$', val)
-            return (m.group(1)[0] + "***" + m.group(2)) if m else "***@***.com"
-        if s == "phone":
-            digits = _re.sub(r'\D', '', val)
-            return f"***-***-{digits[-4:]}" if len(digits) >= 4 else "***-***-****"
-        if s == "ssn":
-
-
-            parts = _re.sub(r'\D', '', val)
-            return f"***-**-{parts[-4:]}" if len(parts) >= 4 else "***-**-****"
-        if s == "credit_card":
-            digits = _re.sub(r'\D', '', val)
-            return f"****-****-****-{digits[-4:]}" if len(digits) >= 4 else "****-****-****-****"
-        if s == "name":
-            return "[MASKED]"
-        if s == "dob":
-            m = _re.match(r'^(\d{4})([-/]\d{2}[-/]\d{2})$', val)
-            return (m.group(1) + "-**-**") if m else "[DOB MASKED]"
-        if s == "address":
-            return "[ADDRESS MASKED]"
-        if s == "iban":
-            clean = _re.sub(r'[\s-]', '', val.upper())
-            return f"{clean[:4]}-****-****-{clean[-4:]}" if len(clean) >= 8 else "[IBAN MASKED]"
-        return "[REDACTED]"
-
-    def _infer_mask_strategy(col: str) -> str:
-
-
-        cl = col.lower()
-        if any(k in cl for k in ("email", "mail")):                    return "email"
-        if any(k in cl for k in ("phone", "tel", "mobile")):            return "phone"
-        if any(k in cl for k in ("ssn", "social", "tax_id", "nin")):    return "ssn"
-        if any(k in cl for k in ("card", "cc_num", "credit")):          return "credit_card"
-        if any(k in cl for k in ("name", "firstname", "lastname", "fullname")): return "name"
-        if any(k in cl for k in ("dob", "birth", "birthdate")):         return "dob"
-        if any(k in cl for k in ("address", "addr", "street", "zip", "postal")): return "address"
-        if any(k in cl for k in ("iban", "account_no")):                return "iban"
-        return "generic"
-
+    # _mask_value / _infer_mask_strategy are module-level (shared with the
+    # LLM-prompt masking helpers above analyze_governance).
     masked_df = df_orig.copy()
     for col in columns_to_mask:
         if col not in masked_df.columns:
@@ -12520,12 +12565,13 @@ async def dq_suggest(files: list[UploadFile] = File(...)):
         # Build a compact column profile summary for the LLM -- keep it small
         total_rows = len(combined)
         col_summaries = []
+        _pii_cols = _pii_columns_for_masking(combined)
         for col in combined.columns:
             s = combined[col]
             null_pct = round(s.isna().mean() * 100, 1)
             uniq_n   = int(s.nunique(dropna=True))
             dtype_str = str(s.dtype)
-            sample   = s.dropna().astype(str).head(8).tolist()
+            sample   = _masked_samples(combined, col, 8, _pii_cols)
 
             summary = {
                 "name":     col,
@@ -14447,6 +14493,7 @@ async def analyze(request: Request):
 
             # Build compact column profile for LLM
             _col_summaries = []
+            _pii_cols_dq = _pii_columns_for_masking(df)
             for _col in df.columns:
               _s = df[_col]
               _cs = {
@@ -14455,7 +14502,7 @@ async def analyze(request: Request):
                 "null_pct": round(float(_s.isna().mean() * 100), 1),
                 "unique_n": int(_s.nunique(dropna=True)),
                 "total":  len(_s),
-                "sample":  _s.dropna().astype(str).head(6).tolist(),
+                "sample":  _masked_samples(df, _col, 6, _pii_cols_dq),
               }
               if pd.api.types.is_numeric_dtype(_s):
                 _clean = _s.dropna()
@@ -14803,8 +14850,9 @@ async def analyze(request: Request):
 
       def _schema_summary(df: pd.DataFrame) -> list[dict]:
         rows = []
+        pii_cols = _pii_columns_for_masking(df)
         for col in df.columns:
-          sample = df[col].dropna().astype(str).head(5).tolist()
+          sample = _masked_samples(df, col, 5, pii_cols)
           rows.append({"column": col, "dtype": str(df[col].dtype), "sample": sample})
         return rows
 
@@ -14884,8 +14932,9 @@ async def analyze(request: Request):
       src_name_ctx, tgt_name_ctx = (dataframes[0][0], dataframes[1][0]) if len(dataframes) >= 2 else ("", "")
 
       def _chat_schema_summary(df: pd.DataFrame) -> list[dict]:
+        pii_cols = _pii_columns_for_masking(df)
         return [{"column": col, "dtype": str(df[col].dtype),
-                  "sample": df[col].dropna().astype(str).head(5).tolist()}
+                  "sample": _masked_samples(df, col, 5, pii_cols)}
                 for col in df.columns]
 
       _recon_ctx = {
@@ -18976,6 +19025,12 @@ async def ws_save_job(request: Request):
 
     fan_out_pairs = body.get("fan_out_pairs") or None
 
+    xref_sources = body.get("xref_sources") or None
+
+    if action == "xref" and not (xref_sources and 2 <= len(xref_sources) <= 5):
+
+        raise HTTPException(400, "A Cross Reference job needs 2-5 sources in xref_sources.")
+
     saved_id = _ws_db.save_job(
 
         username=username, name=name, action=action, source_conn_id=source_conn_id,
@@ -19003,6 +19058,8 @@ async def ws_save_job(request: Request):
         sla_json=sla_json,
 
         ai_hints_json=ai_hints_json,
+
+        xref_sources=xref_sources,
 
     )
 

@@ -462,10 +462,17 @@
             <option value="compare">compare</option>
             <option value="quality">quality</option>
             <option value="profile">profile</option>
+            <option value="governance">governance</option>
+            <option value="xref">xref</option>
           </select>
           <select id="jb-conna" class="inp conn-select"><option value="">&#128268; Saved Connector</option></select>
           <select id="jb-connb" class="inp conn-select"><option value="">&#128268; Saved Connector</option></select>
           <p id="jb-conn-help" class="col-span-2 text-[11px] text-gray-500 -mt-1">Left = conn_a / source connection. Right = conn_b (compare only -- ignored for quality/profile).</p>
+          <div id="jb-xref-sources-wrap" class="hidden col-span-2">
+            <label class="text-xs text-gray-400">One source per line: <code>conn_id,label</code> (label optional, 2-5 sources)</label>
+            <textarea id="jb-xref-sources" rows="4" placeholder="1,Branch NYC&#10;2,Branch LDN" class="inp w-full mt-1 font-mono text-xs"></textarea>
+            <p class="text-[11px] text-gray-500 mt-1">Cross Reference matches records across all sources on the common identifier key below (auto/majority-wins golden record, same as the interactive Cross Reference tab). Use the "Saved Connectors" tab to look up connection IDs.</p>
+          </div>
           <input id="jb-keycols" placeholder="Key columns (optional, comma-separated)" class="inp">
           <input id="jb-exclcols" placeholder="Exclude columns (optional, comma-separated)" class="inp">
           <div>
@@ -486,7 +493,7 @@
           </div>
           <p class="col-span-2 text-[11px] text-gray-500 -mt-1">&#9889; Near real-time reconciliation: point conn_a/conn_b at Kafka connections (set a <code>group_id</code> in the connection config so each poll only reads new messages) and schedule at 1&ndash;5 minutes for continuous streaming reconciliation.</p>
           <p class="col-span-2 text-[11px] text-gray-500 -mt-1">&#129302; Quality/profile jobs automatically get AI-suggested hints (nullable columns, key candidates, BFSI validators) on every run, same as the interactive AI Copilot mode -- no setup needed.</p>
-          <label class="col-span-2 flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
+          <label id="jb-bulk-enable-row" class="col-span-2 flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
             <input type="checkbox" id="jb-bulk-enable" class="accent-sky-500" onchange="document.getElementById('jb-bulk-panel').classList.toggle('hidden', !this.checked)">
             &#128230; Bulk (fan-out) &mdash; run this compare across many connection pairs at once, e.g. one per branch
           </label>
@@ -2867,10 +2874,16 @@ async function loadJobs(){ const rows=await fetch('/api/ws/jobs').then(r=>r.json
   `).join(''):'<div class="text-gray-500 text-sm">No jobs.</div>'; }
 function onJbActionChange(){
   const action = document.getElementById('jb-action').value;
+  const isXref = action==='xref';
   const help = document.getElementById('jb-conn-help');
   if(help) help.textContent = action==='compare'
     ? 'Left = conn_a. Right = conn_b.'
-    : 'Left = source connection. Right is unused for quality/profile.';
+    : 'Left = source connection. Right is unused for quality/profile/governance.';
+  ['jb-conna','jb-connb','jb-conn-help','jb-bulk-enable-row'].forEach(id=>{
+    const el = document.getElementById(id); if(el) el.classList.toggle('hidden', isXref);
+  });
+  const xrefWrap = document.getElementById('jb-xref-sources-wrap');
+  if(xrefWrap) xrefWrap.classList.toggle('hidden', !isXref);
 }
 function _jbCollectSla(){
   const sla = {};
@@ -2889,7 +2902,13 @@ async function saveJob(){
         jb_email=document.getElementById('jb-email'), jb_conna=document.getElementById('jb-conna'), jb_connb=document.getElementById('jb-connb');
   const action=jb_action.value; const body={name:jb_name.value,action,schedule_cron:jb_cron.value||null,notify_email:jb_email.value||null,
     key_columns:document.getElementById('jb-keycols')?.value||null, exclude_columns:document.getElementById('jb-exclcols')?.value||null};
-  if(action==='compare'){body.conn_a_id=+jb_conna.value||null;body.conn_b_id=+jb_connb.value||null;}else{body.source_conn_id=+jb_conna.value||null;}
+  if(action==='compare'){body.conn_a_id=+jb_conna.value||null;body.conn_b_id=+jb_connb.value||null;}
+  else if(action==='xref'){
+    const lines = (document.getElementById('jb-xref-sources').value||'').split('\n').map(l=>l.trim()).filter(Boolean);
+    body.xref_sources = lines.map((l,i)=>{ const [id,...labelParts]=l.split(','); return {conn_id:+((id||'').trim())||null, label:(labelParts.join(',')||'').trim()||`Source ${i+1}`}; })
+      .filter(s=>s.conn_id);
+  }
+  else{body.source_conn_id=+jb_conna.value||null;}
   if(action==='compare' && document.getElementById('jb-bulk-enable')?.checked){
     const lines = (document.getElementById('jb-bulk-pairs').value||'').split('\n').map(l=>l.trim()).filter(Boolean);
     const pairs = lines.map(l=>{ const [a,b,...labelParts]=l.split(','); return {conn_a_id:+((a||'').trim())||null, conn_b_id:+((b||'').trim())||null, label:(labelParts.join(',')||'').trim()||undefined}; })
@@ -2988,6 +3007,8 @@ async function editJob(id){
   onJbActionChange();
   document.getElementById('jb-conna').value = j.action==='compare' ? (j.conn_a_id||'') : (j.source_conn_id||'');
   document.getElementById('jb-connb').value = j.conn_b_id || '';
+  const xrefSources = j.xref_sources || [];
+  document.getElementById('jb-xref-sources').value = xrefSources.map(s=>`${s.conn_id}${s.label?','+s.label:''}`).join('\n');
   document.getElementById('jb-keycols').value = j.key_columns || '';
   document.getElementById('jb-exclcols').value = j.exclude_columns || '';
   document.getElementById('jb-cron').value = j.schedule_cron || '';
@@ -3010,7 +3031,7 @@ async function editJob(id){
 }
 function cancelJbEdit(){
   _jbEditingId = null;
-  ['jb-name','jb-cron','jb-email','jb-bulk-pairs','jb-sla-max-breaks','jb-sla-min-dq','jb-sla-max-null','jb-keycols','jb-exclcols','jb-conna','jb-connb']
+  ['jb-name','jb-cron','jb-email','jb-bulk-pairs','jb-sla-max-breaks','jb-sla-min-dq','jb-sla-max-null','jb-keycols','jb-exclcols','jb-conna','jb-connb','jb-xref-sources']
     .forEach(i=>{ const el=document.getElementById(i); if(el) el.value=''; });
   ['jb-sla-schema-drift','jb-sla-alert-only-on-fail'].forEach(i=>{ const el=document.getElementById(i); if(el) el.checked=false; });
   if(document.getElementById('jb-bulk-enable')){ document.getElementById('jb-bulk-enable').checked=false; document.getElementById('jb-bulk-panel').classList.add('hidden'); }

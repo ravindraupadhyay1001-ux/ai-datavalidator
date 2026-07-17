@@ -90,18 +90,50 @@ def trigger_job_now(job_id, username):
     return _execute_job(job_id, username)
 
 
+_MAX_JOB_SECONDS = 240  # hard ceiling so a hung connector/SMTP call can't leave a run "running" forever
+
+
 def trigger_job_now_background(job_id, username):
     """Create the run row immediately (fast -- one DB insert) and hand the
     actual fetch/analyze/email work to a background thread, returning the
     run_id right away. The caller polls get_run(run_id) / list_runs() for
     the real outcome instead of waiting on a request that could otherwise
-    take minutes for a slow or unreachable data source."""
+    take minutes for a slow or unreachable data source.
+
+    A watchdog thread also joins the worker with a hard timeout: if a step
+    inside it hangs indefinitely (a DB driver that ignores its own connect
+    timeout once past the initial connection, an SMTP call that stalls mid
+    TLS handshake, etc. -- exactly what happened in production: the run got
+    as far as the connector's pd.read_sql() and then never returned, never
+    raised, and so never reached finish_run() either way), the run gets
+    marked failed with a clear reason instead of polling "running" forever.
+    Python can't force-kill a thread, so the stuck worker is abandoned, but
+    the user gets a definitive answer instead of an infinite spinner."""
     import threading
     run_id = db.create_run(job_id, username)
-    thread = threading.Thread(
+    worker = threading.Thread(
         target=_run_job_body, args=(run_id, job_id, username), daemon=True
     )
-    thread.start()
+    worker.start()
+
+    def _watchdog():
+        worker.join(timeout=_MAX_JOB_SECONDS)
+        if worker.is_alive():
+            current = db.get_run(run_id, username)
+            if current and current.get("status") == "running":
+                db.finish_run(
+                    run_id, "failed",
+                    error_msg=(
+                        f"Job exceeded the maximum execution time "
+                        f"({_MAX_JOB_SECONDS}s) and was aborted -- the data "
+                        f"source connector, analysis step, or email send is "
+                        f"hanging (not erroring, actually stuck). Check the "
+                        f"connector's host/port/timeout settings."
+                    ),
+                )
+                db.update_job_status(job_id, "error")
+
+    threading.Thread(target=_watchdog, daemon=True).start()
     return run_id
 
 
@@ -189,6 +221,69 @@ def _run_quality(df, job):
         return {"error": str(e), "rows": len(df), "columns": len(df.columns)}
 
 
+def _run_governance(df, job):
+    """PII/sensitivity/regulatory scan -- analyze_governance() is a plain,
+    local (regex/rule-based, no LLM call) function, same shape as
+    analyze_quality(). Reshapes the same overall_risk derivation the
+    interactive /analyze governance branch uses (main.py) into a `counts`
+    dict with a `breaks` key (= mandatory_breaches count) so SLA/email reuse
+    works exactly like compare/xref. Does not replay saved Dataset Controls
+    column overrides (dc_governance_override/_exclude rules) -- those are
+    session-scoped in the interactive flow and have no natural home on a
+    recurring connection-based job."""
+    main = importlib.import_module("main")
+    g = main.analyze_governance(df, job.get("name", "job"))
+    pii_col_count = g.get("pii_column_count", 0)
+    breaches = g.get("mandatory_breaches", [])
+    classification = str(g.get("overall_classification", "")).lower()
+    if breaches:
+        overall_risk = "critical"
+    elif pii_col_count and classification in ("confidential", "restricted"):
+        overall_risk = "high"
+    elif pii_col_count:
+        overall_risk = "medium"
+    else:
+        overall_risk = "low"
+    g["counts"] = {
+        "pii_column_count": pii_col_count,
+        "mandatory_breaches": len(breaches),
+        "overall_risk": overall_risk,
+        "breaks": len(breaches),
+    }
+    return g
+
+
+def _run_xref(job, username):
+    """N-way (2-5 source) Cross Reference job -- calls the same
+    analyze_cross_reference() engine the interactive /xref endpoint uses,
+    with golden_source left unset (auto/majority-wins), matching the
+    interactive tab's own default. Reshapes the summary into a `counts`
+    dict (with an explicit `breaks` total) so _evaluate_sla()/_html_report()
+    work on it exactly like a compare job's counts, no special-casing."""
+    sources_cfg = job.get("xref_sources") or []
+    if len(sources_cfg) < 2:
+        raise ValueError("Cross Reference job requires at least 2 sources.")
+    sources = []
+    for i, s in enumerate(sources_cfg, start=1):
+        label = s.get("label") or f"Source {i}"
+        df = _fetch(s.get("conn_id"), username)
+        sources.append((label, df))
+    main = importlib.import_module("main")
+    key_col = (job.get("key_columns") or "").split(",")[0].strip() or None
+    xr = main.analyze_cross_reference(sources, key_col=key_col)
+    summary = xr.get("summary") or {}
+    only_in_total = sum(len(v) for v in (xr.get("only_in") or {}).values())
+    conflicts = int(summary.get("conflict_count", 0) or 0)
+    xr["counts"] = {
+        "total_keys": summary.get("total_keys", 0),
+        "matched_in_all": summary.get("matched_in_all", 0),
+        "conflicts": conflicts,
+        "only_in_some_source": only_in_total,
+        "breaks": conflicts + only_in_total,
+    }
+    return xr
+
+
 def _run_fan_out(pairs, job, username):
     """Run the same compare logic across every {conn_a_id, conn_b_id, label}
     pair in `pairs`. A single pair failing (bad connection, fetch error, etc.)
@@ -230,8 +325,9 @@ def _evaluate_sla(sla: dict, result: dict) -> dict:
     reasons = []
     if sla.get("max_breaks") not in (None, ""):
         counts = result.get("counts") or {}
-        breaks = (int(counts.get("file1_only", 0)) + int(counts.get("file2_only", 0))
-                  + int(counts.get("modified", 0)))
+        breaks = (int(counts["breaks"]) if "breaks" in counts else
+                  (int(counts.get("file1_only", 0)) + int(counts.get("file2_only", 0))
+                   + int(counts.get("modified", 0))))
         max_breaks = int(sla["max_breaks"])
         if breaks > max_breaks:
             reasons.append(f"{breaks} breaks exceeds max_breaks ({max_breaks})")
@@ -288,6 +384,11 @@ def _run_job_body(run_id, job_id, username):
         elif action in ("quality", "profile"):
             df = _fetch(job["source_conn_id"], username)
             result = _run_quality(df, job)
+        elif action == "xref":
+            result = _run_xref(job, username)
+        elif action == "governance":
+            df = _fetch(job["source_conn_id"], username)
+            result = _run_governance(df, job)
         else:
             raise ValueError(f"Scheduled action '{action}' not supported.")
 
