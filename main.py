@@ -74,7 +74,6 @@ from agent.feedback_store import (
     resolve_fingerprint as _fp_resolve,
     list_all_datasets as _fp_list_datasets,
     _STORE_PATH as _feedback_store_path,
-    copy_rules as _fp_copy_rules,
     delete_user_data as _fp_delete_user,
     delete_dataset as _fp_delete_dataset,
 )
@@ -12458,35 +12457,8 @@ async def get_recon_baseline_endpoint(fingerprint: str, request: Request):
         return JSONResponse(None)
 
 
-@app.get("/api/recon/rule-templates")
-async def list_rule_templates(request: Request, exclude_fingerprint: str = ""):
-    """Every schema with saved reconciliation rules -- usable as a template
-    library: pick one and apply its rules onto a different (new) schema,
-    instead of rules only ever auto-loading for the exact schema they were
-    written for. exclude_fingerprint hides the current session's own schema
-    from the list, since copying a schema's rules onto itself is a no-op."""
-    username = _ws_resolve_username(request) or "default"
-    datasets = _fp_list_datasets(username)
-    if exclude_fingerprint:
-        datasets = [d for d in datasets if d["fingerprint"] != exclude_fingerprint]
-    datasets.sort(key=lambda d: d.get("updated", ""), reverse=True)
-    return JSONResponse(datasets)
-
-
-@app.post("/api/recon/rule-templates/apply")
-async def apply_rule_template(request: Request):
-    """Copy every saved rule from one schema onto another. Duplicate rules
-    (already present on the target) are skipped automatically."""
-    username = _ws_resolve_username(request) or "default"
-    body = await request.json()
-    from_fp = str(body.get("from_fingerprint", "")).strip()
-    to_fp = str(body.get("to_fingerprint", "")).strip()
-    if not from_fp or not to_fp:
-        raise HTTPException(400, "from_fingerprint and to_fingerprint are both required.")
-    if from_fp == to_fp:
-        raise HTTPException(400, "Source and target schema are the same -- nothing to apply.")
-    copied = _fp_copy_rules(username, from_fp, to_fp)
-    return JSONResponse({"copied": copied})
+# Rule Templates (cross-schema rule copying) removed with its UI panel --
+# Workspace → Memory is now the single place to review/manage saved rules.
 
 
 # ---------- Dataset Memory manager (Workspace → Memory) ----------
@@ -19115,84 +19087,9 @@ async def ws_preview_connection(conn_id: str, request: Request):
         raise HTTPException(400, f"Preview failed: {exc}")
 
 
-# -- rule sets
-# --------------------------------------------------------------------
-
-
-@app.get("/api/ws/rulesets")
-
-async def ws_list_rulesets(request: Request):
-
-    _ws_check()
-
-    username = _ws_get_user(request)
-
-    return JSONResponse(_ws_db.list_rulesets(username))
-
-
-@app.post("/api/ws/rulesets")
-
-async def ws_save_ruleset(request: Request):
-
-    _ws_check()
-
-    username = _ws_get_user(request)
-
-
-    body = await request.json()
-
-    name        = str(body.get("name", "")).strip()
-
-    description = str(body.get("description", "")).strip()
-
-    rules       = body.get("rules", [])
-
-    rs_id       = body.get("id")
-
-
-    if not name:
-
-        raise HTTPException(400, "Rule set name is required.")
-
-    if not isinstance(rules, list):
-
-        raise HTTPException(400, "rules must be a JSON array.")
-
-
-    saved_id = _ws_db.save_ruleset(username, name, description, rules, rs_id)
-
-    return JSONResponse({"id": saved_id, "status": "ok"})
-
-
-@app.get("/api/ws/rulesets/{rs_id}")
-
-async def ws_get_ruleset(rs_id: str, request: Request):
-
-    _ws_check()
-
-    username = _ws_get_user(request)
-
-
-    rec = _ws_db.get_ruleset(rs_id, username)
-
-    if not rec:
-
-        raise HTTPException(404, "Rule set not found.")
-
-    return JSONResponse(rec)
-
-
-@app.delete("/api/ws/rulesets/{rs_id}")
-
-async def ws_delete_ruleset(rs_id: str, request: Request):
-
-    _ws_check()
-
-    username = _ws_get_user(request)
-
-    _ws_db.delete_ruleset(rs_id, username)
-
-    return JSONResponse({"status": "deleted"})
+# -- rule sets: removed. Dataset Memory (plain-English, per-schema rules with
+# -- auto-attach) covers the reusable-rules need; the ws_rulesets table stays
+# -- in the DB untouched so existing data is preserved.
 
 
 # -- jobs
@@ -19235,7 +19132,6 @@ async def ws_save_job(request: Request):
 
     exclude_columns = (body.get("exclude_columns") or "").strip() or None
 
-    ruleset_id  = body.get("ruleset_id") or None
 
     schedule_cron  = (body.get("schedule_cron") or "").strip() or None
 
@@ -19297,8 +19193,6 @@ async def ws_save_job(request: Request):
         key_columns=key_columns,
 
         exclude_columns=exclude_columns,
-
-        ruleset_id=ruleset_id,
 
         schedule_cron=schedule_cron,
 

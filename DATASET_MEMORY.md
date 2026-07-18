@@ -72,7 +72,7 @@ Rules are tagged with a `category` that namespaces them by module, so a rule sav
 | `update_rule(fp, index, rule_text=..., category=..., direction=...)` | Edit rule text/category, or reorder via `direction="up"/"down"` |
 | `delete_rule(fp, index)` | Remove by 1-based index |
 | `list_all_datasets()` | Enumerate every schema with saved rules — `[{fingerprint, label, rule_count, updated}, ...]` |
-| `copy_rules(from_fp, to_fp, categories=None)` | **Rule Templates** — copy one schema's saved rules onto another, skipping duplicates. Powers the "Rule Templates" panel in the AI Copilot so a rule set tuned for one file pair can be reused on a differently-named pair of the same shape. |
+| `copy_rules(from_fp, to_fp, categories=None)` | Copy one schema's saved rules onto another, skipping duplicates. (The "Rule Templates" UI panel and its endpoints were removed — Workspace → Memory is the rule-management surface now; the function is retained for programmatic use.) |
 
 Thread safety is managed via a module-level `threading.RLock` for all read-modify-write operations.
 
@@ -89,8 +89,9 @@ Thread safety is managed via a module-level `threading.RLock` for all read-modif
 | `/dataset-controls/{session_id}/rules` | GET | Get rules (Dataset Controls panel) |
 | `/dataset-controls/{session_id}/apply` | POST | Save a rule from a plain-English instruction |
 | `/api/dq/rules/{fingerprint}` | GET/POST | Save/apply DQ column rules by fingerprint (LLM-interpreted from English) |
-| `/api/recon/rule-templates` | GET | Browse every schema with saved rules (template library) |
-| `/api/recon/rule-templates/apply` | POST | Copy one schema's rules onto another |
+| `/api/memory/datasets` | GET | List every dataset with saved rules (Workspace → Memory) |
+| `/api/memory/{fp}/rules` (+ `/save`, `/update`, `/delete`) | GET/POST | Fingerprint-level rule CRUD, no active session needed |
+| `/dataset-controls/{session_id}/suggest` | POST | AI-suggest cleanup steps grounded in this run's results |
 
 ## How the Agent Uses Memory
 
@@ -122,4 +123,4 @@ Saved rules are injected into the system prompt on every call, so the LLM always
 | 3-tier lookup with fuzzy fallback | Handles schema drift (a few columns added/removed/renamed) without losing rule reuse |
 | JSON file storage for rules | Human-readable, directly editable, portable, no DB dependency |
 | `threading.RLock` around all read-modify-write ops | Handles concurrent requests safely |
-| Rule Templates via `copy_rules()` | Rules were scoped to one schema only — copying an existing tuned rule set onto a new, differently-shaped file pair avoids re-teaching the same preferences from scratch |
+| Workspace → Memory manager | One audit surface to review, edit, or delete any dataset's saved rules (including AI-learned steps) without an active analysis session |

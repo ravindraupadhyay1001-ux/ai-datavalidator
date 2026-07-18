@@ -422,7 +422,6 @@
       <div class="flex gap-2 mb-4 text-sm">
         <button onclick="wsTab('conn')" class="ws-tab tab-btn tab-active px-3 py-1 rounded-lg">Connections</button>
         <button onclick="wsTab('savedconn')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Saved Connectors</button>
-        <button onclick="wsTab('rules')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Rulesets</button>
         <button onclick="wsTab('jobs')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Jobs</button>
         <button onclick="wsTab('saved')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Saved Runs</button>
         <button onclick="wsTab('memory')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Memory</button>
@@ -459,15 +458,6 @@
         </div>
       </div>
       <div id="ws-savedconn" class="ws-panel hidden"><div id="cn-list"></div></div>
-      <div id="ws-rules" class="ws-panel hidden">
-        <div class="card rounded-xl p-4 mb-4 max-w-3xl grid grid-cols-2 gap-3 text-sm">
-          <input id="rs-name" placeholder="Ruleset name" class="inp">
-          <input id="rs-desc" placeholder="Description" class="inp">
-          <textarea id="rs-rules" rows="3" placeholder='[{"type":"not_null","column":"id"}]' class="inp col-span-2 font-mono"></textarea>
-          <button onclick="saveRuleset()" class="btn rounded-lg px-3 py-1 w-32 font-medium">Save</button>
-        </div>
-        <div id="rs-list"></div>
-      </div>
       <div id="ws-jobs" class="ws-panel hidden">
         <div class="card rounded-xl p-4 mb-4 max-w-3xl grid grid-cols-2 gap-3 text-sm">
           <input id="jb-name" placeholder="Job name" class="inp">
@@ -1187,27 +1177,18 @@ function copilotPanelHTML(prefix, context, chips){
     </div>
     <div>
       <div class="card rounded-xl p-4">
-        <div class="flex items-center justify-between mb-2">
-          <span class="text-xs font-semibold text-gray-400">&#128161; Dataset Memory</span>
-          <button onclick="suggestDataControlSteps('${prefix}','${context}')" class="btn-ghost rounded px-2 py-0.5 text-xs" title="Don't know what steps to write? Let the AI suggest include/exclude/key/mapping/regex steps from this run's results.">&#10024; Suggest</button>
+        <div class="flex items-center justify-between mb-1">
+          <span class="text-xs font-semibold text-gray-400">&#128161; Dataset Memory <span id="${prefix}-dc-count" class="badge ml-1" style="background:rgba(2,132,199,.12);color:#0369a1;display:none">0</span></span>
         </div>
+        <div class="text-xs text-gray-500 mb-2">Teach the AI this dataset in plain English &mdash; saved steps auto-apply on every future run of matching files.</div>
         <div id="${prefix}-dc-input-box" class="flex gap-1 mb-2">
-          <input id="${prefix}-dc-input" placeholder="e.g. exclude column X, mark Y not PII" class="inp flex-1 text-xs" onkeydown="if(event.key==='Enter')applyDatasetControl('${prefix}','${context}')">
-          <button onclick="applyDatasetControl('${prefix}','${context}')" class="btn rounded-lg px-2 text-xs">+</button>
+          <input id="${prefix}-dc-input" placeholder="Type a step&hellip;" class="inp flex-1 text-xs" onkeydown="if(event.key==='Enter')applyDatasetControl('${prefix}','${context}')">
+          <button onclick="applyDatasetControl('${prefix}','${context}')" class="btn rounded-lg px-3 text-xs">Add</button>
         </div>
+        <button onclick="suggestDataControlSteps('${prefix}','${context}')" class="btn-ghost rounded-lg px-2 py-1 text-xs mb-2 w-full" title="The AI reads this run's actual issues and proposes steps — you pick which to save.">&#10024; Not sure what to write? Suggest steps for me</button>
         <div id="${prefix}-dc-feedback" class="text-xs mb-1"></div>
-        <div id="${prefix}-dc-rules" class="text-xs space-y-1"><span class="text-gray-500">No saved rules yet.</span></div>
-        ${_dcRerunAction(prefix, context) ? `<button onclick="${_dcRerunAction(prefix, context)}" class="btn-ghost rounded-lg px-2 py-1 text-xs mt-2 w-full">&#128260; Re-run with saved rules applied</button>` : ''}
-      </div>
-      <div class="card rounded-xl p-4 mt-3">
-        <div class="flex items-center justify-between mb-2 cursor-pointer" onclick="toggleRuleTemplates('${prefix}','${context}')">
-          <span class="text-xs font-semibold text-gray-400">&#128203; Rule Templates</span>
-          <span id="${prefix}-rt-toggle" class="text-xs text-gray-500">show &#9662;</span>
-        </div>
-        <div id="${prefix}-rt-box" class="text-xs space-y-1 hidden">
-          <div class="text-gray-500 mb-1">Reuse a saved rule set from another schema on this dataset.</div>
-          <div id="${prefix}-rt-list"><span class="text-gray-500">Loading&hellip;</span></div>
-        </div>
+        <div id="${prefix}-dc-rules" class="text-xs space-y-1"></div>
+        ${_dcRerunAction(prefix, context) ? `<button onclick="${_dcRerunAction(prefix, context)}" class="btn rounded-lg px-2 py-1.5 text-xs mt-2 w-full font-medium">&#128260; Apply saved steps &amp; refresh report</button>` : ''}
       </div>
     </div>
   </div>`;
@@ -2550,12 +2531,8 @@ const HELP_CONTENT = {
     <p class="mt-2 text-gray-400">Rules are scoped per module &mdash; reconciliation rules only apply to
     Reconciliation-family screens, Data Quality's "Dataset Controls" rules only apply to Data Quality, and
     general rules apply everywhere for that schema.</p>
-    <p class="mt-2 text-gray-400"><b>Rule Templates</b> (in the AI Copilot's Dataset Memory panel, Reconciliation
-    only) let you browse every schema that has saved rules and apply one schema's rule set onto a different one
-    in a single click &mdash; useful when a new file pair has the same shape as one you've already tuned.
-    Duplicate rules are skipped automatically, so re-applying a template is always safe.</p>
     <p class="mt-2 text-gray-400">Delete any rule with the &times; next to it; deleting only affects that
-    schema.</p>`,
+    schema. Review and manage every dataset's saved rules anytime in <b>Workspace &rarr; Memory</b>.</p>`,
   workspace: `<h3 class="font-semibold text-sky-300 mb-2">Workspace</h3>
     <p>Save reusable data sources and automate recurring analysis instead of re-uploading files by hand every
     time.</p>
@@ -2563,9 +2540,6 @@ const HELP_CONTENT = {
     <p class="text-gray-400">Store credentials/config once for SFTP, FTP, S3, MSSQL, Postgres, MySQL, Oracle,
     Snowflake, Azure Blob, GCS, Kafka, Salesforce, SharePoint or Databricks, then pick it from the "Saved
     Connector" dropdown anywhere a file upload is accepted.</p>
-    <p class="mt-2 font-semibold text-sky-300">Rulesets</p>
-    <p class="text-gray-400">Named, reusable Data Quality rule sets (JSON) that a scheduled job can apply
-    without redefining rules on every run.</p>
     <p class="mt-2 font-semibold text-sky-300">Jobs</p>
     <p class="text-gray-400">Run any action (Reconciliation, Data Quality, Profile, Governance, Lineage, Parse,
     Cross Reference) on demand or on a cron schedule against saved connections. Use the 1m/5m/15m presets for
@@ -2715,9 +2689,33 @@ async function saveSuggestedStep(prefix, context, i){
 }
 
 let _dcRules = {};
+// Per-module example steps shown when no rules are saved yet -- clicking one
+// prefills the input so the user just edits the column name and hits Add.
+const _DC_EXAMPLES = {
+  compare:    ['use trade_id as the unique key', 'exclude the load_date column', 'map src_amt to amount'],
+  quality:    ['mark remarks as nullable', 'exclude load_date from scoring', 'notional must be positive'],
+  governance: ['mark CUSIP as not PII', 'set remarks sensitivity to Internal'],
+  profile:    ['exclude the audit columns', 'mark comments as nullable'],
+  xref:       ['use isin as the match key', 'exclude the source_system column'],
+  parse:      ['keep only the trade legs', 'rename amt to amount'],
+};
+function dcPrefill(prefix, context, i){
+  const inp = document.getElementById(`${prefix}-dc-input`);
+  if(!inp) return;
+  inp.value = (_DC_EXAMPLES[context]||[])[i]||'';
+  inp.focus();
+}
 function renderDatasetControlRules(prefix, context, rules){
   const box = document.getElementById(`${prefix}-dc-rules`);
   if(!box) return;
+  const badge = document.getElementById(`${prefix}-dc-count`);
+  if(badge){ badge.textContent = rules.length; badge.style.display = rules.length ? '' : 'none'; }
+  if(!rules.length){
+    box.innerHTML = `<div class="text-gray-500">No saved steps yet. Try one of these &mdash; click to edit &amp; add:</div>
+      <div class="flex flex-wrap gap-1 mt-1">${(_DC_EXAMPLES[context]||[]).map((ex,i)=>
+        `<span class="suggest-chip" onclick="dcPrefill('${prefix}','${context}',${i})">${esc(ex)}</span>`).join('')}</div>`;
+    return;
+  }
   // Rule text lives in this map, not inline in the onclick attribute -- any
   // quote in the text would terminate the attribute and break the button.
   rules.forEach(r=>_dcRules[r.index]=r.rule);
@@ -2747,52 +2745,6 @@ async function editDatasetControlRule(index, prefix, context){
   loadDatasetControlRules(prefix, context);
 }
 
-// ---------- Rule Templates (reuse a saved rule set across schemas) ----------
-let _ruleTemplatesLoaded = false;
-// Resolve the current session's dataset fingerprint on demand -- works for
-// any module, not just Reconciliation (_currentReconFingerprint is only ever
-// set by the recon render functions). A cheap lookup, not worth caching.
-async function _resolveCurrentFingerprint(){
-  if(!SESSION) return '';
-  try{
-    const r = await fetch(`/rules/${SESSION}`).then(x=>x.json());
-    return r.fingerprint || '';
-  }catch(e){ return ''; }
-}
-function toggleRuleTemplates(prefix, context){
-  const box = document.getElementById(`${prefix}-rt-box`);
-  const toggle = document.getElementById(`${prefix}-rt-toggle`);
-  if(!box) return;
-  const showing = box.classList.toggle('hidden');
-  toggle.innerHTML = showing ? 'show &#9662;' : 'hide &#9652;';
-  if(!showing && !_ruleTemplatesLoaded) loadRuleTemplates(prefix, context);
-}
-async function loadRuleTemplates(prefix, context){
-  const list = document.getElementById(`${prefix}-rt-list`);
-  if(!list) return;
-  try{
-    const fp = _currentReconFingerprint || await _resolveCurrentFingerprint();
-    const qs = fp ? `?exclude_fingerprint=${encodeURIComponent(fp)}` : '';
-    const templates = await fetch(`/api/recon/rule-templates${qs}`).then(x=>x.json());
-    _ruleTemplatesLoaded = true;
-    const withRules = (templates||[]).filter(t=>t.rule_count > 0);
-    if(!withRules.length){ list.innerHTML = '<span class="text-gray-500">No other saved rule sets yet.</span>'; return; }
-    list.innerHTML = withRules.map(t=>`<div class="flex items-center justify-between card rounded px-2 py-1 mb-1">
-      <span>${esc(t.label || t.fingerprint)} <span class="text-gray-500">(${t.rule_count} rule${t.rule_count===1?'':'s'})</span></span>
-      <button onclick="applyRuleTemplate('${prefix}','${t.fingerprint}','${context}')" class="btn rounded px-2 py-0.5 text-xs">Apply</button></div>`).join('');
-  }catch(e){
-    list.innerHTML = '<span class="text-red-400">Could not load templates.</span>';
-  }
-}
-async function applyRuleTemplate(prefix, fromFingerprint, context){
-  const toFp = _currentReconFingerprint || await _resolveCurrentFingerprint();
-  if(!toFp){ toast('Run an analysis first.'); return; }
-  const r = await J('POST', '/api/recon/rule-templates/apply', {from_fingerprint: fromFingerprint, to_fingerprint: toFp});
-  if(r.error){ toast(r.error); return; }
-  const fb = document.getElementById(`${prefix}-dc-feedback`);
-  if(fb) fb.innerHTML = `<span class="text-emerald-400">&check; Applied ${r.copied} rule${r.copied===1?'':'s'} from template.</span>`;
-  loadDatasetControlRules(prefix, context);
-}
 async function sendChat(){
   const inp=document.getElementById('chat-in'); const msg=inp.value.trim(); if(!msg) return;
   const log=document.getElementById('chat-log');
@@ -2830,7 +2782,7 @@ function wsTab(name, jobId){
   document.querySelectorAll('.ws-tab').forEach(b=>b.classList.toggle('tab-active', b.getAttribute('onclick').includes(`'${name}'`)));
   document.querySelectorAll('.ws-panel').forEach(p=>p.classList.add('hidden'));
   document.getElementById('ws-'+name).classList.remove('hidden');
-  if(name==='savedconn')loadConnections(); if(name==='rules')loadRulesets();
+  if(name==='savedconn')loadConnections();
   if(name==='jobs'){loadJobs(); loadConnDropdowns();} if(name==='saved')loadSavedRuns(jobId);
   if(name==='memory')loadMemoryDatasets();
 }
@@ -3268,13 +3220,6 @@ async function listTablesConn(id){
   if(picked) navigator.clipboard?.writeText(picked).catch(()=>{});
 }
 async function delConn(id){ if(confirm('Delete connection?')){await fetch(`/api/ws/connections/${id}`,{method:'DELETE'});loadConnections();loadConnDropdowns();} }
-async function loadRulesets(){ const rows=await fetch('/api/ws/rulesets').then(r=>r.json());
-  document.getElementById('rs-list').innerHTML=rows.length?rows.map(r=>row(`<span><b>${esc(r.name)}</b> <span class="text-gray-500">#${r.id} ${esc(r.description||'')}</span></span>
-    <button onclick="delRuleset(${r.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button>`)).join(''):'<div class="text-gray-500 text-sm">No rulesets.</div>'; }
-async function saveRuleset(){ const rs_rules=document.getElementById('rs-rules'), rs_name=document.getElementById('rs-name'), rs_desc=document.getElementById('rs-desc');
-  let rules; try{rules=JSON.parse(rs_rules.value||'[]');}catch(e){toast('Rules must be valid JSON');return;}
-  await J('POST','/api/ws/rulesets',{name:rs_name.value,description:rs_desc.value,rules}); rs_name.value='';rs_rules.value=''; loadRulesets(); }
-async function delRuleset(id){ if(confirm('Delete ruleset?')){await fetch(`/api/ws/rulesets/${id}`,{method:'DELETE'});loadRulesets();} }
 function _isFastCron(cron){
   if(!cron) return false;
   const m = cron.trim().split(/\s+/)[0];
@@ -3670,7 +3615,6 @@ function applyReadonlyUI(){
   const hideSelectors = [
     'button[onclick="saveToWorkspace()"]',
     'button[onclick="saveConnection()"]',
-    'button[onclick="saveRuleset()"]',
     'button[onclick="saveJob()"]',
   ];
   hideSelectors.forEach(sel => document.querySelectorAll(sel).forEach(el => el.style.display = 'none'));

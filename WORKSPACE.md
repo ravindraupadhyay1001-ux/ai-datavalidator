@@ -32,7 +32,7 @@ All state is persisted in a SQLite database (`workspace.db`) by default, with MS
 |---|---|
 | `ws_users` | User directory (role, display name, email) |
 | `ws_connections` | Saved data source configs (config JSON is base64-encoded, not encrypted — treat `workspace.db` as sensitive); governance metadata: `owner`, `business_domain`, `sensitivity`, `description` |
-| `ws_rulesets` | Reusable Data Quality rule sets |
+| `ws_rulesets` | Legacy — the Rulesets feature was removed in favour of Dataset Memory; table retained so existing data is preserved |
 | `ws_jobs` | Scheduled job definitions, including `fan_out_pairs` (bulk jobs), `sla_json` (thresholds), `ai_hints_json` |
 | `ws_run_history` | Execution records per job run |
 | `ws_saved_runs` | Manually saved analysis snapshots |
@@ -95,7 +95,6 @@ Jobs define a recurring analysis: which connections to use, what action to run, 
 | `conn_a_id`, `conn_b_id` | Source and target connections (compare) |
 | `source_conn_id` | Single source connection (quality/profile/etc.) |
 | `key_columns` / `exclude_columns` | Join/match columns to use or skip |
-| `ruleset_id` | Linked validation ruleset |
 | `schedule_cron` | 5-field UTC cron (e.g. `0 8 * * 1-5`); the Jobs UI offers 1m/2m/5m/15m/1h/daily presets for fast-interval polling |
 | `notify_email` | Comma-separated email recipients |
 | `sla_json` | SLA thresholds (see below) |
@@ -134,7 +133,7 @@ Reconciliation has the equivalent via `ws_recon_history` — a 30-day break-rate
 
 ## Audit Log & Event Streaming
 
-Every user action is logged to `ws_audit_log` with timestamp, username, action, and a free-text detail string (created/updated/deleted/triggered — connections, rulesets, jobs, run results).
+Every user action is logged to `ws_audit_log` with timestamp, username, action, and a free-text detail string (created/updated/deleted/triggered — connections, jobs, run results).
 
 **Real-time SSE stream** at `GET /api/logs/stream`: connected clients receive events as they happen; a keep-alive ping is sent periodically.
 
@@ -151,14 +150,6 @@ All endpoints are under `/api/ws/*` and require authentication (resolved per the
 | DELETE | `/api/ws/connections/{id}` | Delete connection |
 | POST | `/api/ws/connections/{id}/test` | Validate connectivity |
 | GET | `/api/ws/connections/{id}/preview` | Preview a sample of the data |
-
-### Rulesets
-| Method | Path | Purpose |
-|---|---|---|
-| GET | `/api/ws/rulesets` | List all rulesets |
-| POST | `/api/ws/rulesets` | Create or update a ruleset |
-| GET | `/api/ws/rulesets/{id}` | Fetch ruleset with full rules array |
-| DELETE | `/api/ws/rulesets/{id}` | Delete ruleset |
 
 ### Jobs
 | Method | Path | Purpose |
