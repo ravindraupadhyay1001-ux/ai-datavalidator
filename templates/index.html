@@ -2697,17 +2697,21 @@ async function suggestDataControlSteps(prefix, context){
 async function saveSuggestedStep(prefix, context, i){
   const list=_dcSuggest[prefix]||[];
   const items=i<0 ? list.map((s,idx)=>[s,idx]) : [[list[i],i]];
+  let saved=0, firstError='';
   for(const [s,idx] of items){
     if(!s||s._saved) continue;
     const cat=`dc_${context}_${((s.type||'rule').toLowerCase().replace(/[^a-z_]/g,''))||'rule'}`;
     const r=await J('POST',`/rules/${SESSION}/save`,{rule:s.step, category:cat});
-    if(r.error||r.detail){ toast('❌ '+(r.error||r.detail)); continue; }
-    s._saved=true;
+    if(r.error||r.detail){ firstError=firstError||(r.error||r.detail); continue; }
+    saved++; s._saved=true;
     const el=document.querySelector(`#${prefix}-dcs-${idx} button`);
     if(el) el.outerHTML='<span class="text-emerald-400 text-xs shrink-0">&check; saved</span>';
   }
-  loadDatasetControlRules(prefix, context);
-  toast('✅ Saved to Dataset Memory — use "Re-run with saved rules applied" to see the effect.');
+  if(firstError) toast('❌ '+firstError);
+  if(saved){
+    loadDatasetControlRules(prefix, context);
+    toast(`✅ Saved ${saved} step${saved===1?'':'s'} to Dataset Memory — use "Re-run with saved rules applied" to see the effect.`);
+  }
 }
 
 let _dcRules = {};

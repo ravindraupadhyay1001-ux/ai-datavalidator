@@ -17809,11 +17809,35 @@ async def agent_chat(request: Request):
 # -- Dataset Memory REST endpoints
 
 
+def _session_fingerprint(session_id: str, username: str) -> str:
+    """Best-effort dataset fingerprint for a session. Several session-creation
+    paths (the standard profile/governance rerun endpoints, parse) never set
+    dataset_fingerprint, which made every rule save from those report pages
+    fail with a misleading "Session not found" even though the session was
+    fine. Compute it from the session's dataframes on first use and store it
+    back so the whole rules API works uniformly."""
+    stored = _results_store.get(session_id)
+    if not stored:
+        return ""
+    fp = stored.get("dataset_fingerprint", "")
+    if fp:
+        return fp
+    dfs = stored.get("dataframes", [])
+    if not dfs:
+        return ""
+    cols1 = list(dfs[0]["df"].columns)
+    cols2 = list(dfs[1]["df"].columns) if len(dfs) > 1 else []
+    fp = _fp_resolve(username, _fp_compute(cols1, cols2), cols1=cols1,
+                     cols2=cols2, file_names=stored.get("file_names", []))
+    stored["dataset_fingerprint"] = fp
+    return fp
+
+
 @app.get("/rules/{session_id}")
 async def get_rules_endpoint(session_id: str, request: Request):
     """Return saved rules for the dataset loaded in this session."""
     username = _ws_resolve_username(request) or "default"
-    fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
+    fp = _session_fingerprint(session_id, username)
     if not fp:
         return JSONResponse({"fingerprint": "", "rules": [], "label": ""})
     dfs = _results_store.get(session_id, {}).get("dataframes", [])
@@ -17840,7 +17864,7 @@ async def get_rules_endpoint(session_id: str, request: Request):
 async def dataset_controls_get_rules(session_id: str, request: Request, context: str = "quality"):
     """Return saved Dataset Controls rules for this session + context only."""
     username = _ws_resolve_username(request) or "default"
-    fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
+    fp = _session_fingerprint(session_id, username)
     if not fp:
         return JSONResponse({"ctx_rules": [], "count": 0})
     dfs     = _results_store.get(session_id, {}).get("dataframes", [])
@@ -17883,7 +17907,8 @@ async def dataset_controls_apply(session_id: str, request: Request):
     if not instruction:
         return JSONResponse({"error": "No instruction provided."}, status_code=400)
 
-    fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
+    _dca_username = _ws_resolve_username(request) or "default"
+    fp = _session_fingerprint(session_id, _dca_username)
     file_names = _results_store.get(session_id, {}).get("file_names", [])
     label = " / ".join(file_names[:2]) if file_names else "this dataset"
 
@@ -17951,7 +17976,6 @@ Return ONLY valid JSON, no explanation."""
 
 
     if fp and rule_text:
-        _dca_username = _ws_resolve_username(request) or "default"
         dfs  = _results_store.get(session_id, {}).get("dataframes", [])
         cols1 = list(dfs[0]["df"].columns) if len(dfs) > 0 else None
         cols2 = list(dfs[1]["df"].columns) if len(dfs) > 1 else None
@@ -18045,7 +18069,7 @@ async def dataset_controls_suggest(session_id: str, request: Request):
     if not stored:
         return JSONResponse({"error": "Session not found. Please re-run the analysis."}, status_code=404)
     username = _ws_resolve_username(request) or "default"
-    fp = stored.get("dataset_fingerprint", "")
+    fp = _session_fingerprint(session_id, username)
     dfs = stored.get("dataframes", [])
     cols = list(dfs[0]["df"].columns)[:40] if dfs else []
     file_names = stored.get("file_names", [])
@@ -18100,7 +18124,7 @@ async def save_rule_endpoint(session_id: str, request: Request):
 
 
     username = _ws_resolve_username(request) or "default"
-    fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
+    fp = _session_fingerprint(session_id, username)
     if not fp:
         return JSONResponse({"error": "Session not found"}, status_code=404)
     if not rule:
@@ -18123,7 +18147,7 @@ async def delete_rule_endpoint(session_id: str, request: Request):
     idx  = int(body.get("rule_index", 0))
 
 
-    fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
+    fp = _session_fingerprint(session_id, username)
 
     if not fp:
 
@@ -18161,7 +18185,7 @@ async def update_rule_endpoint(session_id: str, request: Request):
 
 
     username = _ws_resolve_username(request) or "default"
-    fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
+    fp = _session_fingerprint(session_id, username)
 
     if not fp:
 
@@ -18181,7 +18205,7 @@ async def export_rules_endpoint(session_id: str, request: Request):
     """Export all saved rules for this session's dataset as a downloadable JSON file."""
 
     username = _ws_resolve_username(request) or "default"
-    fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
+    fp = _session_fingerprint(session_id, username)
 
     if not fp:
 
@@ -18236,7 +18260,7 @@ async def import_rules_endpoint(session_id: str, request: Request):
 
 
     username = _ws_resolve_username(request) or "default"
-    fp = _results_store.get(session_id, {}).get("dataset_fingerprint", "")
+    fp = _session_fingerprint(session_id, username)
 
     if not fp:
 
