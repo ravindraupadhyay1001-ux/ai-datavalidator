@@ -1166,7 +1166,12 @@ async function rerunWithSavedRules(prefix, context){
     toast('✅ Re-ran with saved rules applied — report updated.');
   }catch(e){ if(target) target.innerHTML=''; toast('❌ Re-run failed.'); }
 }
+// Which module's report the shared chat widget currently belongs to -- set on
+// every results render so per-message "Remember" saves land in the right
+// module's Dataset Memory namespace.
+let _chatCtx = {prefix:'q', context:'quality'};
 function copilotPanelHTML(prefix, context, chips){
+  _chatCtx = {prefix, context};
   return `<div class="grid grid-cols-3 gap-4">
     <div class="col-span-2">
       <div class="card rounded-xl p-4 mb-3">
@@ -1174,6 +1179,7 @@ function copilotPanelHTML(prefix, context, chips){
         <div class="text-xs text-gray-400 mb-3">Full context of this analysis &mdash; ask anything below, or click a suggestion to send it.${context==='compare'?' Say "remember: ..." to save a key, exclude, mapping, or transform rule (e.g. <i>remember: use trade_id as the key</i>, <i>remember: exclude the load_date column</i>, <i>remember: map src_amt to amount</i>), then "run recon" to re-apply all saved rules and refresh the report.':' Say "remember: ..." to save a rule.'}</div>
         <div class="flex flex-wrap gap-2">
           ${chips.map(c=>`<span class="suggest-chip${c.special?' special':''}" onclick="quickChat(${JSON.stringify(c.q)})">${esc(c.label)}</span>`).join('')}
+          <span class="suggest-chip special" onclick="suggestDataControlSteps('${prefix}','${context}')">&#10024; Suggest cleanup steps</span>
         </div>
       </div>
       <div id="${prefix}-rerun-report"></div>
@@ -1183,6 +1189,7 @@ function copilotPanelHTML(prefix, context, chips){
       <div class="card rounded-xl p-4">
         <div class="flex items-center justify-between mb-2">
           <span class="text-xs font-semibold text-gray-400">&#128161; Dataset Memory</span>
+          <button onclick="suggestDataControlSteps('${prefix}','${context}')" class="btn-ghost rounded px-2 py-0.5 text-xs" title="Don't know what steps to write? Let the AI suggest include/exclude/key/mapping/regex steps from this run's results.">&#10024; Suggest</button>
         </div>
         <div id="${prefix}-dc-input-box" class="flex gap-1 mb-2">
           <input id="${prefix}-dc-input" placeholder="e.g. exclude column X, mark Y not PII" class="inp flex-1 text-xs" onkeydown="if(event.key==='Enter')applyDatasetControl('${prefix}','${context}')">
@@ -2536,6 +2543,10 @@ const HELP_CONTENT = {
       <li>Mappings &mdash; <code>remember: map src_amt to amount</code></li>
       <li>Transforms &mdash; <code>remember: strip commas from the notional column</code></li>
     </ul>
+    <p class="mt-2 text-gray-400">Don't know what steps to write? Click <b>&#10024; Suggest cleanup steps</b>
+    (in the AI Copilot chips or the Dataset Memory panel) &mdash; the AI reads this run's actual issues and
+    proposes include/exclude/unique key/mapping/rename/replace/regex steps. Save the ones that look right with
+    one click, then hit <b>Re-run with saved rules applied</b> to see the cleaned-up report.</p>
     <p class="mt-2 text-gray-400">Rules are scoped per module &mdash; reconciliation rules only apply to
     Reconciliation-family screens, Data Quality's "Dataset Controls" rules only apply to Data Quality, and
     general rules apply everywhere for that schema.</p>
@@ -2636,6 +2647,69 @@ async function applyDatasetControl(prefix, context){
     }
   }
 }
+// ---------- Per-message "Remember" (save a chat insight as a rule) ----------
+// Message text lives in this map, not inline in the onclick attribute (quotes
+// in the text would break the button, same fix as _dcRules).
+let _chatMsgs = {}, _chatMsgSeq = 0;
+async function rememberChatInsight(mid){
+  const text = _chatMsgs[mid];
+  if(!text || !SESSION) return;
+  const {prefix, context} = _chatCtx;
+  const holder = document.getElementById(`chat-rem-${mid}`);
+  if(holder) holder.innerHTML = '<span class="text-gray-400">Saving&hellip;</span>';
+  const r = await J('POST', `/dataset-controls/${SESSION}/apply`,
+    {instruction: `Distill this analysis insight into one dataset rule worth remembering: ${text.slice(0,600)}`, context});
+  if(r.error){
+    if(holder) holder.innerHTML = `<span class="text-red-400">${esc(r.error)}</span>`;
+    return;
+  }
+  if(holder) holder.innerHTML = `<span class="text-emerald-400">&check; Remembered: ${esc(r.rule_text||'saved to Dataset Memory')}</span>`;
+  renderDatasetControlRules(prefix, context, r.ctx_rules||[]);
+}
+
+// ---------- AI-suggested cleanup steps (per-module, grounded in this run) ----
+// For users who don't know what steps to write: the AI reads this run's actual
+// issues and proposes include/exclude/unique key/mapping/rename/replace/regex
+// steps. Nothing is saved until the user confirms a step with its Save button.
+let _dcSuggest = {};
+async function suggestDataControlSteps(prefix, context){
+  if(!SESSION){ toast('Run an analysis first.'); return; }
+  const fb=document.getElementById(`${prefix}-dc-feedback`);
+  if(!fb) return;
+  fb.innerHTML='<span class="text-gray-400">&#10024; Reading this run\'s results for good cleanup steps&hellip;</span>';
+  const r=await J('POST',`/dataset-controls/${SESSION}/suggest`,{context});
+  if(r.error||r.detail){ fb.innerHTML=`<span class="text-red-400">${esc(r.error||r.detail)}</span>`; return; }
+  const sugg=r.suggestions||[];
+  if(!sugg.length){ fb.innerHTML='<span class="text-gray-500">Nothing to suggest — this report already looks clean.</span>'; return; }
+  _dcSuggest[prefix]=sugg;
+  fb.innerHTML=`<div class="space-y-1 mb-1">
+    <div class="text-gray-500">Suggested steps &mdash; save the ones that look right:</div>
+    ${sugg.map((s,i)=>`<div id="${prefix}-dcs-${i}" class="card rounded px-2 py-1 flex items-start justify-between gap-2">
+      <span><span class="badge mr-1" style="background:rgba(126,34,206,.12);color:#7e22ce">${esc(s.type||'step')}</span>${esc(s.step)}
+        ${s.why?`<div class="text-gray-500">${esc(s.why)}</div>`:''}</span>
+      <button onclick="saveSuggestedStep('${prefix}','${context}',${i})" class="btn rounded px-2 py-0.5 text-xs shrink-0">Save</button>
+    </div>`).join('')}
+    <div class="flex gap-2">
+      <button onclick="saveSuggestedStep('${prefix}','${context}',-1)" class="btn-ghost rounded px-2 py-0.5 text-xs">Save all</button>
+      <button onclick="document.getElementById('${prefix}-dc-feedback').innerHTML=''" class="btn-ghost rounded px-2 py-0.5 text-xs">Dismiss</button>
+    </div></div>`;
+}
+async function saveSuggestedStep(prefix, context, i){
+  const list=_dcSuggest[prefix]||[];
+  const items=i<0 ? list.map((s,idx)=>[s,idx]) : [[list[i],i]];
+  for(const [s,idx] of items){
+    if(!s||s._saved) continue;
+    const cat=`dc_${context}_${((s.type||'rule').toLowerCase().replace(/[^a-z_]/g,''))||'rule'}`;
+    const r=await J('POST',`/rules/${SESSION}/save`,{rule:s.step, category:cat});
+    if(r.error||r.detail){ toast('❌ '+(r.error||r.detail)); continue; }
+    s._saved=true;
+    const el=document.querySelector(`#${prefix}-dcs-${idx} button`);
+    if(el) el.outerHTML='<span class="text-emerald-400 text-xs shrink-0">&check; saved</span>';
+  }
+  loadDatasetControlRules(prefix, context);
+  toast('✅ Saved to Dataset Memory — use "Re-run with saved rules applied" to see the effect.');
+}
+
 let _dcRules = {};
 function renderDatasetControlRules(prefix, context, rules){
   const box = document.getElementById(`${prefix}-dc-rules`);
@@ -2732,6 +2806,13 @@ async function sendChat(){
   const d=await J('POST',endpoint,{session_id:SESSION,question:msg});
   document.getElementById('chat-pending')?.remove();
   log.innerHTML+=`<div><span class="inline-block px-3 py-1.5 rounded-2xl card">${esc(d.reply||d.error||'')}</span></div>`;
+  if(d.reply){
+    // Same pattern as the user's reference design: every AI insight carries a
+    // one-click "Remember" that distills it into a saved Dataset Memory rule.
+    const mid=++_chatMsgSeq; _chatMsgs[mid]=d.reply;
+    log.innerHTML+=`<div id="chat-rem-${mid}" class="text-xs text-gray-500 mb-2 ml-1">Save insight as rule?
+      <button onclick="rememberChatInsight(${mid})" class="btn-ghost rounded px-2 py-0.5 text-xs">Remember</button></div>`;
+  }
   log.scrollTop=log.scrollHeight;
   if(d.recon_result){
     // "run recon" -- the AI Copilot re-ran the actual comparison using saved rules.

@@ -17984,6 +17984,113 @@ Return ONLY valid JSON, no explanation."""
     })
 
 
+def _dc_issue_digest(stored: dict, context: str) -> dict:
+    """Compact, LLM-friendly summary of the current session's actual issues,
+    so step suggestions are grounded in this run's results instead of generic
+    advice. Each branch caps list sizes to keep the prompt small."""
+    d: dict = {}
+    if context == "quality":
+        qr = (stored.get("quality_reports") or [{}])[0]
+        d["dq_score"] = (qr.get("dq_score") or {}).get("score")
+        d["duplicate_rows"] = qr.get("duplicate_rows")
+        d["high_null_columns"] = [
+            f"{c.get('name')} ({c.get('null_pct')}% null)"
+            for c in qr.get("columns", []) if (c.get("null_pct") or 0) > 5][:10]
+        d["failed_rules"] = [
+            f"{r.get('column_name', '')}: {r.get('rule_name', r.get('rule_type', ''))}"
+            for r in qr.get("rule_results", []) if r.get("status") == "FAIL"][:10]
+    elif context == "compare":
+        pairs = stored.get("pairs") or []
+        if pairs:
+            diff = pairs[0].get("diff", {})
+            d["key_method"] = diff.get("key_method")
+            d["key_columns"] = diff.get("key_columns")
+            d["rows_only_in_file1"] = diff.get("file1_only_count")
+            d["rows_only_in_file2"] = diff.get("file2_only_count")
+            d["modified_rows"] = diff.get("modified_count")
+            d["columns_only_in_file2"] = diff.get("schema_added_columns")
+            d["columns_only_in_file1"] = diff.get("schema_removed_columns")
+            colfreq: dict = {}
+            for mr in (diff.get("modified_rows") or [])[:200]:
+                for c in (mr.get("changes") or {}):
+                    colfreq[c] = colfreq.get(c, 0) + 1
+            d["most_differing_columns"] = sorted(
+                colfreq, key=colfreq.get, reverse=True)[:8]
+    elif context == "governance":
+        g = (stored.get("governance_reports") or [{}])[0]
+        d["classification"] = g.get("overall_classification")
+        d["pii_columns"] = [
+            f"{c.get('column')} ({c.get('sensitivity')}: {'; '.join(c.get('pii_detected', []))})"
+            for c in g.get("columns", []) if c.get("pii_detected")][:12]
+    elif context == "profile":
+        p = (stored.get("profile_reports") or [{}])[0]
+        d["duplicate_rows"] = p.get("duplicate_rows")
+        d["key_candidates"] = p.get("key_candidates")
+        d["columns_with_issues"] = [
+            f"{c.get('name')} ({c.get('null_pct', 0)}% null, {c.get('outlier_count', 0)} outliers)"
+            for c in p.get("columns", [])
+            if (c.get("null_pct") or 0) > 0 or (c.get("outlier_count") or 0) > 0][:10]
+    return {k: v for k, v in d.items() if v not in (None, "", [], {})}
+
+
+@app.post("/dataset-controls/{session_id}/suggest")
+async def dataset_controls_suggest(session_id: str, request: Request):
+    """AI-suggest Dataset Memory steps (include/exclude/unique key/mapping/
+    rename/replace/regex/...) for a cleaner exception report, grounded in the
+    session's actual results. Suggestions are NOT saved -- the user reviews
+    them and saves the ones they confirm, one click each."""
+    body = await request.json()
+    context = body.get("context", "quality")
+    stored = _results_store.get(session_id)
+    if not stored:
+        return JSONResponse({"error": "Session not found. Please re-run the analysis."}, status_code=404)
+    username = _ws_resolve_username(request) or "default"
+    fp = stored.get("dataset_fingerprint", "")
+    dfs = stored.get("dataframes", [])
+    cols = list(dfs[0]["df"].columns)[:40] if dfs else []
+    file_names = stored.get("file_names", [])
+    existing = [r["rule"] for r in _fp_get_rules(username, fp, module=context)] if fp else []
+    digest = _dc_issue_digest(stored, context)
+
+    prompt = f"""You are a data-cleanup step advisor for a BFSI data validation platform.
+The user ran a {context} analysis on: {', '.join(file_names[:3]) or 'a dataset'}.
+Columns: {', '.join(cols) or 'unknown'}
+Issues found in THIS run: {json.dumps(digest) if digest else 'none recorded'}
+Steps the user already saved (do NOT re-suggest these): {json.dumps(existing) if existing else 'none'}
+
+Suggest up to 6 Dataset Memory steps that would give this user a cleaner exception
+report. Each step must be actionable on the data above -- reference real column
+names, never invent columns. Prefer these step types where they fit:
+- include / exclude: focus the analysis on the columns that matter
+- unique_key: the column(s) that uniquely identify a row
+- mapping: map/match a column in one file to its counterpart in the other
+- rename: normalise a column name
+- replace: normalise values (e.g. Y/N -> YES/NO, strip currency symbols)
+- regex: a format validation for identifier-like columns
+- nullable: columns where blanks are legitimate, to stop false null exceptions
+- override: correct a wrong classification (e.g. a column flagged PII that isn't)
+- rule: a validation rule (range, not-null, allowed values)
+
+Return ONLY a JSON array, no explanation:
+[{{"type": "<one of the types above>", "step": "<plain-English step, max 100 chars>", "why": "<what it fixes in THIS run's results, max 80 chars>"}}]
+Return [] if the report is already clean and nothing useful can be suggested."""
+    try:
+        raw = await asyncio.to_thread(_ask_llm, [{"role": "user", "content": [{"text": prompt}]}])
+        import re as _re
+        m = _re.search(r'\[.*\]', raw, _re.DOTALL)
+        parsed = json.loads(m.group(0)) if m else []
+    except Exception as e:
+        return JSONResponse({"error": f"Could not generate suggestions: {e}"}, status_code=502)
+    suggestions = [
+        {"type": str(s.get("type", "rule"))[:20],
+         "step": str(s.get("step", "")).strip()[:160],
+         "why": str(s.get("why", "")).strip()[:120]}
+        for s in (parsed if isinstance(parsed, list) else [])
+        if isinstance(s, dict) and str(s.get("step", "")).strip()
+    ][:6]
+    return JSONResponse({"suggestions": suggestions})
+
+
 @app.post("/rules/{session_id}/save")
 async def save_rule_endpoint(session_id: str, request: Request):
     """Save a rule for the dataset loaded in this session."""
