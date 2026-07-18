@@ -2004,7 +2004,11 @@ function renderQualityReport(data, elapsedStr){
     <div class="card rounded-xl p-4 flex flex-col items-center justify-center"><canvas id="qGauge" height="150"></canvas>
       <div class="text-center -mt-2"><span class="text-3xl font-extrabold" style="color:${gradeColor}">${data.grade}</span>
       <span class="text-gray-400 text-sm"> &middot; ${data.score}/100</span></div></div>
-    <div class="card rounded-xl p-4 col-span-2"><div class="text-xs text-gray-400 mb-2">Quality dimensions</div><canvas id="qDims" height="150"></canvas></div>
+    <div class="card rounded-xl p-4 col-span-2"><div class="text-xs text-gray-400 mb-3">Quality dimensions</div>
+      <div class="grid grid-cols-4 gap-x-3 gap-y-4">${Object.entries(dim).filter(([k,v])=>v!=null).map(([k,v])=>{
+        const c = v>=90?'#059669':v>=70?'#b45309':'#dc2626';
+        return `<div class="text-center"><div class="text-2xl font-extrabold" style="color:${c}">${(+v).toFixed(1)}<span class="text-sm font-semibold">%</span></div><div class="text-xs text-gray-500 mt-0.5">${esc(k)}</div></div>`;
+      }).join('')}</div></div>
   </div>
   <div class="grid grid-cols-3 gap-3 mb-4 text-sm">
     ${stat('Rows', data.rows, '#a855f7')}${stat('Columns', data.columns, '#38bdf8')}${stat('Duplicate rows', data.duplicate_rows, '#f59e0b')}</div>
@@ -2080,10 +2084,6 @@ function renderQualityReport(data, elapsedStr){
   chart('qGauge',{type:'doughnut',data:{datasets:[{data:[data.score,100-data.score],
     backgroundColor:[gradeColor,'#e2e8f0'],borderWidth:0,circumference:180,rotation:270}]},
     options:{cutout:'72%',plugins:{legend:{display:false},tooltip:{enabled:false}}}});
-  const dk=Object.keys(dim);
-  chart('qDims',{type:'bar',data:{labels:dk,datasets:[{data:dk.map(k=>dim[k]),
-    backgroundColor:'#2563eb',borderRadius:6}]},options:{indexAxis:'y',plugins:{legend:{display:false}},
-    scales:{x:{max:100,ticks:{color:'#64748b'},grid:{color:'#e2e8f0'}},y:{ticks:{color:'#334155'}}}}});
   _qColState={rows:data.columns_detail||[], sort:'', dir:1, issues:false, q:''};
   renderQColTable();
   _qOvrRepopulate();
