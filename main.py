@@ -16077,10 +16077,16 @@ async def rerun_quality_overrides(session_id: str, request: Request):
             entry["exclude"] = True
         if c.get("mandatory"):
             entry["mandatory"] = True
+        if c.get("nullable_ok"):
+            # Explicit "blanks are legitimate": mandatory=False suppresses the
+            # completeness penalty for this column (wins over Mandatory).
+            entry["mandatory"] = False
         if c.get("force_unique"):
             entry["force_unique"] = True
-        if str(c.get("null_threshold_pct", "")).strip() != "":
-            entry["null_threshold_pct"] = str(c["null_threshold_pct"]).strip()
+        for k in ("null_threshold_pct", "min_val", "max_val",
+                  "timeliness_days", "decimal_places"):
+            if str(c.get(k, "")).strip() != "":
+                entry[k] = str(c[k]).strip()
         if str(c.get("allowed_values", "")).strip():
             entry["allowed_values"] = str(c["allowed_values"]).strip()
         sev = str(c.get("severity", "")).strip().lower()
