@@ -1967,6 +1967,14 @@ async function runQuality(){
   if(aiEnhanced) extra.di_ai_enhanced = '1';
   const {ok,data}=await postForm('quality',[['files','q-f1','conn_ids','q-conn1']], extra, 'q-refdocs');
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
+  _qOvrLast=[];
+  renderQualityReport(data, ((performance.now()-t0)/1000).toFixed(3));
+}
+
+// Renders the full standard DQ report. Shared by the initial run and the
+// override-grid re-run (which returns the same JSON shape).
+function renderQualityReport(data, elapsedStr){
+  const out=document.getElementById('q-out');
   setSession(data.session_id); const dim=data.dimensions||{};
   const gradeColor={A:'#10b981',B:'#84cc16',C:'#f59e0b',D:'#f97316',F:'#ef4444'}[data.grade]||'#38bdf8';
 
@@ -2020,8 +2028,27 @@ async function runQuality(){
       <div class="space-y-1">${data.correlations.map(c=>`<div>${esc(c.col_a)} &harr; ${esc(c.col_b)}: <span class="${Math.abs(c.r)>0.9?'text-emerald-300':'text-amber-300'}">${c.r}</span></div>`).join('')}</div></div>` : ''}
   </div>` : ''}
   <div id="q-history" class="mt-4"></div>
-  <details class="text-sm mt-3"><summary class="cursor-pointer text-sky-300">&rarr; Adjust columns &amp; rerun</summary>
-    <div class="text-xs text-gray-400 mt-2">Use "Advanced options" above the Run button, then run again.</div></details>`;
+  <details class="text-sm mt-3"><summary class="cursor-pointer text-sky-300">&#9998; Results not as expected? Override column rules &amp; re-run</summary>
+    <div class="text-xs text-gray-400 mt-2 mb-2">Adjust rules per column and click Re-run &mdash; blank fields keep the auto-inferred defaults. Changes apply to this session only; "Save as steps" persists them to Dataset Memory.</div>
+    <div class="card rounded-xl p-3 overflow-auto">
+      <table class="w-full text-xs"><thead class="text-gray-400"><tr>
+        <th class="text-left p-1">Column</th><th>Mandatory</th><th>Unique</th><th>Exclude</th><th>Null % max</th><th>Allowed values</th><th>Severity</th></tr></thead>
+        <tbody>${(data.columns_detail||[]).map((c,i)=>`<tr class="border-t border-[var(--line)]">
+          <td class="p-1">${esc(c.column)}</td>
+          <td class="text-center"><input type="checkbox" id="q-ovr-${i}-man" class="accent-sky-500"></td>
+          <td class="text-center"><input type="checkbox" id="q-ovr-${i}-unq" class="accent-sky-500"></td>
+          <td class="text-center"><input type="checkbox" id="q-ovr-${i}-exc" class="accent-sky-500"></td>
+          <td class="text-center"><input type="number" id="q-ovr-${i}-null" min="0" max="100" placeholder="&mdash;" class="inp text-xs" style="width:70px;padding:2px 6px"></td>
+          <td class="text-center"><input id="q-ovr-${i}-av" placeholder="e.g. BUY,SELL" class="inp text-xs" style="width:130px;padding:2px 6px"></td>
+          <td class="text-center"><select id="q-ovr-${i}-sev" class="inp text-xs" style="padding:2px 6px"><option>major</option><option>minor</option><option>critical</option></select></td>
+        </tr>`).join('')}</tbody></table>
+      <div class="flex items-center gap-2 mt-3">
+        <button onclick="rerunQualityOverrides()" class="btn rounded-lg px-3 py-1.5 text-xs font-medium">&#9654; Re-run with overrides</button>
+        <button onclick="saveOverridesToMemory()" class="btn-ghost rounded-lg px-3 py-1.5 text-xs">&#128190; Save as steps to Dataset Memory</button>
+        <span id="q-ovr-status" class="text-xs text-gray-500"></span>
+      </div>
+    </div>
+  </details>`;
 
   const failedRules = (data.rule_results||[]).filter(r=>r.status==='FAIL');
   const exceptionsHTML = `
@@ -2043,7 +2070,7 @@ async function runQuality(){
 
   const anomalyCount = (data.anomaly_results||[]).length + (data.categorical_drift||[]).length
     + (data.multivariate_anomalies?.anomaly_count||0) + (data.trend_anomalies||[]).length;
-  out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('q', [
+  out.innerHTML = actionBar(data.session_id, elapsedStr) + resultTabsShell('q', [
     {key:'summary', label:'Summary', content: summaryHTML},
     {key:'exceptions', label:`Exceptions (${failedRules.length})`, content: exceptionsHTML},
     {key:'anomalies', label:`Anomalies (${anomalyCount})`, content: renderAnomaliesHTML(data)},
@@ -2059,8 +2086,72 @@ async function runQuality(){
     scales:{x:{max:100,ticks:{color:'#64748b'},grid:{color:'#e2e8f0'}},y:{ticks:{color:'#334155'}}}}});
   _qColState={rows:data.columns_detail||[], sort:'', dir:1, issues:false, q:''};
   renderQColTable();
+  _qOvrRepopulate();
   loadDqHistory(data.name, data.score);
   loadDatasetControlRules('q','quality');
+}
+
+// ---------- Quality: per-column override grid ("Override column rules & re-run") ----------
+let _qOvrLast = [];
+function collectQOverrides(){
+  const cfg=[];
+  (_qColState.rows||[]).forEach((c,i)=>{
+    const g=id=>document.getElementById(`q-ovr-${i}-${id}`);
+    if(!g('man')) return;
+    const entry={name:c.column};
+    if(g('man').checked) entry.mandatory=true;
+    if(g('unq').checked) entry.force_unique=true;
+    if(g('exc').checked) entry.exclude=true;
+    if(g('null').value.trim()!=='') entry.null_threshold_pct=g('null').value.trim();
+    if(g('av').value.trim()) entry.allowed_values=g('av').value.trim();
+    if(Object.keys(entry).length>1){ entry.severity=g('sev').value; cfg.push(entry); }
+  });
+  return cfg;
+}
+function _qOvrRepopulate(){
+  if(!_qOvrLast.length) return;
+  (_qColState.rows||[]).forEach((c,i)=>{
+    const saved=_qOvrLast.find(e=>e.name===c.column); if(!saved) return;
+    const g=id=>document.getElementById(`q-ovr-${i}-${id}`);
+    if(!g('man')) return;
+    g('man').checked=!!saved.mandatory; g('unq').checked=!!saved.force_unique; g('exc').checked=!!saved.exclude;
+    if(saved.null_threshold_pct!=null) g('null').value=saved.null_threshold_pct;
+    if(saved.allowed_values) g('av').value=saved.allowed_values;
+    if(saved.severity) g('sev').value=saved.severity;
+  });
+}
+async function rerunQualityOverrides(){
+  if(!SESSION){ toast('Run an analysis first.'); return; }
+  const cfg=collectQOverrides();
+  if(!cfg.length){ toast('No overrides set — tick a box or fill a field first.'); return; }
+  const st=document.getElementById('q-ovr-status');
+  if(st) st.textContent='Re-running with overrides…';
+  const t0=performance.now();
+  const r=await J('POST',`/rerun-quality-overrides/${SESSION}`,{col_config:cfg});
+  if(r.error||r.detail){ if(st) st.textContent=''; toast('❌ '+(r.error||r.detail)); return; }
+  _qOvrLast=cfg;
+  renderQualityReport(r, ((performance.now()-t0)/1000).toFixed(3));
+  toast('✅ Re-ran with your overrides — report updated.');
+}
+async function saveOverridesToMemory(){
+  if(!SESSION){ toast('Run an analysis first.'); return; }
+  const cfg=collectQOverrides();
+  if(!cfg.length){ toast('No overrides set — tick a box or fill a field first.'); return; }
+  let saved=0;
+  for(const e of cfg){
+    const steps=[];
+    if(e.exclude) steps.push([`exclude the ${e.name} column from scoring`,'dc_quality_exclude']);
+    if(e.mandatory) steps.push([`${e.name} is mandatory (must not be null)`,'dc_quality_rule']);
+    if(e.force_unique) steps.push([`${e.name} must be unique`,'dc_quality_rule']);
+    if(e.null_threshold_pct!=null) steps.push([`${e.name} may have at most ${e.null_threshold_pct}% nulls`,'dc_quality_rule']);
+    if(e.allowed_values) steps.push([`${e.name} allowed values: ${e.allowed_values}`,'dc_quality_rule']);
+    for(const [rule,cat] of steps){
+      const r=await J('POST',`/rules/${SESSION}/save`,{rule, category:cat});
+      if(!(r.error||r.detail)) saved++;
+    }
+  }
+  if(saved){ loadDatasetControlRules('q','quality'); toast(`✅ Saved ${saved} step${saved===1?'':'s'} to Dataset Memory — they auto-apply on future runs of this dataset.`); }
+  else toast('❌ Could not save steps.');
 }
 
 // ---------- Quality: AI Copilot mode ----------

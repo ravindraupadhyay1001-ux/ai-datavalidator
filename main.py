@@ -6232,7 +6232,6 @@ def analyze_quality(df: pd.DataFrame, name: str,
             if ":" not in _bv:
                 continue
             _bv_rule, _bv_col = _bv.split(":", 1)
-            _bv_col_lower = _bv_col.strip().lower()
             _bv_rule = _bv_rule.strip()
 
             # domain_accuracy_{domain_name} -> rule_type=domain_accuracy, value=domain_name
@@ -6241,6 +6240,14 @@ def analyze_quality(df: pd.DataFrame, name: str,
             if _bv_rule.startswith("domain_accuracy_"):
                 _rule_type = "domain_accuracy"
                 _rule_value = _bv_rule[len("domain_accuracy_"):]
+            # 3-part entries carry a value after the column, e.g.
+            # "allowed_values:side:BUY,SELL". Splitting only once treated
+            # "side:BUY,SELL" as the column name, which matched nothing --
+            # so the Trade pack's own allowed_values validator (and any
+            # AI-hinted one) was silently dropped.
+            if _rule_type in ("allowed_values", "not_allowed_values") and ":" in _bv_col:
+                _bv_col, _rule_value = _bv_col.split(":", 1)
+            _bv_col_lower = _bv_col.strip().lower()
 
 
             # Match case-insensitively against actual df columns
@@ -13820,6 +13827,73 @@ def _ws_check_soft() -> bool:
         return False
 
 
+def _quality_response_payload(q: dict, session_id: str, total_elapsed, proc_logs: list) -> dict:
+    """Standard Data Quality JSON response shape, built from an
+    analyze_quality_full() result. Shared by /analyze and the override-grid
+    re-run so the UI can re-render the same report either way."""
+    dq = q.get("dq_score", {})
+    profile = q.get("profile", {}) or {}
+    _profile_by_name = {c.get("name"): c for c in profile.get("columns", [])}
+
+    dims = {
+        "Completeness": dq.get("completeness"),
+        "Uniqueness": dq.get("uniqueness"),
+        "Validity": dq.get("validity"),
+        "Consistency": dq.get("consistency"),
+        "Conformity": dq.get("conformity"),
+    }
+    if dq.get("precision_active"):
+        dims["Precision"] = dq.get("precision")
+    if dq.get("timeliness_active"):
+        dims["Timeliness"] = dq.get("timeliness")
+    if dq.get("accuracy_active"):
+        dims["Accuracy"] = dq.get("accuracy")
+
+    columns_detail = []
+    for c in q.get("columns", []):
+        is_numeric = "min" in c and "max" in c
+        prof_c = _profile_by_name.get(c.get("name"), {})
+        columns_detail.append({
+            "column": c.get("name"),
+            "completeness_pct": round(100 - (c.get("null_pct") or 0), 1),
+            "uniqueness_pct": c.get("uniqueness_pct"),
+            "null_count": c.get("null_count"),
+            "distinct": c.get("unique_count"),
+            "detected_format": prof_c.get("semantic", c.get("cardinality", "")),
+            "numeric": {"min": c["min"], "max": c["max"]} if is_numeric else False,
+            "string": False,
+        })
+
+    correlations = [
+        {"col_a": c.get("col1"), "col_b": c.get("col2"), "r": c.get("corr")}
+        for c in profile.get("correlations", [])
+    ]
+
+    return {
+        "session_id": session_id,
+        "name": q.get("file_name", ""),
+        "dimensions": dims,
+        "grade": dq.get("grade"),
+        "score": dq.get("score"),
+        "rows": q.get("total_rows"),
+        "columns": q.get("total_cols"),
+        "duplicate_rows": q.get("duplicate_rows"),
+        "columns_detail": columns_detail,
+        "near_key_columns": profile.get("near_key_cols", []),
+        "correlations": correlations,
+        "ai_rule_results": q.get("ai_rule_results", []),
+        "ai_dq_score": q.get("ai_dq_score", {}),
+        "rule_results": q.get("rule_results", []),
+        "anomaly_results": q.get("anomaly_results", []),
+        "categorical_drift": q.get("categorical_drift", []),
+        "numeric_clusters": q.get("numeric_clusters", []),
+        "multivariate_anomalies": q.get("multivariate_anomalies", {}),
+        "trend_anomalies": q.get("trend_anomalies", []),
+        "elapsed": total_elapsed,
+        "logs": proc_logs,
+    }
+
+
 @app.post("/analyze")
 async def analyze(request: Request):
     # --- Processing log ---
@@ -15330,67 +15404,7 @@ async def analyze(request: Request):
 
     if action in ("quality", "profile"):
         q = quality_reports[0] if quality_reports else (profile_reports[0] if profile_reports else {})
-        dq = q.get("dq_score", {})
-        profile = q.get("profile", {}) or {}
-        _profile_by_name = {c.get("name"): c for c in profile.get("columns", [])}
-
-        dims = {
-            "Completeness": dq.get("completeness"),
-            "Uniqueness": dq.get("uniqueness"),
-            "Validity": dq.get("validity"),
-            "Consistency": dq.get("consistency"),
-            "Conformity": dq.get("conformity"),
-        }
-        if dq.get("precision_active"):
-            dims["Precision"] = dq.get("precision")
-        if dq.get("timeliness_active"):
-            dims["Timeliness"] = dq.get("timeliness")
-        if dq.get("accuracy_active"):
-            dims["Accuracy"] = dq.get("accuracy")
-
-        columns_detail = []
-        for c in q.get("columns", []):
-            is_numeric = "min" in c and "max" in c
-            prof_c = _profile_by_name.get(c.get("name"), {})
-            columns_detail.append({
-                "column": c.get("name"),
-                "completeness_pct": round(100 - (c.get("null_pct") or 0), 1),
-                "uniqueness_pct": c.get("uniqueness_pct"),
-                "null_count": c.get("null_count"),
-                "distinct": c.get("unique_count"),
-                "detected_format": prof_c.get("semantic", c.get("cardinality", "")),
-                "numeric": {"min": c["min"], "max": c["max"]} if is_numeric else False,
-                "string": False,
-            })
-
-        correlations = [
-            {"col_a": c.get("col1"), "col_b": c.get("col2"), "r": c.get("corr")}
-            for c in profile.get("correlations", [])
-        ]
-
-        _resp = {
-            "session_id": session_id,
-            "name": q.get("file_name", ""),
-            "dimensions": dims,
-            "grade": dq.get("grade"),
-            "score": dq.get("score"),
-            "rows": q.get("total_rows"),
-            "columns": q.get("total_cols"),
-            "duplicate_rows": q.get("duplicate_rows"),
-            "columns_detail": columns_detail,
-            "near_key_columns": profile.get("near_key_cols", []),
-            "correlations": correlations,
-            "ai_rule_results": q.get("ai_rule_results", []),
-            "ai_dq_score": q.get("ai_dq_score", {}),
-            "rule_results": q.get("rule_results", []),
-            "anomaly_results": q.get("anomaly_results", []),
-            "categorical_drift": q.get("categorical_drift", []),
-            "numeric_clusters": q.get("numeric_clusters", []),
-            "multivariate_anomalies": q.get("multivariate_anomalies", {}),
-            "trend_anomalies": q.get("trend_anomalies", []),
-            "elapsed": total_elapsed,
-            "logs": proc_logs,
-        }
+        _resp = _quality_response_payload(q, session_id, total_elapsed, proc_logs)
         if session_id in _results_store:
             _results_store[session_id]["_digest"] = _resp
         return JSONResponse(_sanitize_json(_resp))
@@ -16040,6 +16054,73 @@ async def rerun_quality_json(session_id: str, request: Request):
             }))
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@app.post("/rerun-quality-overrides/{session_id}")
+async def rerun_quality_overrides(session_id: str, request: Request):
+    """The standard DQ report's "Override column rules & re-run" grid.
+    Re-runs analyze_quality_full on the stored dataframe with the user's
+    per-column overrides passed as col_config (deterministic -- no LLM call),
+    and returns the same JSON shape as the standard /analyze quality response
+    so the page re-renders in place with the adjusted rules."""
+    stored = _results_store.get(session_id)
+    if not stored or "dataframes" not in stored:
+        raise HTTPException(404, "Session expired -- please re-run the analysis.")
+    body = await request.json()
+    raw_cfg = body.get("col_config") or []
+    col_config: list[dict] = []
+    for c in raw_cfg:
+        if not isinstance(c, dict) or not str(c.get("name", "")).strip():
+            continue
+        entry: dict = {"name": str(c["name"]).strip()}
+        if c.get("exclude"):
+            entry["exclude"] = True
+        if c.get("mandatory"):
+            entry["mandatory"] = True
+        if c.get("force_unique"):
+            entry["force_unique"] = True
+        if str(c.get("null_threshold_pct", "")).strip() != "":
+            entry["null_threshold_pct"] = str(c["null_threshold_pct"]).strip()
+        if str(c.get("allowed_values", "")).strip():
+            entry["allowed_values"] = str(c["allowed_values"]).strip()
+        sev = str(c.get("severity", "")).strip().lower()
+        if sev in ("minor", "major", "critical"):
+            entry["severity"] = sev
+        if len(entry) > 1:
+            col_config.append(entry)
+    if not col_config:
+        raise HTTPException(400, "No overrides provided.")
+    hints: dict = {"col_config": col_config}
+
+    import asyncio as _asyncio
+    t0 = time.time()
+    fname = stored["dataframes"][0]["name"]
+    df = stored["dataframes"][0]["df"]
+    try:
+        q = await _asyncio.to_thread(analyze_quality_full, df, fname, {}, [], hints, None, None)
+        # Same add-on detectors as every other quality path, so the Anomalies
+        # tab stays populated after an override re-run.
+        for key, fn, args in (
+            ("anomaly_results", detect_numeric_anomalies, (df, 3.0)),
+            ("categorical_drift", detect_categorical_drift, (df, q.get("baseline_snapshot"))),
+            ("numeric_clusters", detect_numeric_clusters, (df,)),
+            ("multivariate_anomalies", detect_multivariate_anomalies, (df,)),
+            ("trend_anomalies", detect_trend_anomalies, (df,)),
+        ):
+            try:
+                q[key] = await _asyncio.to_thread(fn, *args)
+            except Exception:
+                q[key] = {"checked_columns": [], "anomaly_count": 0, "rows": []} \
+                    if key == "multivariate_anomalies" else []
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+    # Same session: the overrides refine this run, so Download/Email now
+    # reflect the adjusted report too.
+    stored["quality_reports"] = [q]
+    resp = _quality_response_payload(q, session_id, round(time.time() - t0, 3), [])
+    stored["_digest"] = resp
+    return JSONResponse(_sanitize_json(resp))
 
 
 @app.post("/rerun-quality/{session_id}", response_class=HTMLResponse)
