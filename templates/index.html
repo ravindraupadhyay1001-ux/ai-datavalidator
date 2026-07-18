@@ -1190,16 +1190,11 @@ function copilotPanelHTML(prefix, context, chips){
   </div>`;
 }
 
-// ---------- Advanced options (Reference Docs + DQ/mapping hints) ----------
+// ---------- Advanced options (only Data Quality has the panel) ----------
 function advancedHints(prefix){
   const v = id => document.getElementById(id)?.value?.trim() || '';
   const h = {
     recon_prompt: v(`${prefix}-domain`),
-    mapping_hints: v(`${prefix}-maphints`),
-    key_hints: v(`${prefix}-keyhints`),
-    transform_hints: v(`${prefix}-transformhints`),
-    exclude_hints: v(`${prefix}-excludehints`),
-    cross_file_rules: v(`${prefix}-crossfilerules`),
     cross_column_rules: v(`${prefix}-crosscolrules`),
   };
   Object.keys(h).forEach(k=>{ if(!h[k]) delete h[k]; });
