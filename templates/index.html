@@ -136,6 +136,14 @@
     .text-red-400{ color:#dc2626 !important; }
     .text-purple-300{ color:#7e22ce !important; }
     .text-indigo-300{ color:#4338ca !important; }
+    /* Non-blocking toast notifications (replaces window.alert popups) */
+    #toast-box{ position:fixed; bottom:20px; right:20px; z-index:100;
+      display:flex; flex-direction:column; gap:8px; align-items:flex-end; }
+    .toast{ background:#1e293b; color:#f1f5f9; padding:10px 16px;
+      border-radius:8px; font-size:13px; max-width:420px;
+      box-shadow:0 4px 12px rgba(0,0,0,.25); white-space:pre-line;
+      opacity:0; transform:translateY(8px); transition:all .25s ease; }
+    .toast.show{ opacity:1; transform:translateY(0); }
   </style>
 </head>
 <body class="min-h-screen">
@@ -182,7 +190,7 @@
     <!-- COMPARE -->
     <section id="tab-compare" class="tab-panel">
       <h2 class="text-3xl font-bold mb-1.5 grad-text">Reconciliation</h2>
-      <p class="text-sm text-gray-500 mb-4">Upload two files; keys are inferred automatically.</p>
+      <p class="text-sm text-gray-500 mb-4">Upload two files or pick Saved Connectors; keys are inferred automatically.</p>
       <div class="card rounded-xl p-5 mb-4 grid grid-cols-2 gap-6">
         <div>
           <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">Dataset A</div>
@@ -737,6 +745,21 @@ const _charts = {};
 function chart(id, cfg){ if(_charts[id])_charts[id].destroy(); const el=document.getElementById(id); if(el)_charts[id]=new Chart(el,cfg); }
 const esc = s => (''+s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
+// Non-blocking replacement for window.alert -- notifications shouldn't stop
+// the user to click OK. Longer messages stay up longer; confirm() dialogs
+// (real decisions) are untouched.
+function toast(msg){
+  let box = document.getElementById('toast-box');
+  if(!box){ box = document.createElement('div'); box.id = 'toast-box'; document.body.appendChild(box); }
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  box.appendChild(t);
+  requestAnimationFrame(()=>t.classList.add('show'));
+  const ms = Math.min(12000, Math.max(4000, (''+msg).length * 60));
+  setTimeout(()=>{ t.classList.remove('show'); setTimeout(()=>t.remove(), 300); }, ms);
+}
+
 document.querySelectorAll('.tab-btn[data-tab]').forEach(b => b.onclick = () => {
   document.querySelectorAll('.tab-btn[data-tab]').forEach(x => x.classList.remove('tab-active'));
   b.classList.add('tab-active');
@@ -776,11 +799,11 @@ function actionBar(sessionId, elapsedSec){
 
 async function emailReport(sessionId){
   sessionId = sessionId || SESSION;
-  if(!sessionId){ alert('Run an analysis first.'); return; }
+  if(!sessionId){ toast('Run an analysis first.'); return; }
   const emails = prompt('Send report to (comma-separated emails):');
   if(!emails) return;
   const r = await J('POST','/send-email',{session_id:sessionId, emails});
-  alert(r.error ? ('❌ '+r.error) : '✅ Email sent.');
+  toast(r.error ? ('❌ '+r.error) : '✅ Email sent.');
 }
 
 async function postForm(action, fileInputs, extra, refDocInputId){
@@ -1254,7 +1277,7 @@ function clearKeySelection(prefix){
 }
 async function rerunCompare(prefix){
   const sid = SESSION;
-  if(!sid){ alert('No active session to rerun.'); return; }
+  if(!sid){ toast('No active session to rerun.'); return; }
   const keyCols = [...document.querySelectorAll(`.${prefix}-key-cb:checked`)].map(cb=>cb.value);
   const exclCols = [...document.querySelectorAll(`.${prefix}-excl-cb`)].filter(cb=>!cb.checked).map(cb=>cb.value);
   const out=document.getElementById(`${prefix}-out`); const t0=performance.now();
@@ -1264,7 +1287,7 @@ async function rerunCompare(prefix){
   fd.append('exclude_columns', exclCols.join(','));
   const r = await fetch(`/rerun/${sid}`, {method:'POST', body:fd});
   const data = await r.json();
-  if(!r.ok){ alert(data.detail||'Rerun failed.'); return; }
+  if(!r.ok){ toast(data.detail||'Rerun failed.'); return; }
   renderCompareResult(data, t0);
   out.scrollTop = priorScroll;
 }
@@ -1982,7 +2005,7 @@ async function runQualityAI(){
 }
 
 async function runDqAutofix(fileName){
-  if(!SESSION){ alert('Run Data Quality first.'); return; }
+  if(!SESSION){ toast('Run Data Quality first.'); return; }
   const box = document.getElementById('q-autofix-result');
   if(box) box.innerHTML = 'Fixing&hellip;';
   try{
@@ -2015,9 +2038,9 @@ async function runDqAutofix(fileName){
   }
 }
 async function setDqBaseline(fileName){
-  if(!SESSION){ alert('Run Data Quality first.'); return; }
+  if(!SESSION){ toast('Run Data Quality first.'); return; }
   const r = await J('POST', `/api/dq/baseline/${SESSION}/${encodeURIComponent(fileName)}`);
-  alert(r.ok ? '✅ Baseline saved.' : '❌ '+(r.error||'Could not save baseline.'));
+  toast(r.ok ? '✅ Baseline saved.' : '❌ '+(r.error||'Could not save baseline.'));
 }
 async function loadDqHistory(fileName, currentScore){
   const box=document.getElementById('q-history'); box.innerHTML='';
@@ -2245,7 +2268,7 @@ async function runCrossReference(){
   renderXrefResult(data, t0);
 }
 async function runXrefAI(){
-  if(!SESSION){ alert('Run Cross Reference first.'); return; }
+  if(!SESSION){ toast('Run Cross Reference first.'); return; }
   const out=document.getElementById('xref-out');
   const t0 = performance.now();
   out.innerHTML = '<span class="text-gray-400">Applying saved rules and re-running Cross Reference&hellip;</span>';
@@ -2291,8 +2314,9 @@ function quickChat(msg){ document.getElementById('chat-in').value = msg; sendCha
 // ---------- Help Modal / User Guide ----------
 const HELP_CONTENT = {
   overview: `<h3 class="text-lg font-bold grad-text mb-2">AI Agent &mdash; Data Validation</h3>
-    <p>Upload any BFSI data file and get instant reconciliation, data quality scoring, governance/PII scanning,
-    profiling, parsing, and cross-reference analysis &mdash; with an AI Copilot mode powered by Claude.</p>
+    <p>Bring any BFSI data &mdash; upload a file, or pull it live from a Saved Connector (SFTP, S3, a database,
+    Kafka, and more) &mdash; and get instant reconciliation, data quality scoring, governance/PII scanning,
+    profiling, parsing, and cross-reference analysis, with an AI Copilot mode powered by Claude.</p>
     <div class="mt-4 card rounded-lg p-4" style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.25)">
       <p class="font-semibold text-emerald-300 mb-2">&#128640; Getting Started (3 steps)</p>
       <ol class="ml-4 list-decimal text-gray-400 space-y-1">
@@ -2338,9 +2362,10 @@ const HELP_CONTENT = {
     </table>
     <p class="mt-1 text-gray-400">Result: 1 matched, 1 modified (T2 amount 2000&rarr;2500), 1 only-in-A (T3).</p>`,
   quality: `<h3 class="font-semibold text-sky-300 mb-2">Data Quality</h3>
-    <p>Scores a file across Completeness, Uniqueness, Validity, Consistency, Conformity and Precision, with a
-    letter grade and per-rule PASS/FAIL results. Pick a BFSI Rule Pack (Trade, Position, Payments, MiFID II,
-    Reference Data, Risk) to apply domain-specific validators (ISIN/LEI/BIC/currency checks, etc).</p>
+    <p>Scores a file (uploaded, or pulled live from a Saved Connector &mdash; SFTP, S3, a database, Kafka, etc.)
+    across Completeness, Uniqueness, Validity, Consistency, Conformity and Precision, with a letter grade and
+    per-rule PASS/FAIL results. Pick a BFSI Rule Pack (Trade, Position, Payments, MiFID II, Reference Data, Risk)
+    to apply domain-specific validators (ISIN/LEI/BIC/currency checks, etc).</p>
     <p class="mt-2 text-gray-400">"AI-Enhanced" asks the LLM to suggest extra rules from the column names.
     Use <b>Dataset Controls</b> to teach it dataset-specific exceptions in plain English.</p>
     <p class="mt-3 font-semibold text-emerald-300">Example</p>
@@ -2353,7 +2378,8 @@ const HELP_CONTENT = {
     "isin_format" on T2 (<code>BADISIN123</code> fails ISIN checksum). Grade: C.</p>`,
   profile: `<h3 class="font-semibold text-sky-300 mb-2">Data Profile</h3>
     <p>Column-level statistics (type, nulls, distinct count, min/max), near-key candidate columns, and
-    correlated column pairs &mdash; useful for understanding an unfamiliar file before reconciling it.</p>
+    correlated column pairs &mdash; useful for understanding an unfamiliar dataset before reconciling it. Works on
+    an uploaded file or data pulled live from a Saved Connector.</p>
     <p class="mt-3 font-semibold text-emerald-300">Example</p>
     <table class="w-full text-xs mt-1" style="border-collapse:collapse">
       <tr class="border-t border-[var(--line)]"><td class="p-1">trade_id</td><td class="p-1">side</td><td class="p-1">qty</td></tr>
@@ -2367,7 +2393,8 @@ const HELP_CONTENT = {
   governance: `<h3 class="font-semibold text-sky-300 mb-2">Governance &amp; PII</h3>
     <p>Detects PII and BFSI-sensitive identifiers per column, classifies overall sensitivity
     (Public &rarr; Highly Restricted), flags applicable regulatory frameworks (GDPR, HIPAA, MiFID II, CCPA),
-    and routes issues to the right steward/team. Download a PII-masked CSV directly from the results.</p>
+    and routes issues to the right steward/team. Runs on an uploaded file or a Saved Connector, and you can
+    download a PII-masked CSV directly from the results.</p>
     <p class="mt-3 font-semibold text-emerald-300">Example</p>
     <table class="w-full text-xs mt-1" style="border-collapse:collapse">
       <tr class="border-t border-[var(--line)]"><td class="p-1">customer_id</td><td class="p-1">email</td><td class="p-1">ssn</td></tr>
@@ -2377,8 +2404,9 @@ const HELP_CONTENT = {
     overall classification <b>Confidential</b>, regulatory frameworks: GDPR, CCPA. Masked export would show
     <code>j***@example.com</code> and <code>***-**-6789</code>.</p>`,
   parse: `<h3 class="font-semibold text-sky-300 mb-2">Parse</h3>
-    <p>Extracts a clean structured table from semi-structured or non-tabular files (SWIFT MT, ISO 20022, FIX,
-    NACHA, XBRL, PDF, plus standard CSV/XLSX/JSON/XML/Parquet).</p>
+    <p>Extracts a clean structured table from semi-structured or non-tabular data (SWIFT MT, ISO 20022, FIX,
+    NACHA, XBRL, PDF, plus standard CSV/XLSX/JSON/XML/Parquet) &mdash; uploaded, or pulled from a Saved
+    Connector.</p>
     <p class="mt-3 font-semibold text-emerald-300">Example</p>
     <p class="text-gray-400">Input (free text / FIX-style tags):</p>
     <p class="mt-1 font-mono text-xs text-gray-400" style="white-space:pre-wrap">Trade T1: BUY 100 AAPL @ 189.50, settled 2026-07-15</p>
@@ -2485,7 +2513,7 @@ async function sendHelpAsk(){
 
 // ---------- Dataset Controls (plain-English, per-dataset AI memory) ----------
 async function applyDatasetControl(prefix, context){
-  if(!SESSION){ alert('Run an analysis first.'); return; }
+  if(!SESSION){ toast('Run an analysis first.'); return; }
   const inp = document.getElementById(`${prefix}-dc-input`);
   const instruction = inp.value.trim();
   if(!instruction) return;
@@ -2564,9 +2592,9 @@ async function loadRuleTemplates(prefix, context){
 }
 async function applyRuleTemplate(prefix, fromFingerprint, context){
   const toFp = _currentReconFingerprint || await _resolveCurrentFingerprint();
-  if(!toFp){ alert('Run an analysis first.'); return; }
+  if(!toFp){ toast('Run an analysis first.'); return; }
   const r = await J('POST', '/api/recon/rule-templates/apply', {from_fingerprint: fromFingerprint, to_fingerprint: toFp});
-  if(r.error){ alert(r.error); return; }
+  if(r.error){ toast(r.error); return; }
   const fb = document.getElementById(`${prefix}-dc-feedback`);
   if(fb) fb.innerHTML = `<span class="text-emerald-400">&check; Applied ${r.copied} rule${r.copied===1?'':'s'} from template.</span>`;
   loadDatasetControlRules(prefix, context);
@@ -2892,8 +2920,8 @@ onCnTypeChange();
 let _cnEditingId = null;
 async function saveConnection(){
   const cn_name=document.getElementById('cn-name'), cn_type=document.getElementById('cn-type');
-  if(!cn_name.value.trim()){ alert('Connection name is required.'); return; }
-  let cfg; try{ cfg = collectCnConfig(); }catch(e){ alert(e.message); return; }
+  if(!cn_name.value.trim()){ toast('Connection name is required.'); return; }
+  let cfg; try{ cfg = collectCnConfig(); }catch(e){ toast(e.message); return; }
   const payload = {name:cn_name.value, source_type:cn_type.value, config:cfg};
   if(_cnEditingId) payload.id = _cnEditingId;
   await J('POST','/api/ws/connections',payload);
@@ -2911,7 +2939,7 @@ const _CN_SECRET_FIELDS = new Set(['password','private_key_path','aws_secret_acc
   'client_secret','security_token','access_token','api_key','sas_token','credentials_json']);
 async function editConn(id){
   const r = await fetch(`/api/ws/connections/${id}`).then(x=>x.json());
-  if(r.detail){ alert(r.detail); return; }
+  if(r.detail){ toast(r.detail); return; }
   wsTab('conn'); // Edit is clicked from the Saved Connectors list -- jump back to the form tab to actually show it
   _cnEditingId = id;
   document.getElementById('cn-name').value = r.name;
@@ -2938,13 +2966,13 @@ function cancelCnEdit(){
   document.getElementById('cn-save-btn').textContent = 'Save';
   document.getElementById('cn-cancel-edit').classList.add('hidden');
 }
-async function testConn(id){ const r=await J('POST',`/api/ws/connections/${id}/test`); alert(r.ok?'✅ Connection OK':'❌ '+(r.error||'failed')); }
-async function previewConn(id){ const r=await fetch(`/api/ws/connections/${id}/preview`).then(x=>x.json()); if(r.detail){alert(r.detail);return;} alert('Columns: '+r.columns.join(', ')+'\n'+r.rows.length+' rows'); }
+async function testConn(id){ const r=await J('POST',`/api/ws/connections/${id}/test`); toast(r.ok?'✅ Connection OK':'❌ '+(r.error||'failed')); }
+async function previewConn(id){ const r=await fetch(`/api/ws/connections/${id}/preview`).then(x=>x.json()); if(r.detail){toast(r.detail);return;} toast('Columns: '+r.columns.join(', ')+'\n'+r.rows.length+' rows'); }
 async function listTablesConn(id){
   const r = await fetch(`/api/ws/connections/${id}/tables`).then(x=>x.json());
-  if(r.detail){ alert(r.detail); return; }
+  if(r.detail){ toast(r.detail); return; }
   const tables = r.tables||[];
-  if(!tables.length){ alert('No tables found.'); return; }
+  if(!tables.length){ toast('No tables found.'); return; }
   const names = tables.map(t=>t.schema?`${t.schema}.${t.table}`:t.table);
   const picked = prompt(`${names.length} table(s) found -- copy the one you want into the Table field:\n\n`+names.join('\n'), names[0]);
   if(picked) navigator.clipboard?.writeText(picked).catch(()=>{});
@@ -2954,7 +2982,7 @@ async function loadRulesets(){ const rows=await fetch('/api/ws/rulesets').then(r
   document.getElementById('rs-list').innerHTML=rows.length?rows.map(r=>row(`<span><b>${esc(r.name)}</b> <span class="text-gray-500">#${r.id} ${esc(r.description||'')}</span></span>
     <button onclick="delRuleset(${r.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button>`)).join(''):'<div class="text-gray-500 text-sm">No rulesets.</div>'; }
 async function saveRuleset(){ const rs_rules=document.getElementById('rs-rules'), rs_name=document.getElementById('rs-name'), rs_desc=document.getElementById('rs-desc');
-  let rules; try{rules=JSON.parse(rs_rules.value||'[]');}catch(e){alert('Rules must be valid JSON');return;}
+  let rules; try{rules=JSON.parse(rs_rules.value||'[]');}catch(e){toast('Rules must be valid JSON');return;}
   await J('POST','/api/ws/rulesets',{name:rs_name.value,description:rs_desc.value,rules}); rs_name.value='';rs_rules.value=''; loadRulesets(); }
 async function delRuleset(id){ if(confirm('Delete ruleset?')){await fetch(`/api/ws/rulesets/${id}`,{method:'DELETE'});loadRulesets();} }
 function _isFastCron(cron){
@@ -3103,7 +3131,7 @@ async function toggleJobHistory(id){
 }
 async function editJob(id){
   const j = await fetch(`/api/ws/jobs/${id}`).then(x=>x.json());
-  if(j.detail){ alert(j.detail); return; }
+  if(j.detail){ toast(j.detail); return; }
   _jbEditingId = id;
   document.getElementById('jb-name').value = j.name || '';
   document.getElementById('jb-action').value = j.action || 'compare';
@@ -3184,19 +3212,19 @@ let _auditES=null;
 function startAudit(){ if(_auditES)return; _auditES=new EventSource('/api/logs/stream');
   _auditES.onmessage=e=>{ try{const d=JSON.parse(e.data); const au_log=document.getElementById('au-log'); au_log.innerHTML=`<div><span class="text-gray-500">${(d.created_at||'').slice(11,19)}</span> <span class="text-sky-300">${esc(d.action)}</span> ${esc(d.username||'')} &mdash; ${esc(d.detail||'')}</div>`+au_log.innerHTML;}catch(_){} }; }
 async function saveToWorkspace(){
-  if(!SESSION){alert('Run an analysis first.');return;}
+  if(!SESSION){toast('Run an analysis first.');return;}
   const name=prompt('Name this saved run:'); if(!name)return;
   await J('POST','/api/ws/saved-runs',{session_id:SESSION,name});
   if(!confirm('Saved. Also keep this running automatically and email you the results? (requires this run to have used a Saved Connector, not a direct file upload)')){
-    alert('Saved to workspace.'); return;
+    toast('Saved to workspace.'); return;
   }
   const cron = prompt('How often should it run? (cron expression, e.g. "0 6 * * *" = daily at 6am)', '0 6 * * *');
   if(!cron) return;
   const email = prompt('Email address for the report / alerts:');
   if(!email) return;
   const r = await J('POST','/api/ws/jobs/from-session', {session_id:SESSION, name, schedule_cron:cron, notify_email:email});
-  if(r.detail || r.error){ alert('Saved, but could not schedule it: '+(r.detail||r.error)); return; }
-  alert('Saved and scheduled — manage it anytime from Workspace → Jobs.');
+  if(r.detail || r.error){ toast('Saved, but could not schedule it: '+(r.detail||r.error)); return; }
+  toast('Saved and scheduled — manage it anytime from Workspace → Jobs.');
 }
 
 // ---------- Settings ----------
@@ -3240,7 +3268,7 @@ async function loadSettings(){ const d=await fetch('/api/license/status').then(r
   }catch(e){}
 }
 async function activateLicense(){ const token=document.getElementById('lic-token').value.trim(); if(!token)return;
-  const r=await J('POST','/api/license/activate',{token}); alert(r.ok?'✅ License activated':'❌ Activation failed'); loadSettings(); }
+  const r=await J('POST','/api/license/activate',{token}); toast(r.ok?'✅ License activated':'❌ Activation failed'); loadSettings(); }
 async function saveModuleVisibility(){
   const hidden = Array.from(document.querySelectorAll('.mod-vis-cb')).filter(cb=>!cb.checked).map(cb=>cb.value);
   const status = document.getElementById('mod-vis-status');
@@ -3264,7 +3292,7 @@ async function saveAppSettings(){
   };
   if(v('cfg-license-server')) body.license_server = v('cfg-license-server');
   const r = await J('POST','/api/settings', body);
-  alert(r.ok!==false ? '✅ '+(r.message||'Settings saved (may need a restart to fully apply).') : '❌ '+(r.error||'Failed to save'));
+  toast(r.ok!==false ? '✅ '+(r.message||'Settings saved (may need a restart to fully apply).') : '❌ '+(r.error||'Failed to save'));
   loadSettings();
 }
 
@@ -3303,18 +3331,18 @@ async function loadUsers(){
 }
 async function setUserRole(username, role){
   const r = await J('PUT', `/api/ws/users/${encodeURIComponent(username)}/role`, {role});
-  if(r && r.detail){ alert(r.detail); }
+  if(r && r.detail){ toast(r.detail); }
   loadUsers();
 }
 async function blockUser(username, blocked){
   const r = await J('PUT', `/api/ws/users/${encodeURIComponent(username)}/block`, {blocked});
-  if(r && r.detail){ alert(r.detail); }
+  if(r && r.detail){ toast(r.detail); }
   loadUsers();
 }
 async function deleteUserConfirm(username){
   if(!confirm(`Permanently delete user "${username}" and all their connections, jobs, saved runs, and saved rules? This cannot be undone.`)) return;
   const r = await J('DELETE', `/api/ws/users/${encodeURIComponent(username)}`);
-  if(r && r.detail){ alert(r.detail); }
+  if(r && r.detail){ toast(r.detail); }
   loadUsers();
 }
 

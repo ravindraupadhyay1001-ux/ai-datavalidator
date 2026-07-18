@@ -11405,7 +11405,10 @@ def _status_fill(status: str) -> PatternFill:
     return _PASS_FILL if s in ("PASS", "OK") else _FAIL_FILL if s == "FAIL" else _WARN_FILL
 
 
-def generate_excel(data: dict) -> openpyxl.Workbook:
+def generate_excel(data: dict, exceptions_only: bool = False) -> openpyxl.Workbook:
+    # exceptions_only trims the DQ and Governance column tables down to rows
+    # with actual findings (the emailed attachment); the Download button keeps
+    # the full report. Compare/Profile sheets are already exception-shaped.
     wb = openpyxl.Workbook()
 
 
@@ -11669,15 +11672,26 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
             col_hdrs += ["Sensitivity", "Regulatory Frameworks", "Access Recommendation",
                          "Owner", "Description"]
 
+        dq_cols = q.get("columns", [])
+        if exceptions_only:
+            dq_cols = [c for c in dq_cols
+                       if (c.get("null_pct") or 0) > 0
+                       or (c.get("outlier_count") or 0) > 0
+                       or c.get("dq_grade") in ("C", "F")]
+            col_title = (f"Column Exceptions ({len(dq_cols)} of "
+                         f"{len(q.get('columns', []))} columns have issues)")
+        else:
+            col_title = "Column Details"
+
         row = len(summary_rows) + 2
-        ws.cell(row, 1, "Column Details").font = Font(bold=True, size=11)
+        ws.cell(row, 1, col_title).font = Font(bold=True, size=11)
         row += 1
 
 
         _hdr(ws, row, col_hdrs)
         row += 1
 
-        for c in q.get("columns", []):
+        for c in dq_cols:
             col_score = c.get("dq_score", "")
             col_grade = c.get("dq_grade", "")
             score_str = f"{col_score} ({col_grade})" if col_score != "" else ""
@@ -11800,11 +11814,19 @@ def generate_excel(data: dict) -> openpyxl.Workbook:
         ws.cell(2, 2, ", ".join(g["regulatory_frameworks"]))
         ws.cell(3, 1, "PII columns").font = Font(bold=True)
         ws.cell(3, 2, g["pii_column_count"])
+        gov_cols = g.get("columns", [])
+        if exceptions_only:
+            gov_cols = [c for c in gov_cols
+                        if c.get("pii_detected")
+                        or c.get("sensitivity") in ("Confidential", "Highly Restricted")]
+            ws.cell(4, 1, (f"Column Exceptions ({len(gov_cols)} of "
+                           f"{len(g.get('columns', []))} columns flagged)")
+                    ).font = Font(bold=True, size=11)
         row = 5
         _hdr(ws, row, ["Column", "Type", "Sensitivity", "PII Findings",
                        "Regulatory", "Owner", "Access Recommendation", "Description"])
         row += 1
-        for col in g.get("columns", []):
+        for col in gov_cols:
             ws.cell(row, 1, col["column"])
             ws.cell(row, 2, col["dtype"])
             sens = col["sensitivity"]
@@ -18509,7 +18531,7 @@ async def send_email(request: Request):
                 attach_name = f"recon_{_safe_stem(src_name)}_vs_{_safe_stem(tgt_name)}.xlsx"
             else:
                 # Fallback: lineage session context not available -- use generate_excel
-                wb  = generate_excel(data)
+                wb  = generate_excel(data, exceptions_only=True)
                 buf = io.BytesIO(); wb.save(buf)
                 attach_bytes = buf.getvalue()
         except Exception:
@@ -18517,7 +18539,7 @@ async def send_email(request: Request):
 
     else:
         try:
-            wb  = generate_excel(data)
+            wb  = generate_excel(data, exceptions_only=True)
             buf = io.BytesIO()
             wb.save(buf)
             attach_bytes = buf.getvalue()
