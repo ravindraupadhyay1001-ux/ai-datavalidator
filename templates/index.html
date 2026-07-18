@@ -425,6 +425,7 @@
         <button onclick="wsTab('rules')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Rulesets</button>
         <button onclick="wsTab('jobs')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Jobs</button>
         <button onclick="wsTab('saved')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Saved Runs</button>
+        <button onclick="wsTab('memory')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Memory</button>
         <button onclick="wsTab('audit')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Audit</button>
       </div>
       <div id="ws-conn" class="ws-panel">
@@ -537,6 +538,11 @@
         <div id="jb-list"></div>
       </div>
       <div id="ws-saved" class="ws-panel hidden"><div id="sv-filter-note" class="text-xs text-gray-500 mb-2"></div><div id="sv-list"></div></div>
+      <div id="ws-memory" class="ws-panel hidden">
+        <div class="text-xs text-gray-500 mb-3">Everything the AI has been trained with, per dataset &mdash; rules you saved during analysis plus steps the AI learned on its own runs. Rules auto-apply whenever a matching dataset is analyzed. Edit or delete anything here, anytime.</div>
+        <div id="mem-list"></div>
+        <div id="mem-detail" class="hidden"></div>
+      </div>
       <div id="ws-audit" class="ws-panel hidden">
         <div class="text-sm text-gray-400 mb-2">Live activity feed (SSE)</div>
         <div id="au-log" class="card rounded-xl p-3 text-xs font-mono space-y-1 h-96 overflow-auto"></div>
@@ -1135,6 +1141,31 @@ function logsPanelHTML(logs){
     logs.map(l=>`<div><span class="text-gray-500">${(l.elapsed??0).toFixed?l.elapsed.toFixed(3):l.elapsed}s</span> <span class="${l.level==='WARN'?'text-amber-300':l.level==='ERROR'?'text-red-400':'text-sky-300'}">[${esc(l.level||'INFO')}]</span> ${esc(l.message||'')}</div>`).join('')
   }</div>`;
 }
+// Per-context action for the "Re-run with saved rules applied" button in the
+// Dataset Memory panel -- every module with an AI run gets one, wired to its
+// own rerun path. Parse has no rerun endpoint (rules apply on the next run).
+function _dcRerunAction(prefix, context){
+  return {
+    xref: `runXrefAI()`,
+    compare: `quickChat('run recon')`,
+    quality: `rerunWithSavedRules('${prefix}','quality')`,
+    profile: `rerunWithSavedRules('${prefix}','profile')`,
+    governance: `rerunWithSavedRules('${prefix}','governance')`,
+  }[context] || '';
+}
+async function rerunWithSavedRules(prefix, context){
+  if(!SESSION){ toast('Run an analysis first.'); return; }
+  const target = document.getElementById(`${prefix}-ai-report`) || document.getElementById(`${prefix}-rerun-report`);
+  if(target) target.innerHTML = '<div class="card rounded-xl p-3 mb-3 text-xs text-gray-400">&#128260; Re-running with saved rules applied&hellip;</div>';
+  try{
+    const r = await fetch(`/rerun-${context}-json/${SESSION}`, {method:'POST', headers:{'Content-Type':'application/json'}, body:'{}'});
+    const j = await r.json();
+    if(!r.ok || j.error){ if(target) target.innerHTML=''; toast('❌ '+(j.error||j.detail||'Re-run failed.')); return; }
+    if(j.session_id) setSession(j.session_id);
+    if(target) target.innerHTML = renderAiReportCard(context, j);
+    toast('✅ Re-ran with saved rules applied — report updated.');
+  }catch(e){ if(target) target.innerHTML=''; toast('❌ Re-run failed.'); }
+}
 function copilotPanelHTML(prefix, context, chips){
   return `<div class="grid grid-cols-3 gap-4">
     <div class="col-span-2">
@@ -1145,6 +1176,7 @@ function copilotPanelHTML(prefix, context, chips){
           ${chips.map(c=>`<span class="suggest-chip${c.special?' special':''}" onclick="quickChat(${JSON.stringify(c.q)})">${esc(c.label)}</span>`).join('')}
         </div>
       </div>
+      <div id="${prefix}-rerun-report"></div>
       <div id="${prefix}-chat-mount"></div>
     </div>
     <div>
@@ -1153,12 +1185,12 @@ function copilotPanelHTML(prefix, context, chips){
           <span class="text-xs font-semibold text-gray-400">&#128161; Dataset Memory</span>
         </div>
         <div id="${prefix}-dc-input-box" class="flex gap-1 mb-2">
-          <input id="${prefix}-dc-input" placeholder="e.g. exclude column X" class="inp flex-1 text-xs" onkeydown="if(event.key==='Enter')applyDatasetControl('${prefix}','${context}')">
+          <input id="${prefix}-dc-input" placeholder="e.g. exclude column X, mark Y not PII" class="inp flex-1 text-xs" onkeydown="if(event.key==='Enter')applyDatasetControl('${prefix}','${context}')">
           <button onclick="applyDatasetControl('${prefix}','${context}')" class="btn rounded-lg px-2 text-xs">+</button>
         </div>
         <div id="${prefix}-dc-feedback" class="text-xs mb-1"></div>
         <div id="${prefix}-dc-rules" class="text-xs space-y-1"><span class="text-gray-500">No saved rules yet.</span></div>
-        ${context==='xref' ? `<button onclick="runXrefAI()" class="btn-ghost rounded-lg px-2 py-1 text-xs mt-2 w-full">&#128260; Re-run with saved rules applied</button>` : ''}
+        ${_dcRerunAction(prefix, context) ? `<button onclick="${_dcRerunAction(prefix, context)}" class="btn-ghost rounded-lg px-2 py-1 text-xs mt-2 w-full">&#128260; Re-run with saved rules applied</button>` : ''}
       </div>
       <div class="card rounded-xl p-4 mt-3">
         <div class="flex items-center justify-between mb-2 cursor-pointer" onclick="toggleRuleTemplates('${prefix}','${context}')">
@@ -1850,7 +1882,7 @@ async function _runAICopilotMode(action, fileId, prefix, context, label, connId)
     {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
   ];
   out.innerHTML = actionBar(activeSession, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell(prefix, [
-    {key:'copilot', label:'&#9889; AI Copilot', content: renderAiReportCard(context, reportData) + copilotPanelHTML(prefix, context, chips)},
+    {key:'copilot', label:'&#9889; AI Copilot', content: `<div id="${prefix}-ai-report">${renderAiReportCard(context, reportData)}</div>` + copilotPanelHTML(prefix, context, chips)},
     {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
   ], 'copilot');
   mountCopilotChat(prefix);
@@ -1904,6 +1936,38 @@ function qualityChips(fileName){
   ];
 }
 
+// ---------- Quality: sortable / searchable column table ----------
+let _qColState = {rows:[], sort:'', dir:1, issues:false, q:''};
+function qColHasIssue(c){ return (c.null_count||0)>0 || (c.completeness_pct??100)<100; }
+function qSortBy(key){
+  if(_qColState.sort===key){ _qColState.dir*=-1; } else { _qColState.sort=key; _qColState.dir=1; }
+  renderQColTable();
+}
+function renderQColTable(){
+  const el=document.getElementById('q-coltable'); if(!el) return;
+  const s=_qColState;
+  let rows=s.rows.filter(c=>(!s.issues||qColHasIssue(c)) && (!s.q||(c.column||'').toLowerCase().includes(s.q)));
+  if(s.sort){
+    const k=s.sort;
+    rows=[...rows].sort((a,b)=>{
+      const av=a[k], bv=b[k];
+      const cmp=(typeof av==='number'&&typeof bv==='number') ? av-bv : (''+(av??'')).localeCompare(''+(bv??''));
+      return cmp*s.dir;
+    });
+  }
+  const arrow=k=>s.sort===k?(s.dir>0?' &#9650;':' &#9660;'):'';
+  const th=(k,label,left)=>`<th class="${left?'text-left ':''}p-2 cursor-pointer select-none" title="Click to sort" onclick="qSortBy('${k}')">${label}${arrow(k)}</th>`;
+  el.innerHTML=`<table class="w-full text-xs"><thead class="text-gray-400"><tr>
+    ${th('column','Column',1)}${th('completeness_pct','Complete%')}${th('uniqueness_pct','Unique%')}${th('null_count','Nulls')}${th('distinct','Distinct')}<th>Detected</th></tr></thead><tbody>
+    ${rows.map(c=>`<tr class="border-t border-[var(--line)]"><td class="p-2">${esc(c.column)}${qColHasIssue(c)?' <span class="text-amber-500" title="Has nulls">&#9888;</span>':''}</td>
+      <td class="text-center">${bar(c.completeness_pct)}</td><td class="text-center">${bar(c.uniqueness_pct)}</td>
+      <td class="text-center${(c.null_count||0)>0?' text-red-400 font-semibold':''}">${c.null_count}</td><td class="text-center">${c.distinct}</td>
+      <td class="text-center text-sky-300">${c.detected_format||c.numeric?'num':''}</td></tr>`).join('')}</tbody></table>
+    ${rows.length?'':'<div class="text-gray-500 text-sm p-2">No columns match the current filter.</div>'}`;
+  const cnt=document.getElementById('q-col-count');
+  if(cnt) cnt.textContent=`${rows.length} of ${s.rows.length} columns`;
+}
+
 // ---------- Quality ----------
 async function runQuality(){
   const out=document.getElementById('q-out'); out.innerHTML='<span class="text-gray-400">Analyzing&hellip;</span>';
@@ -1918,6 +1982,28 @@ async function runQuality(){
   setSession(data.session_id); const dim=data.dimensions||{};
   const gradeColor={A:'#10b981',B:'#84cc16',C:'#f59e0b',D:'#f97316',F:'#ef4444'}[data.grade]||'#38bdf8';
 
+  // "Fix first" -- prioritize the issues that cost the most score, computed
+  // client-side from data already in the payload (no extra server call).
+  const failedRulesForFix = (data.rule_results||[]).filter(r=>r.status==='FAIL');
+  const fixFirst=[];
+  (data.columns_detail||[]).forEach(c=>{
+    const comp=c.completeness_pct??100;
+    if(comp<80) fixFirst.push({sev:2, txt:`<b>${esc(c.column)}</b> is only ${comp}% complete (${c.null_count} nulls) &mdash; fill upstream, or save "mark ${esc(c.column)} nullable" to Dataset Memory if blanks are legitimate`});
+    else if((c.null_count||0)>0 && comp<98) fixFirst.push({sev:1, txt:`<b>${esc(c.column)}</b> has ${c.null_count} nulls (${(100-comp).toFixed(1)}% missing)`});
+  });
+  const _failsByCol={};
+  failedRulesForFix.forEach(r=>{const col=r.column_name||r.column||'(row-level)'; _failsByCol[col]=(_failsByCol[col]||0)+1;});
+  Object.entries(_failsByCol).forEach(([col,n])=>fixFirst.push({sev:2, txt:`<b>${esc(col)}</b> fails ${n} validation rule${n===1?'':'s'} &mdash; details in the Exceptions tab`}));
+  if((data.duplicate_rows||0)>0) fixFirst.push({sev:1, txt:`<b>${data.duplicate_rows}</b> duplicate row${data.duplicate_rows===1?'':'s'} &mdash; deduplicate, or confirm they are expected`});
+  fixFirst.sort((a,b)=>b.sev-a.sev);
+  const fixFirstHTML = fixFirst.length ? `<div class="card rounded-xl p-4 mb-4">
+    <div class="text-xs text-gray-400 mb-2">&#127919; Fix first &mdash; biggest score impact</div>
+    <div class="space-y-1 text-xs">${fixFirst.slice(0,6).map(f=>`<div class="flex items-start gap-2">
+      <span class="badge shrink-0" style="${f.sev===2?'background:rgba(239,68,68,.12);color:#dc2626':'background:rgba(245,158,11,.12);color:#b45309'}">${f.sev===2?'high':'medium'}</span>
+      <span>${f.txt}</span></div>`).join('')}
+    ${fixFirst.length>6?`<div class="text-gray-500">&hellip;and ${fixFirst.length-6} more &mdash; use "Issues only" on the column table below.</div>`:''}</div>
+  </div>` : '';
+
   const summaryHTML = `<div class="grid grid-cols-3 gap-4 mb-4">
     <div class="card rounded-xl p-4 flex flex-col items-center justify-center"><canvas id="qGauge" height="150"></canvas>
       <div class="text-center -mt-2"><span class="text-3xl font-extrabold" style="color:${gradeColor}">${data.grade}</span>
@@ -1926,12 +2012,17 @@ async function runQuality(){
   </div>
   <div class="grid grid-cols-3 gap-3 mb-4 text-sm">
     ${stat('Rows', data.rows, '#a855f7')}${stat('Columns', data.columns, '#38bdf8')}${stat('Duplicate rows', data.duplicate_rows, '#f59e0b')}</div>
-  <div class="card rounded-xl p-3 overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400">
-    <tr><th class="text-left p-2">Column</th><th>Complete%</th><th>Unique%</th><th>Nulls</th><th>Distinct</th><th>Detected</th></tr></thead><tbody>
-    ${(data.columns_detail||[]).map(c=>`<tr class="border-t border-[var(--line)]"><td class="p-2">${esc(c.column)}</td>
-      <td class="text-center">${bar(c.completeness_pct)}</td><td class="text-center">${bar(c.uniqueness_pct)}</td>
-      <td class="text-center">${c.null_count}</td><td class="text-center">${c.distinct}</td>
-      <td class="text-center text-sky-300">${c.detected_format||c.numeric?'num':''}</td></tr>`).join('')}</tbody></table></div>
+  ${fixFirstHTML}
+  <div class="card rounded-xl p-3 overflow-auto">
+    <div class="flex items-center gap-3 mb-2 text-xs">
+      <input placeholder="Search columns&hellip;" class="inp text-xs" style="max-width:200px"
+             oninput="_qColState.q=this.value.trim().toLowerCase();renderQColTable()">
+      <label class="flex items-center gap-1 text-gray-500 cursor-pointer">
+        <input type="checkbox" class="accent-sky-500" onchange="_qColState.issues=this.checked;renderQColTable()"> Issues only</label>
+      <span id="q-col-count" class="text-gray-500 ml-auto"></span>
+    </div>
+    <div id="q-coltable"></div>
+  </div>
   ${(data.near_key_columns?.length||data.correlations?.length) ? `<div class="grid grid-cols-2 gap-4 mt-4 text-sm">
     ${data.near_key_columns?.length ? `<div class="card rounded-xl p-4">
       <div class="text-xs text-gray-400 mb-2">Near-key columns <span class="text-gray-600">(80&ndash;95% unique &mdash; candidate join keys)</span></div>
@@ -1952,7 +2043,11 @@ async function runQuality(){
       <div class="space-y-1 text-xs">${data.ai_rule_results.map(r=>`<div>${esc(r.rule_name||r.rule_type||'')} &middot; ${esc(r.column_name||'')}: <span class="${r.status==='PASS'?'text-emerald-300':'text-red-300'}">${esc(r.status||'')}</span></div>`).join('')}</div>
     </div>` : ''}
     <div class="text-sm text-gray-400 mb-2">Rule failures: <span class="text-red-400 font-semibold">${failedRules.length}</span> of ${(data.rule_results||[]).length}</div>
-    ${failedRules.length ? `<div class="card rounded-xl p-3 text-xs space-y-1">${failedRules.map(r=>`<div><b class="text-sky-300">${esc(r.column_name||r.column||'')}</b> &middot; ${esc(r.rule_name||r.rule_type||'')}: <span class="text-red-400">${esc(r.reason||r.status)}</span></div>`).join('')}</div>` : '<div class="text-sm text-gray-500">No rule failures.</div>'}
+    ${failedRules.length ? `<div class="card rounded-xl p-3 text-xs space-y-2">${failedRules.map(r=>`<div>
+      <b class="text-sky-300">${esc(r.column_name||r.column||'')}</b> &middot; ${esc(r.rule_name||r.rule_type||'')}: <span class="text-red-400">${esc(r.reason||r.status)}</span>
+      ${(r.failed!=null&&r.failed!=='')||r.pass_pct!=null ? `<span class="text-gray-500"> &mdash; ${r.failed!=null&&r.failed!==''?`${r.failed} row${r.failed===1?'':'s'} failed`:''}${r.pass_pct!=null?` (${r.pass_pct}% pass)`:''}</span>`:''}
+      ${(r.failing_examples||[]).length ? `<div class="text-gray-500 ml-3 mt-0.5">e.g. ${r.failing_examples.slice(0,5).map(x=>esc(''+x)).join(', ')}</div>`:''}
+    </div>`).join('')}</div>` : '<div class="text-sm text-gray-500">No rule failures.</div>'}
     ${failedRules.length ? `<div class="mt-3">
       <button onclick="runDqAutofix('${esc(data.name)}')" class="btn rounded-lg px-3 py-1.5 text-xs">&#128295; Auto-fix common issues &amp; download corrected CSV</button>
       <div id="q-autofix-result" class="text-xs text-gray-400 mt-2"></div>
@@ -1974,6 +2069,8 @@ async function runQuality(){
   chart('qDims',{type:'bar',data:{labels:dk,datasets:[{data:dk.map(k=>dim[k]),
     backgroundColor:'#2563eb',borderRadius:6}]},options:{indexAxis:'y',plugins:{legend:{display:false}},
     scales:{x:{max:100,ticks:{color:'#64748b'},grid:{color:'#e2e8f0'}},y:{ticks:{color:'#334155'}}}}});
+  _qColState={rows:data.columns_detail||[], sort:'', dir:1, issues:false, q:''};
+  renderQColTable();
   loadDqHistory(data.name, data.score);
   loadDatasetControlRules('q','quality');
 }
@@ -1992,7 +2089,7 @@ async function runQualityAI(){
   }catch(e){ /* fall back to chat-only below */ }
   setSession(activeSession);
   out.innerHTML = actionBar(activeSession, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('q', [
-    {key:'copilot', label:'&#9889; AI Copilot', content: renderAiReportCard('quality', reportData) + copilotPanelHTML('q','quality', qualityChips((reportData||data).file_names?.[0] || reportData?.file_name))},
+    {key:'copilot', label:'&#9889; AI Copilot', content: `<div id="q-ai-report">${renderAiReportCard('quality', reportData)}</div>` + copilotPanelHTML('q','quality', qualityChips((reportData||data).file_names?.[0] || reportData?.file_name))},
     {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
   ], 'copilot');
   mountCopilotChat('q');
@@ -2468,6 +2565,10 @@ const HELP_CONTENT = {
     <p class="mt-2 font-semibold text-sky-300">Saved Runs</p>
     <p class="text-gray-400">Persist a completed analysis session for later download (Excel) without rerunning
     it.</p>
+    <p class="mt-2 font-semibold text-sky-300">Memory</p>
+    <p class="text-gray-400">Manage everything the AI has been trained with, per dataset &mdash; the rules you
+    saved during analysis plus the steps the AI learned on its own AI runs. Add, edit or delete any rule here
+    anytime, without needing an active analysis session.</p>
     <p class="mt-2 font-semibold text-sky-300">Audit</p>
     <p class="text-gray-400">Live activity feed of every action taken in the workspace, for traceability.</p>`,
   who: `<h3 class="font-semibold text-sky-300 mb-2">Who Uses This</h3>
@@ -2524,14 +2625,28 @@ async function applyDatasetControl(prefix, context){
   fb.innerHTML = `<span class="text-emerald-400">&check; ${esc(r.feedback||'Saved')}</span>`;
   inp.value='';
   renderDatasetControlRules(prefix, context, r.ctx_rules||[]);
+  // Apply view filters immediately where the view supports them (the quality
+  // column table); for result-changing rules the "Re-run with saved rules
+  // applied" button below re-computes the report.
+  if(context==='quality' && document.getElementById('q-coltable')){
+    if(r.filter_type==='show_issues_only'){ _qColState.issues=true; renderQColTable(); }
+    else if(r.filter_type==='show_all'){ _qColState.issues=false; _qColState.q=''; renderQColTable(); }
+    else if(r.filter_type==='column_filter' && (r.filter_columns||[]).length){
+      _qColState.q=(''+r.filter_columns[0]).toLowerCase(); renderQColTable();
+    }
+  }
 }
+let _dcRules = {};
 function renderDatasetControlRules(prefix, context, rules){
   const box = document.getElementById(`${prefix}-dc-rules`);
   if(!box) return;
+  // Rule text lives in this map, not inline in the onclick attribute -- any
+  // quote in the text would terminate the attribute and break the button.
+  rules.forEach(r=>_dcRules[r.index]=r.rule);
   box.innerHTML = rules.map(r=>`<div class="flex items-center justify-between card rounded px-2 py-1">
     <span><span class="badge mr-1" style="background:rgba(2,132,199,.12);color:#0369a1">${esc(r.base_cat)}</span>${esc(r.rule)}</span>
     <span class="flex gap-1 shrink-0">
-      <button onclick="editDatasetControlRule(${r.index},'${prefix}','${context}',${JSON.stringify(r.rule)})" class="text-sky-400 text-xs px-1" title="Edit">&#9998;</button>
+      <button onclick="editDatasetControlRule(${r.index},'${prefix}','${context}')" class="text-sky-400 text-xs px-1" title="Edit">&#9998;</button>
       <button onclick="deleteDatasetControlRule(${r.index},'${prefix}','${context}')" class="text-red-400 text-xs px-1" title="Delete">&times;</button>
     </span></div>`).join('');
 }
@@ -2546,7 +2661,8 @@ async function deleteDatasetControlRule(index, prefix, context){
   await J('POST', `/rules/${SESSION}/delete`, {rule_index: index});
   loadDatasetControlRules(prefix, context);
 }
-async function editDatasetControlRule(index, prefix, context, currentText){
+async function editDatasetControlRule(index, prefix, context){
+  const currentText = _dcRules[index]||'';
   const updated = prompt('Edit rule:', currentText);
   if(updated == null || !updated.trim() || updated.trim() === currentText) return;
   await J('POST', `/rules/${SESSION}/update`, {rule_index: index, rule: updated.trim()});
@@ -2631,6 +2747,95 @@ function wsTab(name, jobId){
   document.getElementById('ws-'+name).classList.remove('hidden');
   if(name==='savedconn')loadConnections(); if(name==='rules')loadRulesets();
   if(name==='jobs'){loadJobs(); loadConnDropdowns();} if(name==='saved')loadSavedRuns(jobId);
+  if(name==='memory')loadMemoryDatasets();
+}
+
+// ---------- Dataset Memory manager (Workspace → Memory) ----------
+// Full CRUD over per-dataset saved rules, including the AI-learned steps
+// (category "recon_hints") that AI runs save automatically.
+const MEM_CATEGORIES = [
+  ['general','General (all modules)'],
+  ['recon_rule','Reconciliation family'],
+  ['dc_quality_rule','Data Quality only'],
+  ['dc_governance_rule','Governance only'],
+  ['dc_profile_rule','Data Profile only'],
+];
+function memCatBadge(cat){
+  if(cat==='recon_hints') return `<span class="badge mr-1" style="background:rgba(126,34,206,.12);color:#7e22ce">&#129504; AI-learned</span>`;
+  const label = cat.startsWith('dc_') ? cat.replace(/^dc_/,'').replace(/_/g,' ') : cat;
+  return `<span class="badge mr-1" style="background:rgba(2,132,199,.12);color:#0369a1">${esc(label)}</span>`;
+}
+async function loadMemoryDatasets(){
+  const box=document.getElementById('mem-list'), detail=document.getElementById('mem-detail');
+  detail.classList.add('hidden'); box.classList.remove('hidden');
+  box.innerHTML='<span class="text-gray-500 text-sm">Loading&hellip;</span>';
+  const ds=await fetch('/api/memory/datasets').then(r=>r.json()).catch(()=>[]);
+  box.innerHTML = ds.length ? ds.map(d=>row(`<span><b>${esc(d.label||d.fingerprint)}</b>
+      <span class="text-gray-500">${d.rule_count} rule${d.rule_count===1?'':'s'}${d.updated?` &middot; updated ${esc(d.updated)}`:''}</span></span>
+    <span class="flex gap-2"><button onclick="openMemoryDataset('${d.fingerprint}')" class="btn-ghost rounded px-2 py-0.5 text-xs">Manage</button>
+    <button onclick="delMemoryDataset('${d.fingerprint}')" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete all</button></span>`)).join('')
+    : '<div class="text-gray-500 text-sm">No dataset memory yet &mdash; rules you save during analysis (or that the AI learns during an AI run) will appear here.</div>';
+}
+let _memRules = {};
+async function openMemoryDataset(fp){
+  const box=document.getElementById('mem-list'), detail=document.getElementById('mem-detail');
+  const r=await fetch(`/api/memory/${fp}/rules`).then(x=>x.json()).catch(()=>({rules:[]}));
+  box.classList.add('hidden'); detail.classList.remove('hidden');
+  _memRules = {};
+  (r.rules||[]).forEach(it=>_memRules[it.index]=it.rule);
+  const rules=(r.rules||[]).map(it=>{
+    let body;
+    if(it.hints){
+      body = `<div class="text-xs">${memCatBadge(it.category)}<span class="text-gray-500">Steps the AI learned on its last AI run:</span>
+        <div class="ml-4 mt-1 space-y-0.5">${Object.entries(it.hints).map(([k,v])=>`<div><b>${esc(k.replace(/_/g,' '))}</b>: ${esc(typeof v==='string'?v:JSON.stringify(v))}</div>`).join('')}</div></div>`;
+    }else{
+      body = `<span class="text-xs">${memCatBadge(it.category)}${esc(it.rule)}</span>`;
+    }
+    return `<div class="card rounded-lg p-2 mb-2 flex items-start justify-between gap-2">${body}
+      <span class="flex gap-1 shrink-0">
+        <button onclick="editMemoryRule('${fp}',${it.index})" class="text-sky-400 text-xs px-1" title="Edit">&#9998;</button>
+        <button onclick="delMemoryRule('${fp}',${it.index})" class="text-red-400 text-xs px-1" title="Delete">&times;</button>
+      </span></div>`;
+  }).join('');
+  detail.innerHTML = `
+    <div class="flex items-center justify-between mb-3">
+      <div><button onclick="loadMemoryDatasets()" class="btn-ghost rounded px-2 py-0.5 text-xs mr-2">&larr; Back</button>
+        <b>${esc(r.label||fp)}</b> <span class="text-gray-500 text-xs">${(r.rules||[]).length} rule${(r.rules||[]).length===1?'':'s'}</span></div>
+    </div>
+    <div class="flex gap-1 mb-3">
+      <input id="mem-add-input" placeholder="Add a rule in plain English, e.g. exclude the load_date column" class="inp flex-1 text-xs"
+             onkeydown="if(event.key==='Enter')addMemoryRule('${fp}')">
+      <select id="mem-add-cat" class="inp text-xs">${MEM_CATEGORIES.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
+      <button onclick="addMemoryRule('${fp}')" class="btn rounded-lg px-3 text-xs">Add</button>
+    </div>
+    ${rules || '<div class="text-gray-500 text-sm">No rules for this dataset.</div>'}`;
+}
+async function addMemoryRule(fp){
+  const inp=document.getElementById('mem-add-input');
+  const rule=inp.value.trim(); if(!rule) return;
+  const cat=document.getElementById('mem-add-cat').value;
+  const r=await J('POST',`/api/memory/${fp}/rules/save`,{rule, category:cat});
+  if(r.detail||r.error){ toast('❌ '+(r.detail||r.error)); return; }
+  openMemoryDataset(fp);
+}
+async function editMemoryRule(fp, index){
+  const currentText=_memRules[index]||'';
+  const updated=prompt('Edit rule:', currentText);
+  if(updated==null || !updated.trim() || updated.trim()===currentText) return;
+  const r=await J('POST',`/api/memory/${fp}/rules/update`,{index, rule:updated.trim()});
+  if(r.detail||r.error){ toast('❌ '+(r.detail||r.error)); return; }
+  openMemoryDataset(fp);
+}
+async function delMemoryRule(fp, index){
+  const r=await J('POST',`/api/memory/${fp}/rules/delete`,{index});
+  if(r.detail||r.error){ toast('❌ '+(r.detail||r.error)); return; }
+  openMemoryDataset(fp);
+}
+async function delMemoryDataset(fp){
+  if(!confirm('Delete ALL saved rules and AI-learned steps for this dataset? The AI starts fresh next time it sees this schema.')) return;
+  const r=await J('POST',`/api/memory/${fp}/delete`,{});
+  if(r.detail||r.error){ toast('❌ '+(r.detail||r.error)); return; }
+  loadMemoryDatasets();
 }
 const row=(inner)=>`<div class="card rounded-lg p-2 mb-2 flex items-center justify-between text-sm">${inner}</div>`;
 // Source types whose connector implements list_tables() -- everything else

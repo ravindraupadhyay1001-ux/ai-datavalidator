@@ -76,6 +76,7 @@ from agent.feedback_store import (
     _STORE_PATH as _feedback_store_path,
     copy_rules as _fp_copy_rules,
     delete_user_data as _fp_delete_user,
+    delete_dataset as _fp_delete_dataset,
 )
 
 app = FastAPI(title="Data Validation AGENT")
@@ -12486,6 +12487,84 @@ async def apply_rule_template(request: Request):
         raise HTTPException(400, "Source and target schema are the same -- nothing to apply.")
     copied = _fp_copy_rules(username, from_fp, to_fp)
     return JSONResponse({"copied": copied})
+
+
+# ---------- Dataset Memory manager (Workspace → Memory) ----------
+# Fingerprint-level CRUD over everything the AI has been "trained" with for a
+# dataset -- user-saved Dataset Controls rules AND the AI-learned recon hints
+# (category "recon_hints") that AI runs save automatically. Unlike the
+# /rules/{session_id}/* endpoints these need no active analysis session.
+
+@app.get("/api/memory/datasets")
+async def memory_list_datasets(request: Request):
+    username = _ws_resolve_username(request) or "default"
+    datasets = [d for d in _fp_list_datasets(username) if d.get("rule_count")]
+    datasets.sort(key=lambda d: d.get("updated", ""), reverse=True)
+    return JSONResponse(datasets)
+
+
+@app.get("/api/memory/{fingerprint}/rules")
+async def memory_get_rules(fingerprint: str, request: Request):
+    username = _ws_resolve_username(request) or "default"
+    out = []
+    for i, r in enumerate(_fp_get_rules(username, fingerprint), start=1):
+        item = {"index": i, "rule": r.get("rule", ""),
+                "category": r.get("category", "general")}
+        if item["category"] == "recon_hints":
+            # AI-learned steps are stored as a JSON dict of hints -- parse them
+            # so the UI can show readable key/value steps instead of raw JSON.
+            try:
+                item["hints"] = json.loads(item["rule"])
+            except Exception:
+                pass
+        out.append(item)
+    return JSONResponse({"fingerprint": fingerprint,
+                         "label": _fp_get_label(username, fingerprint),
+                         "rules": out})
+
+
+@app.post("/api/memory/{fingerprint}/rules/save")
+async def memory_save_rule(fingerprint: str, request: Request):
+    username = _ws_resolve_username(request) or "default"
+    body = await request.json()
+    rule = str(body.get("rule", "")).strip()
+    category = str(body.get("category", "general")).strip() or "general"
+    if not rule:
+        raise HTTPException(400, "Rule text is required.")
+    idx, _ = _fp_save(username, fingerprint, rule, category=category)
+    return JSONResponse({"index": idx})
+
+
+@app.post("/api/memory/{fingerprint}/rules/update")
+async def memory_update_rule(fingerprint: str, request: Request):
+    username = _ws_resolve_username(request) or "default"
+    body = await request.json()
+    idx = int(body.get("index", 0))
+    rule = str(body.get("rule", "")).strip()
+    category = str(body.get("category", "")).strip()
+    ok, _ = _fp_update(username, fingerprint, idx,
+                       rule_text=rule or None, category=category or None)
+    if not ok:
+        raise HTTPException(404, "Rule not found.")
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/memory/{fingerprint}/rules/delete")
+async def memory_delete_rule(fingerprint: str, request: Request):
+    username = _ws_resolve_username(request) or "default"
+    body = await request.json()
+    ok, _ = _fp_delete(username, fingerprint, int(body.get("index", 0)))
+    if not ok:
+        raise HTTPException(404, "Rule not found.")
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/memory/{fingerprint}/delete")
+async def memory_delete_dataset(fingerprint: str, request: Request):
+    username = _ws_resolve_username(request) or "default"
+    if not _fp_delete_dataset(username, fingerprint):
+        raise HTTPException(404, "Dataset not found.")
+    return JSONResponse({"ok": True})
 
 
 @app.post("/api/dq/mask/{session_id}")

@@ -336,6 +336,24 @@ def get_dataset_label(username, fingerprint):
         return entry.get("label", "") if entry else ""
 
 
+def delete_dataset(username, fingerprint):
+    """Remove one schema's entire saved rule set for this user (Workspace →
+    Memory manager). A legacy-bucket entry the user never forked stays shared,
+    so mask it with an empty user-owned entry instead of deleting globally."""
+    with _LOCK:
+        store = _load()
+        bucket = store.setdefault(username, {})
+        existed = fingerprint in bucket or fingerprint in store.get(_LEGACY_BUCKET, {})
+        if not existed:
+            return False
+        bucket[fingerprint] = {"label": "", "created": str(date.today()),
+                               "updated": str(date.today()), "rules": []}
+        if fingerprint not in store.get(_LEGACY_BUCKET, {}):
+            del bucket[fingerprint]
+        _save(store)
+        return True
+
+
 def delete_user_data(username):
     """Remove a user's entire Dataset Memory bucket (used when an admin
     deletes that user's account). The shared __legacy__ bucket is untouched."""
