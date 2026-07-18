@@ -13926,7 +13926,6 @@ async def analyze(request: Request):
     _di_scope = set(_di_scope_raw.split(",")) if _di_scope_raw else {"quality", "profile", "governance"}
     # BFSI Rule Pack selected in UI (e.g. "trade", "payments", "mifid2")
     _bfsi_pack    = str(form.get("bfsi_pack",     "")).strip().lower()
-    _di_ai_enhanced = str(form.get("di_ai_enhanced", "")).strip() == "1"
 
     key_columns    = str(form.get("key_columns",    ""))
     exclude_columns = str(form.get("exclude_columns", ""))
@@ -14648,143 +14647,6 @@ async def analyze(request: Request):
         except Exception:
           q["trend_anomalies"] = []
 
-
-        # -- AI-Enhanced: LLM suggests additional rules, re-run with them ------
-        if _di_ai_enhanced and "quality" in _di_scope:
-          try:
-            _log(f"AI-Enhanced: calling LLM for additional DQ rules on '{fname}'")
-
-            # Build compact column profile for LLM
-            _col_summaries = []
-            _pii_cols_dq = _pii_columns_for_masking(df)
-            for _col in df.columns:
-              _s = df[_col]
-              _cs = {
-                "name":   _col,
-                "dtype":  str(_s.dtype),
-                "null_pct": round(float(_s.isna().mean() * 100), 1),
-                "unique_n": int(_s.nunique(dropna=True)),
-                "total":  len(_s),
-                "sample":  _masked_samples(df, _col, 6, _pii_cols_dq),
-              }
-              if pd.api.types.is_numeric_dtype(_s):
-                _clean = _s.dropna()
-
-
-                if len(_clean):
-                  _cs["min"] = round(float(_clean.min()), 4)
-                  _cs["max"] = round(float(_clean.max()), 4)
-                  _cs["mean"] = round(float(_clean.mean()), 4)
-                _col_summaries.append(_cs)
-
-                # Include existing failures as context
-                _existing_fails = [
-                  {"rule": r.get("rule_name",""), "column": r.get("column_name",""), "failed": r.get("failed",0)}
-                  for r in q["rule_results"] if r.get("status") == "FAIL"
-                ][:10]
-
-                _sys = (
-                  "You are a senior BFSI data quality engineer. "
-                  "You are given column profiles and existing rule failures for a dataset. "
-                  "Suggest ADDITIONAL data quality rules that go beyond what was already checked. "
-                  "Focus on business meaning, cross-column relationships, BFSI-specific patterns. "
-
-
-                  "Use only these rule_type values: range, allowed_values, pattern, positive, "
-                  "non_negative, integer_only, not_future_date, isin_format, cusip_format, "
-                  "sedol_format, lei_format, bic_format, iban_format, currency_code_format, "
-                  "mic_format, email_format, date_format, freshness_days, decimal_places, "
-                  "domain_accuracy, address_complete, uppercase, lowercase. "
-                  "Return ONLY a valid JSON array. Each element: "
-                  "{name, rule_type, value, reason, severity} where severity is critical/major/minor. "
-                  "Return [] if no confident additional suggestions."
-                )
-                _usr = (
-                  f"Dataset: {fname} ({len(df)} rows, {len(df.columns)} cols)\n"
-                  f"Existing failures: {json.dumps(_existing_fails)}\n"
-                  f"Column profiles: {json.dumps(_col_summaries, indent=1)}\n"
-                  "Suggest additional rules. JSON array only."
-                )
-
-
-                _ai_raw = await asyncio.to_thread(
-                  _ask_llm,
-                  [{"role": "user", "content": [{"text": _usr}]}],
-                  _sys,
-                )
-                _ai_match = re.search(r'\[.*\]', _ai_raw, re.DOTALL)
-                _ai_suggestions = json.loads(_ai_match.group()) if _ai_match else []
-
-                # Validate and inject into a fresh hints copy
-                _ai_validators = []
-                for _sg in _ai_suggestions:
-                  if not isinstance(_sg, dict) or not _sg.get("name") or not _sg.get("rule_type"):
-                    continue
-                  _ai_validators.append({
-                    "name":   str(_sg["name"]),
-                    "rule_type": str(_sg["rule_type"]),
-                    "value":  str(_sg.get("value", "") or ""),
-                    "severity": str(_sg.get("severity", "major")),
-
-
-                    "reason":  str(_sg.get("reason", "")),
-                  })
-
-
-                if _ai_validators:
-                  _log(f"AI-Enhanced: LLM suggested {len(_ai_validators)} additional rules -- re-running DQ")
-                  _ai_hints = dict(_hints)
-                  _ai_col_config = list(_ai_hints.get("col_config", []))
-                  for _av in _ai_validators:
-                    _col_match = next((c for c in df.columns if c.lower() == _av["name"].lower()), None)
-                    if _col_match:
-                      _ai_col_config.append({
-                        "name":   _col_match,
-                        "rule_type": _av["rule_type"],
-                        "value":  _av.get("value", ""),
-                        "severity": _av.get("severity", "major"),
-                        "_ai_generated": True,
-                        "_ai_reason": _av.get("reason", ""),
-                      })
-
-
-                  _ai_hints["col_config"] = _ai_col_config
-
-                  # Re-run with AI rules
-                  q_ai = await asyncio.to_thread(
-                    analyze_quality_full, df, fname, data_dict, rules, _ai_hints, _df2,
-                    _other_fname
-                  )
-                  # Extract only the AI-generated rule results
-                  q["ai_rule_results"] = [
-                    {**r, "_ai_reason": next(
-                      (_av.get("reason","") for _av in _ai_validators
-                       if _av["name"].lower() == (r.get("column_name","") or "").lower()
-                       and _av["rule_type"] == r.get("rule_type","")), ""
-                    )}
-                    for r in q_ai.get("rule_results", [])
-                    if r.get("_hint_injected") and not r.get("_auto")
-                    and any(
-                      _av["name"].lower() == (r.get("column_name","") or "").lower()
-                      and _av["rule_type"] == r.get("rule_type","")
-
-
-                      for _av in _ai_validators
-                    )
-                  ]
-                  # Update score with AI findings included
-                  q["ai_dq_score"] = q_ai.get("dq_score", {})
-                  _log(f"AI-Enhanced re-run complete: {len(q.get('ai_rule_results',[]))} AI rule results")
-                else:
-                  q["ai_rule_results"] = []
-                  q["ai_dq_score"] = {}
-                  _log("AI-Enhanced: LLM returned no additional rules")
-
-          except Exception as _e_ai:
-            import traceback as _tb
-            q["ai_rule_results"] = []
-            q["ai_dq_score"] = {}
-            _log(f"AI-Enhanced rule generation failed: {_e_ai} | {_tb.format_exc()[-300:]}", "WARN")
 
         # NOTE (reconstruction): the source pages here duplicated this block twice
         # (a page-repeat artifact seen elsewhere in this file) -- kept the more
@@ -15739,7 +15601,7 @@ async def dq_ai_results_get(session_id: str, request: Request):
   return templates.TemplateResponse(request=request, name="index.html",
     context={
       "action": "quality", "di_scope": ["quality","profile","governance"],
-      "di_ai_enhanced": False, "file_names": [n for n,_ in dataframes],
+      "file_names": [n for n,_ in dataframes],
       "pairs":[], "quality_reports": quality_reports,
 
 
@@ -16288,7 +16150,6 @@ async def rerun_quality(session_id: str, request: Request):
         context={
             "action":        "quality",
             "di_scope":      list(_di_scope),
-            "di_ai_enhanced": False,
             "file_names":    [n for n, _ in dataframes],
             "pairs":         [],
             "quality_reports": quality_reports,
@@ -16599,7 +16460,7 @@ async def rerun_profile(session_id: str, request: Request):
     return templates.TemplateResponse(request=request, name="index.html", context={
 
 
-        "action":"profile","di_scope":["profile"],"di_ai_enhanced":False,
+        "action":"profile","di_scope":["profile"],
         "file_names":[n for n,_ in dataframes],"pairs":[],"quality_reports":[],
         "governance_reports":[],"mappings":[],"parse_reports":[],"lineage_reports":[],
         "profile_reports":profile_reports,"has_data_dict":False,"has_rules":False,
@@ -16681,7 +16542,7 @@ async def rerun_governance(session_id: str, request: Request):
 
     return templates.TemplateResponse(request=request, name="index.html",
         context={
-            "action":"governance","di_scope":["governance"],"di_ai_enhanced":False,
+            "action":"governance","di_scope":["governance"],
             "file_names":[n for n,_ in dataframes],"pairs":[],"quality_reports":[],
             "governance_reports":governance_reports,"mappings":[],"parse_reports":[],"lineage_reports":[],
             "profile_reports":[],"has_data_dict":False,"has_rules":False,
