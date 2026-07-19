@@ -2702,7 +2702,8 @@ function _dcPaint(prefix, context){
     box.innerHTML = `<div class="text-gray-500">No saved steps yet &mdash; type one above, or let &#10024; Suggest read this run's results and propose them.</div>`;
     return;
   }
-  box.innerHTML = rules.map(r=>{
+  const n = rules.length;
+  box.innerHTML = rules.map((r,pos)=>{
     if(_dcEditing[prefix] === r.index){
       // Inline edit -- input + Save/Cancel right in the row (value set in JS below).
       return `<div class="card rounded px-2 py-1.5 flex items-center gap-1">
@@ -2720,11 +2721,15 @@ function _dcPaint(prefix, context){
           <button onclick="_dcCancel('${prefix}','${context}')" class="btn-ghost rounded px-2 text-xs">Cancel</button>
         </span></div>`;
     }
-    return `<div class="card rounded px-2 py-1.5 flex items-start justify-between gap-2">
-      <span class="flex-1 min-w-0"><span class="badge mr-1" style="background:rgba(2,132,199,.12);color:#0369a1">${esc(r.base_cat)}</span>${esc(r.rule)}</span>
-      <span class="flex gap-0.5 shrink-0 items-center">
-        <button onclick="_dcStartEdit('${prefix}','${context}',${r.index})" class="text-sky-400 hover:text-sky-600 text-xs px-1" title="Edit">&#9998;</button>
-        <button onclick="_dcAskDelete('${prefix}','${context}',${r.index})" class="text-red-400 hover:text-red-600 text-xs px-1" title="Delete">&#128465;</button>
+    return `<div class="card rounded px-2 py-1.5 flex items-center justify-between gap-2">
+      <span class="flex-1 min-w-0">${esc(r.rule)}</span>
+      <span class="flex gap-1 shrink-0 items-center text-gray-400">
+        <span class="flex flex-col leading-none">
+          <button onclick="moveDatasetControlRule('${prefix}','${context}',${pos},-1)" class="hover:text-sky-500 ${pos===0?'invisible':''}" title="Move up" style="font-size:9px">&#9650;</button>
+          <button onclick="moveDatasetControlRule('${prefix}','${context}',${pos},1)" class="hover:text-sky-500 ${pos===n-1?'invisible':''}" title="Move down" style="font-size:9px">&#9660;</button>
+        </span>
+        <button onclick="_dcStartEdit('${prefix}','${context}',${r.index})" class="hover:text-sky-600 text-xs px-0.5" title="Edit">&#9998;</button>
+        <button onclick="_dcAskDelete('${prefix}','${context}',${r.index})" class="hover:text-red-600 text-xs px-0.5" title="Delete">&#128465;</button>
       </span></div>`;
   }).join('');
   // Set the edit input's value in JS (avoids breaking on quotes in the text) + focus.
@@ -2754,6 +2759,14 @@ async function saveDatasetControlEdit(prefix, context, index){
 }
 async function confirmDatasetControlDelete(prefix, context, index){
   await J('POST', `/rules/${SESSION}/delete`, {rule_index: index});
+  loadDatasetControlRules(prefix, context);
+}
+async function moveDatasetControlRule(prefix, context, pos, dir){
+  const order = (_dcLast[prefix]||[]).map(r=>r.index);
+  const target = pos + dir;
+  if(target < 0 || target >= order.length) return;
+  // Swap the two adjacent VISIBLE steps by their global store indices.
+  await J('POST', `/rules/${SESSION}/update`, {rule_index: order[pos], swap_with: order[target]});
   loadDatasetControlRules(prefix, context);
 }
 

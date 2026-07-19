@@ -255,7 +255,7 @@ def delete_rule(username, fingerprint, rule_index):
 
 
 def update_rule(username, fingerprint, rule_index, rule_text=None,
-                category=None, direction=None):
+                category=None, direction=None, swap_with=None):
     queued = not _LOCK.acquire(blocking=False)
     if queued:
         _LOCK.acquire(blocking=True)
@@ -264,6 +264,18 @@ def update_rule(username, fingerprint, rule_index, rule_text=None,
         bucket = _fork_if_legacy_only(store, username, fingerprint)
         rules = bucket.get(fingerprint, {}).get("rules", [])
         i = rule_index - 1
+        if swap_with is not None:
+            # Swap two arbitrary 1-based indices -- the module panels reorder a
+            # context-filtered view, so adjacent VISIBLE rules may not be global
+            # neighbours; a plain up/down could swap with a rule from another
+            # module that isn't shown and appear to do nothing.
+            j = int(swap_with) - 1
+            if 0 <= i < len(rules) and 0 <= j < len(rules) and i != j:
+                rules[i], rules[j] = rules[j], rules[i]
+                bucket[fingerprint]["updated"] = str(date.today())
+                _save(store)
+                return True, queued
+            return False, queued
         if direction in ("up", "down"):
             j = i - 1 if direction == "up" else i + 1
             if 0 <= i < len(rules) and 0 <= j < len(rules):

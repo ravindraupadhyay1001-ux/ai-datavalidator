@@ -18209,6 +18209,8 @@ async def update_rule_endpoint(session_id: str, request: Request):
 
     direction = body.get("direction", "").strip()
 
+    swap_with = body.get("swap_with")
+
     new_rule  = body.get("rule", "").strip()
 
     # No default here -- absent/empty means "leave the category as-is". A
@@ -18228,7 +18230,8 @@ async def update_rule_endpoint(session_id: str, request: Request):
 
     _, queued = _fp_update(username, fp, idx, rule_text=new_rule or None, category=new_cat or None,
 
-                direction=direction or None)
+                direction=direction or None,
+                swap_with=(int(swap_with) if swap_with not in (None, "") else None))
 
     return JSONResponse({"rules": _fp_get_rules(username, fp), "queued": queued})
 
