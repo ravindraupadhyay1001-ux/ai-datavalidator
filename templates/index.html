@@ -1390,11 +1390,63 @@ function renderCompareResult(data, t0, mode){
     ];
     initialTab = 'summary';
   }
-  out.innerHTML = actionBar(data.session_id, t0!=null?((performance.now()-t0)/1000).toFixed(3):data.elapsed) + resultTabsShell('cmp', cmpTabs, initialTab);
+  // Agent error-recovery banner (AI mode only) -- shown once, above the tabs,
+  // whenever the run couldn't fully apply the rules (unresolved key / LLM error).
+  const recoveryHTML = (mode==='ai' && (data.key_warning || data.llm_error))
+    ? `<div id="cmp-recovery" class="card rounded-xl p-3 mb-3 text-xs" style="background:rgba(220,38,38,.05);border:1px solid rgba(220,38,38,.3)">
+        <div class="mb-2">&#9888;&#65039; <b>The reconciliation didn't fully apply your rules.</b>
+          <span class="text-gray-500">${esc(data.key_warning || data.llm_error)}</span></div>
+        <button onclick="suggestReconFix()" class="btn rounded-lg px-3 py-1 text-xs">&#128295; Let the agent propose a fix</button>
+        <div id="cmp-recovery-proposal" class="mt-2"></div>
+      </div>`
+    : '';
+  window._reconLastError = data.key_warning || data.llm_error || '';
+  if(!window._reconLastError) _reconFixAttempts = 0;  // clean run -> reset the recovery loop
+  out.innerHTML = actionBar(data.session_id, t0!=null?((performance.now()-t0)/1000).toFixed(3):data.elapsed) + recoveryHTML + resultTabsShell('cmp', cmpTabs, initialTab);
   if(initialTab==='copilot') mountCopilotChat('cmp');
   _currentReconFingerprint = data.fingerprint || '';
   loadDatasetControlRules('cmp','compare');
   if(mode!=='ai' && data.fingerprint) loadReconHistory(data.fingerprint, _breakRate);
+}
+// ---------- Agent error-recovery loop (Reconciliation) ----------
+let _reconFixAttempts = 0;
+async function suggestReconFix(){
+  if(!SESSION) return;
+  const box = document.getElementById('cmp-recovery-proposal');
+  if(!box) return;
+  if(_reconFixAttempts >= 3){
+    box.innerHTML = '<span class="text-gray-500">The agent has tried a few fixes without fully resolving it &mdash; describe the key/mapping yourself in the AI Copilot &rarr; Dataset Memory box.</span>';
+    return;
+  }
+  box.innerHTML = '<span class="text-gray-400">&#128295; The agent is diagnosing the error&hellip;</span>';
+  const r = await J('POST', `/recon/suggest-fix/${SESSION}`, {error: window._reconLastError||''});
+  if(r.error){ box.innerHTML = `<span class="text-red-400">${esc(r.error)}</span>`; return; }
+  if(!r.proposed_rule){
+    box.innerHTML = `<span class="text-gray-500">${esc(r.explanation||'No confident fix found.')}</span>`;
+    return;
+  }
+  _reconProposedRule = r.proposed_rule;
+  const conf = {high:'#059669', medium:'#b45309', low:'#dc2626'}[r.confidence] || '#64748b';
+  box.innerHTML = `<div class="card rounded-lg p-2" style="background:#fff">
+    <div class="mb-1"><span class="badge mr-1" style="background:${conf}22;color:${conf}">${esc(r.confidence||'')} confidence</span>
+      <b>${esc(r.proposed_rule)}</b></div>
+    ${r.explanation?`<div class="text-gray-500 mb-2">${esc(r.explanation)}</div>`:''}
+    <div class="flex gap-2">
+      <button onclick="applyReconFix()" class="btn rounded-lg px-3 py-1 text-xs">&#9989; Apply &amp; re-run</button>
+      <button onclick="document.getElementById('cmp-recovery-proposal').innerHTML=''" class="btn-ghost rounded-lg px-3 py-1 text-xs">Dismiss</button>
+    </div></div>`;
+}
+let _reconProposedRule = '';
+async function applyReconFix(){
+  if(!SESSION || !_reconProposedRule) return;
+  _reconFixAttempts++;
+  const box = document.getElementById('cmp-recovery-proposal');
+  if(box) box.innerHTML = '<span class="text-gray-400">Saving the fix and re-running&hellip;</span>';
+  // Save as a normal recon rule so it persists and is visible/editable in the panel.
+  const s = await J('POST', `/rules/${SESSION}/save`, {rule: _reconProposedRule, category: 'recon_rule'});
+  if(s.error||s.detail){ if(box) box.innerHTML = `<span class="text-red-400">${esc(s.error||s.detail)}</span>`; return; }
+  toast('✅ Fix saved — re-running reconciliation…');
+  quickChat('run recon');
 }
 async function runCompare(){
   const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Comparing&hellip;</span>';
@@ -2401,8 +2453,12 @@ const HELP_CONTENT = {
       <li><code>remember: exclude the load_date and etl_id columns</code></li>
       <li><code>remember: strip commas from the notional column on both sides</code></li>
       <li><code>remember: parse Side from the Description column using regex (buy|sell)</code></li>
+      <li><code>remember: combine First and Last into Full Name on the source</code></li>
       <li><code>remember: sum qty by trade_id on the target before comparing</code></li>
     </ul>
+    <p class="mt-2 text-gray-400">If a run can't fully apply your rules (e.g. a key column exists on only one
+    side), the report shows <b>&#128295; Let the agent propose a fix</b> &mdash; the AI reads both schemas, suggests a
+    corrective rule, and one click applies it and re-runs.</p>
     <p class="mt-2 text-gray-400">Rules are saved against this file pair's schema and reload automatically next
     time you upload matching files &mdash; even in a new session. Type <code>run recon</code> in the chat anytime
     to re-apply all saved rules and refresh the report. Audit/ETL metadata columns (e.g. <code>created_at</code>,

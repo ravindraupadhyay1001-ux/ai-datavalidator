@@ -16743,6 +16743,17 @@ JSON schema (omit any key that is not needed):
       "transform": "upper|lower|title|"  // optional post-transform on the captured value
     }}
   ],
+  "combine_cols": [                   // JOIN two+ columns into one new column
+    {{
+      "side": "src|tgt|both",         // which file has the split columns to join
+      "source_cols": ["First","Last"],// 2+ existing columns to concatenate, in order
+      "new_col": "Full Name",         // name of the combined column to create
+      "sep": " "                      // separator between the parts (default a single space)
+    }}
+  ],                                  // Use when one file has a value split across
+                                      // columns (First+Last, date parts, composite IDs)
+                                      // that the other file holds in a single column --
+                                      // create the combined column so the key aligns.
   "transforms": [                     // value normalisation on existing columns
     {{
       "side": "src|tgt|both",
@@ -16829,16 +16840,36 @@ def _apply_recon_params(
     side: str,
     col_map: dict | None = None,
     parse_cols: list[dict] | None = None,
+    combine_cols: list[dict] | None = None,
 ) -> pd.DataFrame:
 
-    # Apply parse_cols (regex extraction), col_map rename, value transforms,
-    # and pre-aggregation to a DataFrame before comparison.
+    # Apply combine_cols (join columns), parse_cols (regex extraction), col_map
+    # rename, value transforms, and pre-aggregation before comparison.
 
-    # Order: parse_cols -> col_map -> transforms -> agg
+    # Order: combine_cols -> parse_cols -> col_map -> transforms -> agg
     # This order ensures derived columns exist before renaming/aggregation.
 
 
     df = df.copy()
+
+    # 0. Combine columns -- concatenate 2+ source columns into one new column
+    #    (e.g. First + Last -> Full Name when the other file has a single name
+    #    column). Deterministic; lets a keyless split/merged-column recon resolve.
+    for cc in (combine_cols or []):
+        if cc.get("side") not in (side, "both"):
+            continue
+        srcs = cc.get("source_cols") or []
+        new_col = cc.get("new_col", "")
+        sep = cc.get("sep", " ")
+        if not new_col or len(srcs) < 2:
+            continue
+        actual = [next((c for c in df.columns if c.lower() == s.lower()), None) for s in srcs]
+        if any(a is None for a in actual):
+            continue  # a source column is missing on this side -- skip, don't guess
+        joined = df[actual[0]].astype(str).str.strip()
+        for a in actual[1:]:
+            joined = joined.str.cat(df[a].astype(str).str.strip(), sep=sep)
+        df[new_col] = joined.str.strip()
 
     # 1. Regex-based column extraction from free-text fields
     for pc in (parse_cols or []):
@@ -17106,16 +17137,17 @@ def _prepare_recon(src_df: pd.DataFrame, tgt_df: pd.DataFrame, params: dict):
     transforms   = params.get("transforms", [])
     col_map      = params.get("col_map", {}) or {}
     parse_cols   = params.get("parse_cols", []) or []
+    combine_cols = params.get("combine_cols", []) or []
     key_cols_raw = params.get("key_cols") or (
         [params["key_col"]] if params.get("key_col") else []
     )
     exclude = params.get("exclude", [])
 
-    # Apply parse_cols + col_map + transforms + agg to each side
+    # Apply combine_cols + parse_cols + col_map + transforms + agg to each side
     src_df = _apply_recon_params(src_df, params.get("src_agg"), transforms, "src",
-                                  col_map=col_map, parse_cols=parse_cols)
+                                  col_map=col_map, parse_cols=parse_cols, combine_cols=combine_cols)
     tgt_df = _apply_recon_params(tgt_df, params.get("tgt_agg"), transforms, "tgt",
-                                  col_map=col_map, parse_cols=parse_cols)
+                                  col_map=col_map, parse_cols=parse_cols, combine_cols=combine_cols)
 
     # Align value columns so both sides share the same column name for comparison.
     # Priority: explicit src_value_col / tgt_value_col from params (LLM-extracted),
@@ -17350,6 +17382,79 @@ def _run_llm_recon_full(session_id: str, username: str = "default") -> dict | No
     }
     _results_store[new_session_id]["_digest"] = resp
     return resp
+
+
+@app.post("/recon/suggest-fix/{session_id}")
+async def recon_suggest_fix(session_id: str, request: Request):
+    """Agent error-recovery: when a recon run couldn't fully apply the saved
+    rules (unresolved key, schema mismatch), the LLM inspects the exact error
+    plus both schemas and proposes ONE corrective rule in the same plain-English
+    form the user types. Nothing is saved or applied here -- the user confirms,
+    then the rule is saved to Dataset Memory and recon re-runs. The deterministic
+    engine still does the matching; the LLM only suggests the rule."""
+    body = await request.json()
+    error_text = str(body.get("error", "")).strip()
+    stored = _results_store.get(session_id)
+    if not stored or "dataframes" not in stored or len(stored["dataframes"]) < 2:
+        return JSONResponse({"error": "Session not found or expired -- please re-run."}, status_code=404)
+    src_name = stored["dataframes"][0]["name"]
+    tgt_name = stored["dataframes"][1]["name"]
+    src_df = stored["dataframes"][0]["df"]
+    tgt_df = stored["dataframes"][1]["df"]
+    username = _ws_resolve_username(request) or "default"
+    fp = stored.get("dataset_fingerprint", "")
+    existing = [r["rule"] for r in _fp_get_rules(username, fp, module="compare")
+                if r.get("category") != "recon_hints"] if fp else []
+
+    def _schema(df):
+        pii = _pii_columns_for_masking(df)
+        return [{"column": c, "samples": _masked_samples(df, c, 3, pii)} for c in df.columns][:40]
+
+    prompt = f"""You are a reconciliation troubleshooting agent for a BFSI data platform.
+A reconciliation run could NOT be completed correctly. Diagnose it and propose ONE
+corrective rule, written in the SAME plain English the user types, that will fix it.
+
+ERROR / WARNING from the run:
+{error_text or 'The two files did not reconcile as expected.'}
+
+SOURCE FILE "{src_name}" columns (with sample values):
+{json.dumps(_schema(src_df), default=str)}
+
+TARGET FILE "{tgt_name}" columns (with sample values):
+{json.dumps(_schema(tgt_df), default=str)}
+
+Rules the user already saved (do NOT repeat these):
+{json.dumps(existing) if existing else 'none'}
+
+The engine can: use a column as the key; map/rename a column to match the other side;
+COMBINE two+ columns into one (e.g. "combine First and Last into Full Name"); split a
+column via regex; exclude columns; and normalise values (dates, numbers, casing).
+Look at the real column names and samples above. If one file has a value SPLIT across
+columns that the other file holds in ONE column, propose combining them. Reference only
+column names that actually exist above -- never invent columns.
+
+Return ONLY a JSON object:
+{{"proposed_rule": "<one plain-English rule the user could type, max 100 chars>",
+  "explanation": "<why this fixes THIS error, max 120 chars>",
+  "confidence": "high|medium|low"}}
+Return {{"proposed_rule": ""}} if you cannot suggest a confident fix."""
+    try:
+        raw = await asyncio.to_thread(_ask_llm, [{"role": "user", "content": [{"text": prompt}]}])
+        import re as _re
+        m = _re.search(r'\{.*\}', raw, _re.DOTALL)
+        parsed = json.loads(m.group(0)) if m else {}
+    except Exception as e:
+        return JSONResponse({"error": f"Could not diagnose: {e}"}, status_code=502)
+    rule = str(parsed.get("proposed_rule", "")).strip()
+    if not rule:
+        return JSONResponse({"proposed_rule": "",
+                             "explanation": "The agent couldn't find a confident automatic fix -- "
+                             "try describing the mapping/key yourself in the Dataset Memory box."})
+    return JSONResponse({
+        "proposed_rule": rule[:160],
+        "explanation": str(parsed.get("explanation", "")).strip()[:200],
+        "confidence": str(parsed.get("confidence", "medium")).strip().lower(),
+    })
 
 
 @app.post("/recon/run-llm/{session_id}")
