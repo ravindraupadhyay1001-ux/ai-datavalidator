@@ -2682,25 +2682,60 @@ async function saveSuggestedStep(prefix, context, i){
 }
 
 let _dcRules = {};
+// Per-panel UI state -- all CRUD happens inline in the panel, no popups.
+// _dcLast: last rules array (to re-paint on edit/delete toggle without refetch)
+// _dcEditing / _dcDeleting: the global index currently in edit / delete-confirm.
+const _dcLast = {}, _dcEditing = {}, _dcDeleting = {};
 function renderDatasetControlRules(prefix, context, rules){
+  _dcLast[prefix] = rules || [];
+  _dcEditing[prefix] = null; _dcDeleting[prefix] = null;
+  rules.forEach(r=>_dcRules[r.index]=r.rule);
+  _dcPaint(prefix, context);
+}
+function _dcPaint(prefix, context){
   const box = document.getElementById(`${prefix}-dc-rules`);
   if(!box) return;
+  const rules = _dcLast[prefix] || [];
   const badge = document.getElementById(`${prefix}-dc-count`);
   if(badge){ badge.textContent = rules.length; badge.style.display = rules.length ? '' : 'none'; }
   if(!rules.length){
     box.innerHTML = `<div class="text-gray-500">No saved steps yet &mdash; type one above, or let &#10024; Suggest read this run's results and propose them.</div>`;
     return;
   }
-  // Rule text lives in this map, not inline in the onclick attribute -- any
-  // quote in the text would terminate the attribute and break the button.
-  rules.forEach(r=>_dcRules[r.index]=r.rule);
-  box.innerHTML = rules.map(r=>`<div class="flex items-center justify-between card rounded px-2 py-1">
-    <span><span class="badge mr-1" style="background:rgba(2,132,199,.12);color:#0369a1">${esc(r.base_cat)}</span>${esc(r.rule)}</span>
-    <span class="flex gap-1 shrink-0">
-      <button onclick="editDatasetControlRule(${r.index},'${prefix}','${context}')" class="text-sky-400 text-xs px-1" title="Edit">&#9998;</button>
-      <button onclick="deleteDatasetControlRule(${r.index},'${prefix}','${context}')" class="text-red-400 text-xs px-1" title="Delete">&times;</button>
-    </span></div>`).join('');
+  box.innerHTML = rules.map(r=>{
+    if(_dcEditing[prefix] === r.index){
+      // Inline edit -- input + Save/Cancel right in the row (value set in JS below).
+      return `<div class="card rounded px-2 py-1.5 flex items-center gap-1">
+        <input id="${prefix}-dc-edit-input" class="inp flex-1 text-xs" onkeydown="if(event.key==='Enter')saveDatasetControlEdit('${prefix}','${context}',${r.index});if(event.key==='Escape')_dcCancel('${prefix}','${context}')">
+        <button onclick="saveDatasetControlEdit('${prefix}','${context}',${r.index})" class="btn rounded px-2 text-xs">Save</button>
+        <button onclick="_dcCancel('${prefix}','${context}')" class="btn-ghost rounded px-2 text-xs">Cancel</button>
+      </div>`;
+    }
+    if(_dcDeleting[prefix] === r.index){
+      // Inline delete confirm -- no browser popup.
+      return `<div class="card rounded px-2 py-1.5 flex items-center justify-between gap-2" style="background:rgba(220,38,38,.06)">
+        <span class="text-xs text-red-500">Delete this step?</span>
+        <span class="flex gap-1 shrink-0">
+          <button onclick="confirmDatasetControlDelete('${prefix}','${context}',${r.index})" class="rounded px-2 text-xs text-white" style="background:#dc2626">Delete</button>
+          <button onclick="_dcCancel('${prefix}','${context}')" class="btn-ghost rounded px-2 text-xs">Cancel</button>
+        </span></div>`;
+    }
+    return `<div class="card rounded px-2 py-1.5 flex items-start justify-between gap-2">
+      <span class="flex-1 min-w-0"><span class="badge mr-1" style="background:rgba(2,132,199,.12);color:#0369a1">${esc(r.base_cat)}</span>${esc(r.rule)}</span>
+      <span class="flex gap-0.5 shrink-0 items-center">
+        <button onclick="_dcStartEdit('${prefix}','${context}',${r.index})" class="text-sky-400 hover:text-sky-600 text-xs px-1" title="Edit">&#9998;</button>
+        <button onclick="_dcAskDelete('${prefix}','${context}',${r.index})" class="text-red-400 hover:text-red-600 text-xs px-1" title="Delete">&#128465;</button>
+      </span></div>`;
+  }).join('');
+  // Set the edit input's value in JS (avoids breaking on quotes in the text) + focus.
+  if(_dcEditing[prefix] != null){
+    const ei = document.getElementById(`${prefix}-dc-edit-input`);
+    if(ei){ ei.value = _dcRules[_dcEditing[prefix]] || ''; ei.focus(); ei.select(); }
+  }
 }
+function _dcStartEdit(prefix, context, index){ _dcEditing[prefix]=index; _dcDeleting[prefix]=null; _dcPaint(prefix, context); }
+function _dcAskDelete(prefix, context, index){ _dcDeleting[prefix]=index; _dcEditing[prefix]=null; _dcPaint(prefix, context); }
+function _dcCancel(prefix, context){ _dcEditing[prefix]=null; _dcDeleting[prefix]=null; _dcPaint(prefix, context); }
 async function loadDatasetControlRules(prefix, context){
   if(!SESSION) return;
   try{
@@ -2708,15 +2743,17 @@ async function loadDatasetControlRules(prefix, context){
     renderDatasetControlRules(prefix, context, r.ctx_rules||[]);
   }catch(e){}
 }
-async function deleteDatasetControlRule(index, prefix, context){
-  await J('POST', `/rules/${SESSION}/delete`, {rule_index: index});
+async function saveDatasetControlEdit(prefix, context, index){
+  const ei = document.getElementById(`${prefix}-dc-edit-input`);
+  const val = (ei?.value||'').trim();
+  if(!val){ _dcCancel(prefix, context); return; }
+  if(val !== (_dcRules[index]||'')){
+    await J('POST', `/rules/${SESSION}/update`, {rule_index: index, rule: val});
+  }
   loadDatasetControlRules(prefix, context);
 }
-async function editDatasetControlRule(index, prefix, context){
-  const currentText = _dcRules[index]||'';
-  const updated = prompt('Edit rule:', currentText);
-  if(updated == null || !updated.trim() || updated.trim() === currentText) return;
-  await J('POST', `/rules/${SESSION}/update`, {rule_index: index, rule: updated.trim()});
+async function confirmDatasetControlDelete(prefix, context, index){
+  await J('POST', `/rules/${SESSION}/delete`, {rule_index: index});
   loadDatasetControlRules(prefix, context);
 }
 
