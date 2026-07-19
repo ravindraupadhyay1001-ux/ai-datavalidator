@@ -1115,6 +1115,7 @@ function copilotPanelHTML(prefix, context, chips){
         </div>
         <button onclick="suggestDataControlSteps('${prefix}','${context}')" class="btn-ghost rounded-lg px-2 py-1 text-xs mb-2 w-full" title="The AI reads this run's actual issues and proposes steps — you pick which to save.">&#10024; Not sure what to write? Suggest steps for me</button>
         <div id="${prefix}-dc-feedback" class="text-xs mb-1"></div>
+        <div id="${prefix}-dc-drift" class="text-xs mb-1"></div>
         <div id="${prefix}-dc-rules" class="text-xs space-y-1"></div>
         ${_dcRerunAction(prefix, context) ? `<button onclick="${_dcRerunAction(prefix, context)}" class="btn rounded-lg px-2 py-1.5 text-xs mt-2 w-full font-medium">&#128260; Apply saved steps &amp; refresh report</button>` : ''}
       </div>
@@ -1804,6 +1805,7 @@ async function _runAICopilotMode(action, fileId, prefix, context, label, connId)
   ], 'copilot');
   mountCopilotChat(prefix);
   loadDatasetControlRules(prefix, context);
+  checkDatasetDrift(prefix, context);
   const chatInput = document.getElementById('chat-in');
   chatInput.value = reportData
     ? `Look at these ${label} results and tell me what stands out or needs attention.`
@@ -2118,6 +2120,7 @@ async function runQualityAI(){
   ], 'copilot');
   mountCopilotChat('q');
   loadDatasetControlRules('q','quality');
+  checkDatasetDrift('q','quality');
   const chatInput = document.getElementById('chat-in');
   chatInput.value = reportData
     ? 'Look at these data quality results and tell me what stands out or needs attention.'
@@ -2796,6 +2799,34 @@ async function loadDatasetControlRules(prefix, context){
     const r = await fetch(`/dataset-controls/${SESSION}/rules?context=${context}`).then(x=>x.json());
     renderDatasetControlRules(prefix, context, r.ctx_rules||[]);
   }catch(e){}
+}
+// Schema-drift recovery: after an AI run, flag saved steps that reference a
+// column not in this file and let the agent propose the corrected step.
+async function checkDatasetDrift(prefix, context){
+  if(!SESSION) return;
+  const box = document.getElementById(`${prefix}-dc-drift`);
+  if(!box) return;
+  try{
+    const r = await J('POST', `/dataset-controls/${SESSION}/check-drift`, {context});
+    const drift = (r && r.drift) || [];
+    if(!drift.length){ box.innerHTML=''; return; }
+    box.innerHTML = `<div class="card rounded p-2" style="background:rgba(220,38,38,.05);border:1px solid rgba(220,38,38,.3)">
+      <div class="mb-1">&#9888;&#65039; <b>${drift.length} saved step(s) may not fit this file's columns.</b></div>
+      ${drift.map((d,i)=>`<div id="${prefix}-drift-${i}" class="mb-1">
+        <div class="text-gray-500 line-through">${esc(d.original)}</div>
+        <div><b>${esc(d.corrected)}</b> ${d.note?`<span class="text-gray-500">(${esc(d.note)})</span>`:''}</div>
+        <button onclick="applyDriftFix('${prefix}','${context}',${d.index},${JSON.stringify(d.corrected)},${i})" class="btn rounded px-2 py-0.5 text-xs mt-0.5">&#9989; Apply fix</button>
+      </div>`).join('')}
+      <button onclick="document.getElementById('${prefix}-dc-drift').innerHTML=''" class="btn-ghost rounded px-2 py-0.5 text-xs">Dismiss</button>
+    </div>`;
+  }catch(e){ box.innerHTML=''; }
+}
+async function applyDriftFix(prefix, context, index, corrected, i){
+  await J('POST', `/rules/${SESSION}/update`, {rule_index: index, rule: corrected});
+  const row = document.getElementById(`${prefix}-drift-${i}`);
+  if(row) row.outerHTML = `<div class="text-emerald-500 mb-1">&check; Fixed: ${esc(corrected)}</div>`;
+  loadDatasetControlRules(prefix, context);
+  toast('✅ Step updated to match this file.');
 }
 async function saveDatasetControlEdit(prefix, context, index){
   const ei = document.getElementById(`${prefix}-dc-edit-input`);

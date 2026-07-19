@@ -18275,6 +18275,66 @@ def _dc_issue_digest(stored: dict, context: str) -> dict:
     return {k: v for k, v in d.items() if v not in (None, "", [], {})}
 
 
+@app.post("/dataset-controls/{session_id}/check-drift")
+async def dataset_controls_check_drift(session_id: str, request: Request):
+    """Schema-drift recovery: flag saved Dataset Memory steps that reference a
+    column NOT present in the current file (e.g. a rule about 'remarks' when
+    this file calls it 'comments'), and have the agent propose the corrected
+    step using the closest actual column. Nothing changes until the user
+    applies a fix. Returns [] when there are no rules or no drift."""
+    body = await request.json()
+    context = body.get("context", "quality")
+    stored = _results_store.get(session_id)
+    if not stored:
+        return JSONResponse({"drift": []})
+    username = _ws_resolve_username(request) or "default"
+    fp = _session_fingerprint(session_id, username)
+    if not fp:
+        return JSONResponse({"drift": []})
+    all_rules = _fp_get_rules(username, fp)
+    # Context rules with their 1-based GLOBAL index (matches /rules/*/update).
+    ctx_prefix = f"dc_{context}_"
+    ctx = [{"index": i + 1, "rule": r.get("rule", "")}
+           for i, r in enumerate(all_rules)
+           if r.get("category", "").startswith(ctx_prefix)
+           or r.get("category") in ("general", "recon_rule")]
+    if not ctx:
+        return JSONResponse({"drift": []})
+    dfs = stored.get("dataframes", [])
+    cols = sorted({c for item in dfs for c in list(item["df"].columns)})
+    if not cols:
+        return JSONResponse({"drift": []})
+
+    prompt = f"""You are checking whether saved data rules still fit a file.
+Actual columns in this file: {json.dumps(cols)}
+Saved rules (with their id): {json.dumps(ctx)}
+
+A rule "drifts" if it clearly names a column that is NOT in the actual columns
+above but a close match exists (e.g. rule says "remarks" but the file has
+"comments"). For each drifted rule, propose the corrected rule text using the
+real column name. Ignore rules that fit fine or whose column can't be matched.
+
+Return ONLY a JSON array (empty if nothing drifts):
+[{{"index": <id>, "original": "<rule>", "corrected": "<fixed rule>", "note": "<col X -> col Y, max 60 chars>"}}]"""
+    try:
+        raw = await asyncio.to_thread(_ask_llm, [{"role": "user", "content": [{"text": prompt}]}])
+        import re as _re
+        m = _re.search(r'\[.*\]', raw, _re.DOTALL)
+        parsed = json.loads(m.group(0)) if m else []
+    except Exception:
+        return JSONResponse({"drift": []})
+    valid_idx = {c["index"] for c in ctx}
+    drift = [
+        {"index": int(d["index"]), "original": str(d.get("original", ""))[:160],
+         "corrected": str(d.get("corrected", "")).strip()[:160], "note": str(d.get("note", ""))[:80]}
+        for d in (parsed if isinstance(parsed, list) else [])
+        if isinstance(d, dict) and d.get("index") in valid_idx
+        and str(d.get("corrected", "")).strip()
+        and str(d.get("corrected", "")).strip() != str(d.get("original", "")).strip()
+    ][:6]
+    return JSONResponse({"drift": drift})
+
+
 @app.post("/dataset-controls/{session_id}/suggest")
 async def dataset_controls_suggest(session_id: str, request: Request):
     """AI-suggest Dataset Memory steps (include/exclude/unique key/mapping/
