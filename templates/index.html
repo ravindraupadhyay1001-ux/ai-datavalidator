@@ -221,32 +221,6 @@
       <div class="mb-4 flex flex-wrap gap-2 items-center">
         <button type="button" onclick="addCmpSource()" id="cmp-add-source-btn" class="btn-ghost btn rounded-lg px-3 py-1.5 text-xs">&#10011; Add source (for 3+ way reconciliation)</button>
         <span id="cmp-source-count" class="badge hidden" style="background:rgba(31,111,107,.12);color:#1f6f6b"></span>
-        <label class="flex items-center gap-2 text-xs text-gray-500 cursor-pointer ml-2">
-          <input type="checkbox" id="cmp-fuzzy-enable" class="accent-sky-500" onchange="document.getElementById('cmp-fuzzy-panel').classList.toggle('hidden', !this.checked)">
-          &#128269; Fuzzy match (no clean key &mdash; match by similarity instead)
-        </label>
-      </div>
-      <div id="cmp-fuzzy-panel" class="hidden card rounded-xl p-4 mb-4 text-sm">
-        <div class="mb-4">
-          <label class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Fields to match on</label>
-          <div id="cmp-fuzzy-chips-hint" class="text-xs text-gray-500 mt-1 mb-2">Upload both files to see their columns here, or type field names manually below.</div>
-          <div id="cmp-fuzzy-chips" class="flex flex-wrap gap-2 mb-2"></div>
-          <input id="cmp-fuzzy-fields" placeholder="or type field names manually, comma-separated" class="inp w-full mt-1 text-xs" oninput="refreshFuzzyFieldChips()">
-        </div>
-        <div class="mb-2">
-          <label class="text-xs font-semibold text-gray-600 uppercase tracking-wide">Match threshold</label>
-          <div class="flex items-center gap-3 mt-1">
-            <input type="range" min="0.5" max="0.95" step="0.05" value="0.75" class="flex-1 accent-sky-500" oninput="onFuzzyThresholdSlide(this.value)">
-            <span id="cmp-fuzzy-threshold-label" class="badge" style="background:rgba(56,189,248,.12);color:#0369a1;min-width:48px;text-align:center">75%</span>
-            <input id="cmp-fuzzy-threshold" type="hidden" value="0.75">
-          </div>
-          <div class="text-[11px] text-gray-500 mt-1">Lower = matches more loosely (more false positives). Higher = stricter (may miss real matches with typos).</div>
-        </div>
-        <p class="text-xs text-gray-500 mt-3 pt-3 border-t border-[var(--line)]">For when there's no shared ID between the two files &mdash; e.g. matching a bank
-          statement narrative against an internal ledger description by name/amount/date proximity. Text fields are scored
-          by similarity (typos, reordering, and formatting differences are tolerated); numeric fields by relative closeness;
-          dates by day proximity. Capped at 3,000 rows per file. Works with 3+ sources too &mdash; the first
-          uploaded file (Dataset A) is used as the reference every other source is matched against.</p>
       </div>
       <div class="flex gap-3 items-center flex-wrap">
         <div class="seg" id="cmp-seg">
@@ -953,48 +927,9 @@ function removeMultiConn(field, idx, chipId, fileField){
 [['cmp-conn1','cmp-chip1','conn_a_ids','files_a'],['cmp-conn2','cmp-chip2','conn_b_ids','files_b']]
   .forEach(([selectId,chipId,field,fileField])=>wireMultiConnSelect(selectId,chipId,field,fileField));
 
-// ---------- Reconciliation: live column preview -> fuzzy-match field chips ----------
-// /preview is a lightweight single-file parse (columns + sample rows + inferred key)
-// that already existed on the backend but nothing called it -- wiring it here turns
-// the fuzzy-match field picker from "type an exact column name blind" into real
-// clickable chips populated from what's actually in the uploaded files.
-const _cmpColumnsCache = {A: null, B: null};
-async function previewCmpFile(side, inputId){
-  const f = document.getElementById(inputId)?.files[0];
-  if(!f){ _cmpColumnsCache[side] = null; refreshFuzzyFieldChips(); return; }
-  const fd = new FormData(); fd.append('files', f);
-  try{
-    const r = await fetch('/preview', {method:'POST', body:fd});
-    const d = await r.json();
-    _cmpColumnsCache[side] = d.error ? null : d.column_names || null;
-  }catch(e){ _cmpColumnsCache[side] = null; }
-  refreshFuzzyFieldChips();
-}
-document.getElementById('cmp-f1')?.addEventListener('change', ()=>previewCmpFile('A','cmp-f1'));
-document.getElementById('cmp-f2')?.addEventListener('change', ()=>previewCmpFile('B','cmp-f2'));
-
-function refreshFuzzyFieldChips(){
-  const box = document.getElementById('cmp-fuzzy-chips');
-  if(!box) return;
-  const a = _cmpColumnsCache.A, b = _cmpColumnsCache.B;
-  let cols, hint;
-  if(a && b){ cols = a.filter(c=>b.includes(c)); hint = cols.length ? 'Columns common to both files:' : 'No matching column names between the two files &mdash; type field names manually below.'; }
-  else if(a || b){ cols = a || b; hint = `Columns in ${a?'Dataset A':'Dataset B'} (upload the other side to narrow to common columns):`; }
-  else { cols = []; hint = 'Upload both files to see their columns here, or type field names manually below.'; }
-  const selected = new Set((document.getElementById('cmp-fuzzy-fields').value||'').split(',').map(s=>s.trim()).filter(Boolean));
-  document.getElementById('cmp-fuzzy-chips-hint').textContent = hint;
-  box.innerHTML = cols.map(c=>`<label class="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full border-[1.5px] cursor-pointer ${selected.has(c)?'border-sky-400 bg-sky-50':'border-[var(--line)]'}">
-    <input type="checkbox" class="accent-sky-500 cmp-fuzzy-chip" value="${esc(c)}" ${selected.has(c)?'checked':''} onchange="onFuzzyChipToggle()">${esc(c)}</label>`).join(' ');
-}
-function onFuzzyChipToggle(){
-  const checked = [...document.querySelectorAll('.cmp-fuzzy-chip:checked')].map(cb=>cb.value);
-  document.getElementById('cmp-fuzzy-fields').value = checked.join(', ');
-  refreshFuzzyFieldChips();
-}
-function onFuzzyThresholdSlide(v){
-  document.getElementById('cmp-fuzzy-threshold').value = v;
-  document.getElementById('cmp-fuzzy-threshold-label').textContent = Math.round(v*100)+'%';
-}
+// Fuzzy matching has no pre-run UI -- teach it via Dataset Memory instead
+// (e.g. "remember: fuzzy match on customer_name"); the AI run routes to the
+// similarity engine automatically and renderFuzzyResult shows the result.
 
 // ---------- Reconciliation: extra sources (N-way, 3+ files) ----------
 const _cmpExtraLabels = ['C','D','E','F']; // maps to files_c..files_f on the backend
@@ -1484,9 +1419,7 @@ function renderCompareResult(data, t0, mode){
 async function runCompare(){
   const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Comparing&hellip;</span>';
   const t0 = performance.now();
-  const fuzzyOn = document.getElementById('cmp-fuzzy-enable')?.checked;
-  const fuzzyFields = fuzzyOn ? (document.getElementById('cmp-fuzzy-fields')?.value.trim()||'') : '';
-  const extra = fuzzyFields ? {fuzzy_fields: fuzzyFields, fuzzy_threshold: document.getElementById('cmp-fuzzy-threshold')?.value||'0.75'} : {};
+  const extra = {};
   const {ok,data}=await postForm('compare',
     [['files_a','cmp-f1','conn_a_ids','cmp-conn1'],['files_b','cmp-f2','conn_b_ids','cmp-conn2'],...cmpExtraFileInputs()],
     extra, null);
@@ -2582,6 +2515,7 @@ const HELP_CONTENT = {
       <li>Excludes &mdash; <code>remember: exclude the load_date column</code></li>
       <li>Mappings &mdash; <code>remember: map src_amt to amount</code></li>
       <li>Transforms &mdash; <code>remember: strip commas from the notional column</code></li>
+      <li>Fuzzy matching (no clean shared key) &mdash; <code>remember: fuzzy match on customer_name</code></li>
     </ul>
     <p class="mt-2 text-gray-400">Don't know what steps to write? Click <b>&#10024; Suggest cleanup steps</b>
     (in the AI Copilot chips or the Dataset Memory panel) &mdash; the AI reads this run's actual issues and
@@ -2748,31 +2682,13 @@ async function saveSuggestedStep(prefix, context, i){
 }
 
 let _dcRules = {};
-// Per-module example steps shown when no rules are saved yet -- clicking one
-// prefills the input so the user just edits the column name and hits Add.
-const _DC_EXAMPLES = {
-  compare:    ['use trade_id as the unique key', 'exclude the load_date column', 'map src_amt to amount'],
-  quality:    ['mark remarks as nullable', 'exclude load_date from scoring', 'notional must be positive'],
-  governance: ['mark CUSIP as not PII', 'set remarks sensitivity to Internal'],
-  profile:    ['exclude the audit columns', 'mark comments as nullable'],
-  xref:       ['use isin as the match key', 'exclude the source_system column'],
-  parse:      ['keep only the trade legs', 'rename amt to amount'],
-};
-function dcPrefill(prefix, context, i){
-  const inp = document.getElementById(`${prefix}-dc-input`);
-  if(!inp) return;
-  inp.value = (_DC_EXAMPLES[context]||[])[i]||'';
-  inp.focus();
-}
 function renderDatasetControlRules(prefix, context, rules){
   const box = document.getElementById(`${prefix}-dc-rules`);
   if(!box) return;
   const badge = document.getElementById(`${prefix}-dc-count`);
   if(badge){ badge.textContent = rules.length; badge.style.display = rules.length ? '' : 'none'; }
   if(!rules.length){
-    box.innerHTML = `<div class="text-gray-500">No saved steps yet. Try one of these &mdash; click to edit &amp; add:</div>
-      <div class="flex flex-wrap gap-1 mt-1">${(_DC_EXAMPLES[context]||[]).map((ex,i)=>
-        `<span class="suggest-chip" onclick="dcPrefill('${prefix}','${context}',${i})">${esc(ex)}</span>`).join('')}</div>`;
+    box.innerHTML = `<div class="text-gray-500">No saved steps yet &mdash; type one above, or let &#10024; Suggest read this run's results and propose them.</div>`;
     return;
   }
   // Rule text lives in this map, not inline in the onclick attribute -- any

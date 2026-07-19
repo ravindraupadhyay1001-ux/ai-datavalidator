@@ -17422,6 +17422,21 @@ async def recon_run(session_id: str, request: Request):
             "tgt_sample":    tgt_df.head(3).astype(str).to_dict(orient="records"),
         }
 
+        # Saved fuzzy rules route to the similarity engine, same as the chat
+        # "run recon" path -- transforms/mappings above still apply first.
+        _rr_fuzzy = [f for f in (params.get("fuzzy_fields") or [])
+                     if f in src_df.columns and f in tgt_df.columns]
+        if _rr_fuzzy:
+            fr = fuzzy_match_dataframes(
+                src_df, tgt_df, _rr_fuzzy,
+                threshold=float(params.get("fuzzy_threshold") or 0.75),
+                exclude_cols=exclude)
+            return JSONResponse(_sanitize_json({
+                **fr,
+                "src_name": src_name, "tgt_name": tgt_name,
+                "params_applied": params, "debug": debug_info,
+            }))
+
         diff = compare_dataframes(
             src_df, tgt_df, manual_keys, True, exclude,
             force_data_cols=force_data_cols,
@@ -17462,6 +17477,78 @@ async def recon_run(session_id: str, request: Request):
         )
 
 
+def _fuzzy_recon_workbook(fr: dict, src_name: str, tgt_name: str) -> openpyxl.Workbook:
+    """Excel workbook for a fuzzy (similarity-matched) Complex Recon run --
+    the exact-key workbook's sheets don't fit a keyless match, so this mirrors
+    the fuzzy UI instead: Summary, Value Breaks (with match score), and the
+    unmatched rows per side. Used by /recon/download and the emailed report so
+    the file matches what the screen showed."""
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    c = fr.get("counts", {})
+    ffields = fr.get("fuzzy_fields", [])
+    ws = wb.create_sheet("Summary")
+    _hdr(ws, 1, ["Metric", "Value"])
+    rows = [
+        ("Source", src_name),
+        ("Target", tgt_name),
+        ("Match mode", "Fuzzy (similarity) -- no exact key"),
+        ("Matched on", ", ".join(ffields)),
+        ("Similarity threshold", f"{float(fr.get('threshold', 0.75)):.0%}"),
+        ("Matched, fully agree", c.get("matched", 0)),
+        ("Matched with value breaks", c.get("modified", 0)),
+        (f"Unmatched in {src_name}", c.get("file1_only", 0)),
+        (f"Unmatched in {tgt_name}", c.get("file2_only", 0)),
+    ]
+    for ri, (k, v) in enumerate(rows, 2):
+        ws.cell(ri, 1, k).font = Font(bold=True)
+        ws.cell(ri, 2, str(v))
+        if ri % 2 == 0:
+            for ci in range(1, 3):
+                ws.cell(ri, ci).fill = _ALT_FILL
+    _autofit(ws)
+
+    if fr.get("modified_rows"):
+        ws2 = wb.create_sheet("Value Breaks")
+        _hdr(ws2, 1, ["Match score", "Matched on", "Column", src_name, tgt_name])
+        ri = 2
+        for mr in fr["modified_rows"]:
+            match_on = " | ".join(f"{k}={v}" for k, v in (mr.get("file1_row") or {}).items()
+                                  if k in ffields)
+            for col, chg in (mr.get("changes") or {}).items():
+                ws2.cell(ri, 1, mr.get("match_score", ""))
+                ws2.cell(ri, 2, match_on)
+                ws2.cell(ri, 3, col)
+                ws2.cell(ri, 4, str(chg.get("file1", "")))
+                ws2.cell(ri, 5, str(chg.get("file2", "")))
+                if ri % 2 == 0:
+                    for ci in range(1, 6):
+                        ws2.cell(ri, ci).fill = _ALT_FILL
+                ri += 1
+        _autofit(ws2)
+
+    for sheet_title, key in (("Source_Only", "file1_only"), ("Target_Only", "file2_only")):
+        only = fr.get(key) or []
+        if not only:
+            continue
+        cols: dict = {}
+        for row in only:
+            for col in (row.get("row_data") or {}).keys():
+                cols[col] = True
+        col_list = list(cols.keys())
+        ws3 = wb.create_sheet(sheet_title)
+        _hdr(ws3, 1, col_list)
+        for ri, row in enumerate(only, 2):
+            rd = row.get("row_data") or {}
+            for ci, col in enumerate(col_list, 1):
+                ws3.cell(ri, ci, str(rd.get(col, "")))
+            if ri % 2 == 0:
+                for ci in range(1, len(col_list) + 1):
+                    ws3.cell(ri, ci).fill = _ALT_FILL
+        _autofit(ws3)
+    return wb
+
+
 @app.get("/recon/download/{session_id}")
 async def recon_download(session_id: str, request: Request):
     _require_not_readonly(request)
@@ -17494,6 +17581,34 @@ async def recon_download(session_id: str, request: Request):
 
     src_df, tgt_df, manual_keys, exclude, _, force_data_cols = _prepare_recon(
         src_df, tgt_df, params)
+
+    def _safe_stem_dl(name: str) -> str:
+        return re.sub(r"[^a-zA-Z0-9_-]", "_", re.sub(r"\.[^.]+$", "", name))[:30]
+
+    # A fuzzy-matched recon downloads the fuzzy-shaped workbook, so the file
+    # matches what the fuzzy UI showed instead of a misleading exact-key rerun.
+    _dl_fuzzy = [f for f in (params.get("fuzzy_fields") or [])
+                 if f in src_df.columns and f in tgt_df.columns]
+    if _dl_fuzzy:
+        try:
+            fr = fuzzy_match_dataframes(
+                src_df, tgt_df, _dl_fuzzy,
+                threshold=float(params.get("fuzzy_threshold") or 0.75),
+                exclude_cols=exclude)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(500, f"Fuzzy comparison failed: {exc}")
+        wb = _fuzzy_recon_workbook(fr, src_name, tgt_name)
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        fname = f"recon_fuzzy_{_safe_stem_dl(src_name)}_vs_{_safe_stem_dl(tgt_name)}.xlsx"
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{fname}"'},
+        )
 
     try:
         diff = compare_dataframes(
@@ -18610,55 +18725,67 @@ async def send_email(request: Request):
                 recon_rules = [r for r in saved_rules if r.get("category") not in ("recon_hints",)]
                 params = await asyncio.to_thread(_parse_recon_rules_to_params, recon_rules, list(src_df.columns), list(tgt_df.columns))
                 src_df, tgt_df, manual_keys, exclude, _, force_data_cols = _prepare_recon(src_df, tgt_df, params)
-                diff = compare_dataframes(src_df, tgt_df, manual_keys, True, exclude, force_data_cols=force_data_cols)
-                import openpyxl as _opxl
-                wb = _opxl.Workbook()
-                wb.remove(wb.active)
-                key_cols = diff.get("key_columns", manual_keys or [])
-                # Summary sheet
-                ws = wb.create_sheet("Summary")
-
-                _hdr(ws, 1, ["Metric", "Value"])
-                for ri, (k, v) in enumerate([
-                    (src_name, src_name), (tgt_name, tgt_name),
-                    ("Key column(s)", ", ".join(key_cols)),
-                    (f"{src_name} rows", diff.get("file1_rows", len(src_df))),
-                    (f"{tgt_name} rows", diff.get("file2_rows", len(tgt_df))),
-                    ("Value breaks", diff.get("modified_count", 0)),
-                    (f"{src_name}-only rows", diff.get("file1_only_count", 0)),
-                    (f"{tgt_name}-only rows", diff.get("file2_only_count", 0)),
-                ], 2):
-                    ws.cell(ri, 1, k).font = Font(bold=True)
-                    ws.cell(ri, 2, str(v))
-                _autofit(ws)
-                # Value Breaks sheet
-                if diff.get("modified_rows"):
-                    ws2 = wb.create_sheet("Value Breaks")
-                    _hdr(ws2, 1, ["Key", "Column", src_name, tgt_name, "Difference"])
-                    ri = 2
-                    for mr in diff["modified_rows"]:
-
-                        key_str = " | ".join(f"{k}={v}" for k, v in mr.get("key_values", {}).items())
-                        for col, chg in mr.get("changes", {}).items():
-                            ws2.cell(ri, 1, key_str)
-                            ws2.cell(ri, 2, col)
-                            ws2.cell(ri, 3, str(chg.get("file1", "")))
-                            ws2.cell(ri, 4, str(chg.get("file2", "")))
-                            try:
-                                diff_val = float(str(chg.get("file1","")).replace(",","")) - float(str(chg.get("file2","")).replace(",",""))
-                                ws2.cell(ri, 5, round(diff_val, 6))
-                            except Exception:
-                                ws2.cell(ri, 5, "")
-                            ri += 1
-                    _autofit(ws2)
-                buf = io.BytesIO()
-                wb.save(buf)
-                attach_bytes = buf.getvalue()
                 def _safe_stem(n):
                     import re as _re
-
                     return _re.sub(r"[^a-zA-Z0-9_-]", "_", _re.sub(r"\.[^.]+$", "", n))[:30]
-                attach_name = f"recon_{_safe_stem(src_name)}_vs_{_safe_stem(tgt_name)}.xlsx"
+                _em_fuzzy = [f for f in (params.get("fuzzy_fields") or [])
+                             if f in src_df.columns and f in tgt_df.columns]
+                if _em_fuzzy:
+                    # Fuzzy recon session: attach the fuzzy-shaped workbook so
+                    # the emailed report matches what the fuzzy UI showed.
+                    fr = fuzzy_match_dataframes(
+                        src_df, tgt_df, _em_fuzzy,
+                        threshold=float(params.get("fuzzy_threshold") or 0.75),
+                        exclude_cols=exclude)
+                    wb = _fuzzy_recon_workbook(fr, src_name, tgt_name)
+                    buf = io.BytesIO()
+                    wb.save(buf)
+                    attach_bytes = buf.getvalue()
+                    attach_name = f"recon_fuzzy_{_safe_stem(src_name)}_vs_{_safe_stem(tgt_name)}.xlsx"
+                else:
+                    diff = compare_dataframes(src_df, tgt_df, manual_keys, True, exclude, force_data_cols=force_data_cols)
+                    import openpyxl as _opxl
+                    wb = _opxl.Workbook()
+                    wb.remove(wb.active)
+                    key_cols = diff.get("key_columns", manual_keys or [])
+                    # Summary sheet
+                    ws = wb.create_sheet("Summary")
+                    _hdr(ws, 1, ["Metric", "Value"])
+                    for ri, (k, v) in enumerate([
+                        (src_name, src_name), (tgt_name, tgt_name),
+                        ("Key column(s)", ", ".join(key_cols)),
+                        (f"{src_name} rows", diff.get("file1_rows", len(src_df))),
+                        (f"{tgt_name} rows", diff.get("file2_rows", len(tgt_df))),
+                        ("Value breaks", diff.get("modified_count", 0)),
+                        (f"{src_name}-only rows", diff.get("file1_only_count", 0)),
+                        (f"{tgt_name}-only rows", diff.get("file2_only_count", 0)),
+                    ], 2):
+                        ws.cell(ri, 1, k).font = Font(bold=True)
+                        ws.cell(ri, 2, str(v))
+                    _autofit(ws)
+                    # Value Breaks sheet
+                    if diff.get("modified_rows"):
+                        ws2 = wb.create_sheet("Value Breaks")
+                        _hdr(ws2, 1, ["Key", "Column", src_name, tgt_name, "Difference"])
+                        ri = 2
+                        for mr in diff["modified_rows"]:
+                            key_str = " | ".join(f"{k}={v}" for k, v in mr.get("key_values", {}).items())
+                            for col, chg in mr.get("changes", {}).items():
+                                ws2.cell(ri, 1, key_str)
+                                ws2.cell(ri, 2, col)
+                                ws2.cell(ri, 3, str(chg.get("file1", "")))
+                                ws2.cell(ri, 4, str(chg.get("file2", "")))
+                                try:
+                                    diff_val = float(str(chg.get("file1","")).replace(",","")) - float(str(chg.get("file2","")).replace(",",""))
+                                    ws2.cell(ri, 5, round(diff_val, 6))
+                                except Exception:
+                                    ws2.cell(ri, 5, "")
+                                ri += 1
+                        _autofit(ws2)
+                    buf = io.BytesIO()
+                    wb.save(buf)
+                    attach_bytes = buf.getvalue()
+                    attach_name = f"recon_{_safe_stem(src_name)}_vs_{_safe_stem(tgt_name)}.xlsx"
             else:
                 # Fallback: lineage session context not available -- use generate_excel
                 wb  = generate_excel(data, exceptions_only=True)
