@@ -16773,6 +16773,15 @@ JSON schema (omit any key that is not needed):
   "tgt_value_col": "borrowReqNet",       // the single value column from TARGET to
                                           compare (set this when target has aggregation or a renamed value col)
   "exclude": ["col1", "col2"],
+  "exception_rules": [                // custom exception handling beyond exact match
+    {{
+      "type": "tolerance",           // a value difference within threshold is NOT a break
+      "column": "amount",            // column name, or "*" for all compared value columns
+      "mode": "pct",                 // "pct" (percentage) or "abs" (absolute difference)
+      "threshold": 1                 // e.g. 1 = within 1% (pct) or within 1.0 (abs) is tolerated
+    }}
+  ],                                 // Use when the user says values within a small tolerance
+                                     // shouldn't count as breaks -- rounding, FX, minor precision.
   "fuzzy_fields": ["customer_name", "address"],  // set ONLY when the user describes an approximate/
                                           // probabilistic match (typos, formatting drift, no clean
                                           // shared key) -- column name(s) to match by similarity
@@ -17218,6 +17227,69 @@ def _prepare_recon(src_df: pd.DataFrame, tgt_df: pd.DataFrame, params: dict):
     return src_df, tgt_df, manual_keys or None, exclude, key_warning, force_data_cols
 
 
+def _apply_exception_rules(diff: dict, rules: list[dict]) -> dict:
+    """Post-process a compare_dataframes() result with LLM-authored custom
+    exception rules -- deterministic, runs AFTER the engine has computed the
+    matches (the engine still owns every number). Currently supports TOLERANCE
+    rules: a value break whose numeric difference is within the allowed
+    threshold is downgraded from a real break to 'within tolerance', so trivial
+    rounding / FX / precision noise stops inflating the break count -- an
+    exception variety Standard mode can't express.
+
+      rule: {"type":"tolerance", "column":"*"|name, "mode":"pct"|"abs", "threshold":num}
+
+    Adds diff['within_tolerance'] (+ _count) and shrinks modified_rows/
+    modified_count to exclude the tolerated rows. Unknown rule types are ignored."""
+    tol_rules = [r for r in (rules or []) if r.get("type") == "tolerance"]
+    if not tol_rules or not diff.get("modified_rows"):
+        return diff
+
+    def _num(v):
+        try:
+            return float(str(v).replace(",", "").strip())
+        except Exception:
+            return None
+
+    def _col_within_tol(col, f1, f2):
+        a, b = _num(f1), _num(f2)
+        if a is None or b is None:
+            return False  # non-numeric -> tolerance can't apply, stays a break
+        d = abs(a - b)
+        for r in tol_rules:
+            rc = str(r.get("column", "*"))
+            if rc != "*" and rc.lower() != str(col).lower():
+                continue
+            try:
+                thr = float(r.get("threshold"))
+            except (TypeError, ValueError):
+                continue
+            if str(r.get("mode", "pct")).lower() == "abs":
+                if d <= thr:
+                    return True
+            else:
+                denom = max(abs(a), abs(b), 1e-9)
+                if (d / denom) * 100 <= thr:
+                    return True
+        return False
+
+    kept, tolerated = [], []
+    for mr in diff["modified_rows"]:
+        changes = mr.get("changes", {})
+        # A row is 'within tolerance' only if EVERY changed column is within tolerance.
+        if changes and all(_col_within_tol(col, chg.get("file1"), chg.get("file2"))
+                           for col, chg in changes.items()):
+            tolerated.append(mr)
+        else:
+            kept.append(mr)
+
+    if tolerated:
+        diff["modified_rows"] = kept
+        diff["modified_count"] = len(kept)
+        diff["within_tolerance"] = tolerated
+        diff["within_tolerance_count"] = len(tolerated)
+    return diff
+
+
 def _run_llm_recon_full(session_id: str, username: str = "default") -> dict | None:
     """"run recon" -- the AI Copilot's fully automated reconciliation: reads the
     saved rules for this schema, has the LLM turn them into structured execution
@@ -17298,6 +17370,7 @@ def _run_llm_recon_full(session_id: str, username: str = "default") -> dict | No
             }
 
     diff = compare_dataframes(src_df, tgt_df, manual_keys, True, exclude, force_data_cols=force_data_cols)
+    diff = _apply_exception_rules(diff, params.get("exception_rules") or [])
     mapping = analyze_mapping(src_df, tgt_df, base_name, cmp_name, None)
 
     new_session_id = str(uuid.uuid4())
@@ -17355,6 +17428,11 @@ def _run_llm_recon_full(session_id: str, username: str = "default") -> dict | No
             "file2": {"duplicate_rows": diff.get("file2_duplicate_count", 0), "rows": diff.get("file2_duplicate_rows", [])},
         },
         "modified": modified,
+        "within_tolerance": [
+            {"key": ", ".join(f"{k}={v}" for k, v in mr["key_values"].items()), "changes": mr["changes"]}
+            for mr in diff.get("within_tolerance", [])
+        ],
+        "within_tolerance_count": diff.get("within_tolerance_count", 0),
         "only_in_file1": only1,
         "only_in_file2": only2,
         "schema_added_columns": diff.get("schema_added_columns", []),

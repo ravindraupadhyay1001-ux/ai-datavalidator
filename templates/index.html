@@ -1278,6 +1278,7 @@ function renderCompareResult(data, t0, mode){
       <span class="badge" style="background:rgba(220,38,38,.1);color:#dc2626">${c.file1_only??0} only in ${esc(f1.name||'File 1')}</span>
       <span class="badge" style="background:rgba(217,119,6,.1);color:#b45309">${c.file2_only??0} only in ${esc(f2.name||'File 2')}</span>
       <span class="badge" style="background:rgba(217,119,6,.1);color:#b45309">${c.modified??0} modified</span>
+      ${data.within_tolerance_count?`<span class="badge" style="background:rgba(16,185,129,.1);color:#059669">${data.within_tolerance_count} within tolerance</span>`:''}
       <span class="badge" style="background:rgba(37,99,235,.1);color:#2563eb">${(data.null_column_exceptions||[]).length} null-col</span>
       ${data.gross_break_total?`<span class="badge" style="background:rgba(124,58,237,.1);color:#7c3aed">Gross break total: ${data.gross_break_total}</span>`:''}
       ${data.net_break_total?`<span class="badge" style="background:rgba(124,58,237,.1);color:#7c3aed">Net break total: ${data.net_break_total}</span>`:''}
@@ -1323,6 +1324,18 @@ function renderCompareResult(data, t0, mode){
         })).join('')}</tbody>
       </table></div>` : '<span class="text-gray-500">No modified rows.</span>'}</div>
     </details>
+    ${(data.within_tolerance||[]).length ? `<details class="mb-4">
+      <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(16,185,129,.08)">&#10003; Within tolerance &mdash; value differs but inside your allowed threshold, not counted as a break (${data.within_tolerance_count||data.within_tolerance.length})</summary>
+      <div class="mt-2 text-xs"><div class="card rounded-xl overflow-auto"><table class="w-full text-xs">
+        <thead class="text-gray-400"><tr><th class="p-2 text-left">Key</th><th class="p-2 text-left">Column</th><th class="p-2 text-left">Source Value</th><th class="p-2 text-left">Target Value</th><th class="p-2 text-left">Diff</th></tr></thead>
+        <tbody>${data.within_tolerance.slice(0,50).flatMap(m=>Object.entries(m.changes).map(([col,v])=>{
+          const d = numericDiff(v.file1, v.file2);
+          return `<tr class="border-t border-[var(--line)]"><td class="p-2 font-mono">${esc(m.key)}</td>
+            <td class="p-2 font-medium">${esc(col)}</td><td class="p-2">${esc(v.file1)}</td><td class="p-2">${esc(v.file2)}</td>
+            <td class="p-2 text-emerald-600">${d==null?'&mdash;':d}</td></tr>`;
+        })).join('')}</tbody>
+      </table></div></div>
+    </details>` : ''}
     ${(data.null_column_exceptions||[]).length ? `<details class="mb-4" open>
       <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(37,99,235,.08)">&#9632; Null column exceptions &mdash; column populated on one side, entirely null on the other (${data.null_column_exceptions.length} columns)</summary>
       <div class="mt-2 card rounded-xl overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400"><tr>
@@ -2454,6 +2467,7 @@ const HELP_CONTENT = {
       <li><code>remember: strip commas from the notional column on both sides</code></li>
       <li><code>remember: parse Side from the Description column using regex (buy|sell)</code></li>
       <li><code>remember: combine First and Last into Full Name on the source</code></li>
+      <li><code>remember: amounts within 1% are not a break</code></li>
       <li><code>remember: sum qty by trade_id on the target before comparing</code></li>
     </ul>
     <p class="mt-2 text-gray-400">If a run can't fully apply your rules (e.g. a key column exists on only one
