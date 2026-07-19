@@ -1360,45 +1360,28 @@ function renderCompareResult(data, t0, mode){
 
   let cmpTabs, initialTab;
   if(mode==='ai'){
-    // AI Copilot mode: one combined tab (report + chat together) plus Logs -- no
-    // separate Summary/Exceptions tabs. Lean, purpose-built card (not the full
-    // Standard-mode report): no manual key/exclude checkboxes here, since that's
-    // what "remember: ..." rules + "run recon" replace in this mode. Deep detail
-    // (row-level only-in-file lists, null-column table, duplicates) stays a chat
-    // question away instead of pre-rendered, to keep this view uncluttered.
-    const aiReportHTML = `
-      <div class="card rounded-xl p-4 mb-5">
-        <div class="text-sm text-gray-400 mb-2">${esc(f1.name||'File 1')} &rarr; ${esc(f2.name||'File 2')}</div>
-        ${data.llm_error ? `<div class="card rounded-xl p-3 mb-3 text-xs" style="background:rgba(220,38,38,.06);border-color:rgba(220,38,38,.3)">
-          &#9888;&#65039; <b>${data.rules_applied||0} saved rule(s) were NOT applied</b> &mdash; LLM call failed: <code>${esc(data.llm_error)}</code>.
-          Ran with a plain auto-detected key instead. Check <b>Settings &rarr; LLM Provider</b>.
-        </div>` : ''}
-        <div class="mb-4 flex flex-wrap items-center gap-2">
-          <span class="badge" style="background:${_statusColor}22;color:${_statusColor}">${_status==='PASS'?'&#10003;':'&#9888;'} ${_status}</span>
-          <span class="badge" style="background:rgba(56,189,248,.12);color:#0369a1">Match rate: ${_matchRate}%</span>
-          <span class="badge" style="background:rgba(217,119,6,.12);color:#b45309">&#9889; Key: ${esc(data.method||'n/a')}</span>
-          ${data.rules_applied?`<span class="badge" style="background:rgba(16,185,129,.12);color:#059669">${data.rules_applied} saved rule(s) applied</span>`:''}
-        </div>
-        <div class="grid grid-cols-4 gap-3 mb-3">
-          ${stat('Matched', c.matched??0, '#059669')}
-          ${stat('Only in F1', c.file1_only??0, '#ef4444')}
-          ${stat('Only in F2', c.file2_only??0, '#f59e0b')}
-          ${stat('Modified', c.modified??0, '#f59e0b')}
-        </div>
-        ${wfBuckets.length ? `<div class="grid grid-cols-5 gap-2 mb-3 pt-3 border-t border-[var(--line)]">${wfBuckets.map(([label,n,color])=>`
-          <div class="text-center"><div class="text-xl font-bold" style="color:${color}">${n}</div><div class="text-[10px] text-gray-500 mt-1">${label}</div></div>`).join('')}</div>` : ''}
-        ${topBroken.length ? `<div class="pt-2 border-t border-[var(--line)]"><div class="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Top broken columns</div>
-          <div class="space-y-1.5">${topBroken.slice(0,5).map(([col,n])=>`
-            <div class="flex items-center gap-2 text-xs"><span class="w-28 truncate font-medium">${esc(col)}</span>
-              <div class="flex-1 bg-gray-100 rounded-full h-2.5 overflow-hidden"><div class="h-full rounded-full" style="width:${Math.max(4,n/maxBroken*100)}%;background:linear-gradient(90deg,#dc2626,#f87171)"></div></div>
-              <span class="w-6 text-right text-gray-500">${n}</span></div>`).join('')}</div></div>` : ''}
-        ${(data.excluded_meta_cols||[]).length ? `<div class="text-xs text-gray-500 mt-3 pt-3 border-t border-[var(--line)]">&#8505;&#65039; Auto-excluded metadata columns: ${data.excluded_meta_cols.map(esc).join(', ')}</div>` : ''}
-      </div>`;
+    // AI run: the ENTIRE report reflects the saved-rules run -- same full
+    // Summary + Exceptions tabs as Standard, plus the AI Copilot chat/memory
+    // tab. A banner up top makes the "AI run / rules applied" state explicit.
+    const aiBanner = `<div class="card rounded-xl p-3 mb-4 flex flex-wrap items-center gap-2" style="background:rgba(56,189,248,.05)">
+      <span class="badge" style="background:rgba(56,189,248,.14);color:#0369a1">&#9889; AI run</span>
+      ${data.llm_error
+        ? `<span class="badge" style="background:rgba(220,38,38,.12);color:#dc2626">&#9888; ${data.rules_applied||0} rule(s) NOT applied &mdash; LLM error</span>`
+        : data.rules_applied
+          ? `<span class="badge" style="background:rgba(16,185,129,.12);color:#059669">${data.rules_applied} saved rule(s) applied</span>`
+          : `<span class="badge" style="background:rgba(148,163,184,.15);color:#64748b">no saved rules yet &mdash; add steps in the AI Copilot tab</span>`}
+      ${data.llm_error ? `<span class="text-xs text-red-500 w-full mt-1">${esc(data.llm_error)} &mdash; check Settings &rarr; LLM Provider.</span>` : ''}
+    </div>`;
     cmpTabs = [
-      {key:'copilot', label:'&#9889; AI Copilot', content: aiReportHTML + copilotPanelHTML('cmp','compare', chips)},
+      {key:'summary', label:'Summary', content: aiBanner + summaryHTML},
+      {key:'exceptions', label:`Exceptions (${(c.modified||0)+(c.file1_only||0)+(c.file2_only||0)})`, content: aiBanner + exceptionsHTML},
+      {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('cmp','compare', chips)},
       {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
     ];
-    initialTab = 'copilot';
+    // Initial AI entry (t0 set) opens on the chat to start the conversation;
+    // a "run recon" rerun (t0 null, fired from chat) lands on the full Summary
+    // so the user immediately sees the whole report reflect the new rules.
+    initialTab = (t0==null) ? 'summary' : 'copilot';
   } else {
     cmpTabs = [
       {key:'summary', label:'Summary', content: summaryHTML},
