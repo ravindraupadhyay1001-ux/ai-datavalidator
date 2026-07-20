@@ -2516,7 +2516,10 @@ const HELP_CONTENT = {
     across Completeness, Uniqueness, Validity, Consistency, Conformity and Precision, with a letter grade and
     per-rule PASS/FAIL results. Pick a BFSI Rule Pack (Trade, Position, Payments, MiFID II, Reference Data, Risk)
     to apply domain-specific validators (ISIN/LEI/BIC/currency checks, etc).</p>
-    <p class="mt-2 text-gray-400">Want extra rules? Click <b>&#10024; Suggest cleanup steps</b> on the results
+    <p class="mt-2 text-gray-400">Results not as expected? Open <b>&#9998; Override column rules &amp; re-run</b>
+    on the Summary tab to set Mandatory / Nullable / Unique / Exclude / Null&nbsp;% / Min / Max / Max&nbsp;age /
+    Decimals / Allowed&nbsp;values per column, then re-run in place &mdash; and "Save as steps" to keep them.</p>
+    <p class="mt-2 text-gray-400">Want extra rules? Click <b>&#10024; Suggest steps for me</b> on the results
     screen &mdash; the AI proposes rules from your actual results and you pick which to save. Use
     <b>Dataset Memory</b> to teach it dataset-specific exceptions in plain English.</p>
     <p class="mt-3 font-semibold text-emerald-300">Example</p>
@@ -2570,6 +2573,12 @@ const HELP_CONTENT = {
     <p>Matches an identifier (ISIN, CUSIP, LEI, trade_id, etc.) across 2&ndash;5 sources, producing a coverage
     matrix and a conflicts list with a recommended "golden" value per field (majority-wins, or your chosen
     authoritative source). Leave the identifier key blank to let the AI auto-detect it.</p>
+    <p class="mt-2 text-gray-400"><b>AI Copilot mode</b> handles sources that don't line up: teach it plain-English
+    steps (Dataset Memory) and it translates every source into a common shape before matching &mdash;
+    <code>remember: combine First and Last into Full Name</code>, <code>remember: key on ISIN, else CUSIP, else
+    SEDOL</code>, <code>remember: compute notional = price * quantity</code>. Add
+    <code>remember: values within 1% are not a conflict</code> and near-matches move to a "within tolerance"
+    bucket instead of counting as conflicts.</p>
     <p class="mt-3 font-semibold text-emerald-300">Example</p>
     <p class="text-gray-400">3 sources, key = <code>isin</code>, field = <code>price</code>:</p>
     <table class="w-full text-xs mt-1" style="border-collapse:collapse">
@@ -2582,24 +2591,32 @@ const HELP_CONTENT = {
     <p>Every schema you upload gets a fingerprint from its column names, so plain-English rules you teach the
     AI Copilot are remembered and reload automatically next time you upload a matching file pair &mdash; even
     in a brand new session, with no manual setup.</p>
-    <p class="mt-2 text-gray-400">Teach a rule by typing <code>remember: ...</code> in any AI Copilot chat, or
-    add one directly in the <b>Dataset Memory</b> panel on the results screen. Rules cover:</p>
+    <p class="mt-2 text-gray-400">Teach a step by typing <code>remember: ...</code> in any AI Copilot chat, or
+    type it into the <b>Dataset Memory</b> panel and click <b>Add</b>. For reconciliation / cross reference the
+    steps translate messy data into an apple-to-apple match:</p>
     <ul class="mt-1 ml-4 list-disc text-gray-400 space-y-0.5">
       <li>Keys &mdash; <code>remember: use trade_id as the key</code></li>
       <li>Excludes &mdash; <code>remember: exclude the load_date column</code></li>
-      <li>Mappings &mdash; <code>remember: map src_amt to amount</code></li>
+      <li>Mappings / rename &mdash; <code>remember: map src_amt to amount</code></li>
+      <li>Combine columns &mdash; <code>remember: combine First and Last into Full Name</code></li>
+      <li>Fallback key &mdash; <code>remember: key on ISIN, else CUSIP, else SEDOL</code></li>
+      <li>Computed value &mdash; <code>remember: compute notional = price * quantity</code></li>
       <li>Transforms &mdash; <code>remember: strip commas from the notional column</code></li>
+      <li>Tolerance &mdash; <code>remember: amounts within 1% are not a break</code></li>
       <li>Fuzzy matching (no clean shared key) &mdash; <code>remember: fuzzy match on customer_name</code></li>
     </ul>
-    <p class="mt-2 text-gray-400">Don't know what steps to write? Click <b>&#10024; Suggest cleanup steps</b>
-    (in the AI Copilot chips or the Dataset Memory panel) &mdash; the AI reads this run's actual issues and
-    proposes include/exclude/unique key/mapping/rename/replace/regex steps. Save the ones that look right with
-    one click, then hit <b>Re-run with saved rules applied</b> to see the cleaned-up report.</p>
-    <p class="mt-2 text-gray-400">Rules are scoped per module &mdash; reconciliation rules only apply to
-    Reconciliation-family screens, Data Quality's "Dataset Controls" rules only apply to Data Quality, and
-    general rules apply everywhere for that schema.</p>
-    <p class="mt-2 text-gray-400">Delete any rule with the &times; next to it; deleting only affects that
-    schema. Review and manage every dataset's saved rules anytime in <b>Workspace &rarr; Memory</b>.</p>`,
+    <p class="mt-2 text-gray-400">Don't know what to write? Click <b>&#10024; Suggest steps for me</b> &mdash; the
+    AI reads this run's actual issues and proposes steps; save the ones that look right with one click.</p>
+    <p class="mt-2 text-gray-400">Each saved step has inline <b>&#9998; edit</b> and <b>&#128465; delete</b>
+    (no pop-ups). After you add, edit or remove a step the report is marked out-of-date &mdash; click
+    <b>&#128260; Apply changes &amp; refresh report</b> to re-run with the current steps (batched, so add several
+    then apply once). Saved steps also auto-apply on every future run of a matching dataset.</p>
+    <p class="mt-2 text-gray-400"><b>Self-healing:</b> if a run can't apply your steps (a key column exists on
+    only one side, or a saved step names a column that isn't in this file), the report offers
+    <b>&#128295; Let the agent propose a fix</b> / a corrected step &mdash; one click applies it and re-runs.</p>
+    <p class="mt-2 text-gray-400">Steps are scoped per module &mdash; reconciliation steps apply to
+    Reconciliation / Cross Reference, Data Quality steps only to Data Quality, and general steps everywhere for
+    that schema. Review and manage every dataset's steps anytime in <b>Workspace &rarr; Memory</b>.</p>`,
   workspace: `<h3 class="font-semibold text-sky-300 mb-2">Workspace</h3>
     <p>Save reusable data sources and automate recurring analysis instead of re-uploading files by hand every
     time.</p>
