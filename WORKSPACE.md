@@ -10,7 +10,7 @@ Workspace is a multi-tenant automation platform built into the application. It l
 - Configure SLA thresholds and email alerts
 - Maintain a full audit trail of user activity
 
-All state is persisted in a SQLite database (`workspace.db`) by default, with MSSQL support for production deployments (`WORKSPACE_DB=mssql`).
+All state is persisted in a SQLite database (`workspace.db`) by default, with MSSQL support for production deployments (`WORKSPACE_DB=mssql`). On ephemeral-filesystem hosts these files must live on a persistent volume or they are lost on every deploy/restart — see **Persistence & Deployment** below.
 
 ## Architecture
 
@@ -167,7 +167,8 @@ All endpoints are under `/api/ws/*` and require authentication (resolved per the
 | Variable | Default | Purpose |
 |---|---|---|
 | `WORKSPACE_DB` | `sqlite` | Backend: `sqlite` or `mssql` |
-| `WORKSPACE_SQLITE_PATH` | `workspace.db` | SQLite file location |
+| `WORKSPACE_SQLITE_PATH` | `workspace.db` | SQLite file location — **point at a persistent volume in production** (see Persistence below) |
+| `FEEDBACK_STORE_PATH` | `feedback_rules.json` | Dataset Memory rule store location — **point at a persistent volume in production** (see Persistence below) |
 | `MSSQL_SERVER` / `MSSQL_DATABASE` | (unset) / `WorkspaceDB` | MSSQL host/database name |
 | `WORKSPACE_DEV_USER` | (unset) | Force a username for local dev |
 | `LOCAL_AUTH_ENABLED` | `false` | Enable local username/password login (session length is a fixed 8 hours, `workspace/local_auth.py:_SESSION_HOURS`) |
@@ -179,6 +180,32 @@ All endpoints are under `/api/ws/*` and require authentication (resolved per the
 | `SSO_ROLE_MAP` | `{}` | JSON mapping of AD group / SSO claim value → app role |
 | `OIDC_ENABLED` / `OIDC_ISSUER` / `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` / `OIDC_REDIRECT_URI` | (unset) | OIDC Authorization Code flow config |
 | `SAML_*` | (unset) | SAML config — see `workspace/saml_sso.py` (requires `python3-saml`) |
+
+## Persistence & Deployment (IMPORTANT)
+
+Two stores hold all durable state, and both default to a file on local disk:
+
+| Store | Default path | Env var | Holds |
+|---|---|---|---|
+| Workspace DB | `workspace.db` | `WORKSPACE_SQLITE_PATH` | connections, jobs, users, saved runs, history, audit |
+| Dataset Memory | `feedback_rules.json` | `FEEDBACK_STORE_PATH` | per-user, per-schema saved rules |
+
+**On an ephemeral-filesystem host (Railway, Render, Heroku, most containers) the
+local disk is rebuilt from Git on every deploy and wiped on every restart — so
+both stores are lost unless relocated onto a persistent volume.** This is the
+usual cause of "my saved rules / connections disappeared after a deploy."
+
+To make state durable on Railway:
+
+1. Add a **Volume** to the service, mounted at `/data`.
+2. Set env vars:
+   - `WORKSPACE_SQLITE_PATH=/data/workspace.db`
+   - `FEEDBACK_STORE_PATH=/data/feedback_rules.json`
+3. Redeploy. The app `mkdir -p`s the parent dir, so a fresh volume works with no manual step.
+
+For heavier production use, set `WORKSPACE_DB=mssql` (or point the app at a managed
+Postgres/MSSQL) instead of SQLite-on-a-volume. The Dataset Memory JSON store still
+needs the volume regardless of the Workspace DB backend.
 
 ## Security
 
