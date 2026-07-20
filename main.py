@@ -16838,6 +16838,14 @@ JSON schema (omit any key that is not needed):
     }}
   ],                                  // Use for "key on ISIN, else CUSIP, else SEDOL" style rules
                                       // where the identifier lives in a different column per row.
+  "computed_cols": [                  // derive a value from column arithmetic
+    {{
+      "side": "src|tgt|both",
+      "new_col": "notional",          // name of the derived column to create
+      "expr": "price * quantity"      // arithmetic over column names: + - * / % ** and ( )
+    }}                                 // ONLY column names, numbers and arithmetic -- no functions.
+  ],                                  // Use for "compute notional = price x quantity", then compare
+                                      // or key on the derived column.
   "transforms": [                     // value normalisation on existing columns
     {{
       "side": "src|tgt|both",
@@ -16934,6 +16942,37 @@ Key rules:
         return {"_llm_error": str(exc)}
 
 
+def _safe_arith_eval(expr: str, df: pd.DataFrame):
+    """Evaluate a column-arithmetic expression like 'price * quantity' or
+    '(bid + ask) / 2' against a DataFrame, SAFELY. Uses an AST whitelist --
+    only column names, numeric literals, and + - * / % ** and parentheses are
+    allowed. No function calls, attribute access, subscripts, or names other
+    than columns -- so it can never execute arbitrary code (never uses eval()).
+    Returns a numeric Series; raises ValueError on anything unsupported."""
+    import ast, operator
+    ops = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
+           ast.Div: operator.truediv, ast.Mod: operator.mod, ast.Pow: operator.pow}
+
+    def _ev(node):
+        if isinstance(node, ast.Expression):
+            return _ev(node.body)
+        if isinstance(node, ast.BinOp) and type(node.op) in ops:
+            return ops[type(node.op)](_ev(node.left), _ev(node.right))
+        if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.UAdd, ast.USub)):
+            v = _ev(node.operand)
+            return v if isinstance(node.op, ast.UAdd) else -v
+        if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+            return node.value
+        if isinstance(node, ast.Name):
+            col = next((c for c in df.columns if c.lower() == node.id.lower()), None)
+            if col is None:
+                raise ValueError(f"unknown column '{node.id}'")
+            return pd.to_numeric(df[col], errors="coerce")
+        raise ValueError("unsupported expression element")
+
+    return _ev(ast.parse(expr, mode="eval"))
+
+
 def _apply_recon_params(
     df: pd.DataFrame,
     agg: dict | None,
@@ -16943,6 +16982,7 @@ def _apply_recon_params(
     parse_cols: list[dict] | None = None,
     combine_cols: list[dict] | None = None,
     coalesce_cols: list[dict] | None = None,
+    computed_cols: list[dict] | None = None,
 ) -> pd.DataFrame:
 
     # Apply combine_cols (join columns), coalesce_cols (fallback identifier),
@@ -16996,6 +17036,22 @@ def _apply_recon_params(
             blank = result.isin(["", "nan", "None", "NaN"]) | result.isna()
             result = result.where(~blank, nxt)
         df[new_col] = result
+
+    # 0c. Computed columns -- a derived value from column arithmetic
+    #     (e.g. notional = price * quantity), evaluated with a SAFE AST
+    #     whitelist. Usable as a compared value or a key. Bad/unknown-column
+    #     expressions are skipped, never crash the run.
+    for cc in (computed_cols or []):
+        if cc.get("side") not in (side, "both"):
+            continue
+        new_col = cc.get("new_col", "")
+        expr = cc.get("expr", "")
+        if not new_col or not expr:
+            continue
+        try:
+            df[new_col] = _safe_arith_eval(expr, df)
+        except Exception:
+            continue
 
     # 1. Regex-based column extraction from free-text fields
     for pc in (parse_cols or []):
@@ -17265,18 +17321,21 @@ def _prepare_recon(src_df: pd.DataFrame, tgt_df: pd.DataFrame, params: dict):
     parse_cols   = params.get("parse_cols", []) or []
     combine_cols = params.get("combine_cols", []) or []
     coalesce_cols = params.get("coalesce_cols", []) or []
+    computed_cols = params.get("computed_cols", []) or []
     key_cols_raw = params.get("key_cols") or (
         [params["key_col"]] if params.get("key_col") else []
     )
     exclude = params.get("exclude", [])
 
-    # Apply combine_cols + coalesce_cols + parse_cols + col_map + transforms + agg
+    # Apply combine + coalesce + computed + parse_cols + col_map + transforms + agg
     src_df = _apply_recon_params(src_df, params.get("src_agg"), transforms, "src",
                                   col_map=col_map, parse_cols=parse_cols,
-                                  combine_cols=combine_cols, coalesce_cols=coalesce_cols)
+                                  combine_cols=combine_cols, coalesce_cols=coalesce_cols,
+                                  computed_cols=computed_cols)
     tgt_df = _apply_recon_params(tgt_df, params.get("tgt_agg"), transforms, "tgt",
                                   col_map=col_map, parse_cols=parse_cols,
-                                  combine_cols=combine_cols, coalesce_cols=coalesce_cols)
+                                  combine_cols=combine_cols, coalesce_cols=coalesce_cols,
+                                  computed_cols=computed_cols)
 
     # Align value columns so both sides share the same column name for comparison.
     # Priority: explicit src_value_col / tgt_value_col from params (LLM-extracted),
