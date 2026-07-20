@@ -16830,6 +16830,14 @@ JSON schema (omit any key that is not needed):
                                       // columns (First+Last, date parts, composite IDs)
                                       // that the other file holds in a single column --
                                       // create the combined column so the key aligns.
+  "coalesce_cols": [                  // FALLBACK identifier: first non-empty value wins
+    {{
+      "side": "src|tgt|both",         // side where the id is spread across columns
+      "source_cols": ["ISIN","CUSIP","SEDOL"],  // priority order -- first non-blank is used per row
+      "new_col": "instrument_id"      // name of the resolved column to create (then key on it)
+    }}
+  ],                                  // Use for "key on ISIN, else CUSIP, else SEDOL" style rules
+                                      // where the identifier lives in a different column per row.
   "transforms": [                     // value normalisation on existing columns
     {{
       "side": "src|tgt|both",
@@ -16934,12 +16942,14 @@ def _apply_recon_params(
     col_map: dict | None = None,
     parse_cols: list[dict] | None = None,
     combine_cols: list[dict] | None = None,
+    coalesce_cols: list[dict] | None = None,
 ) -> pd.DataFrame:
 
-    # Apply combine_cols (join columns), parse_cols (regex extraction), col_map
-    # rename, value transforms, and pre-aggregation before comparison.
+    # Apply combine_cols (join columns), coalesce_cols (fallback identifier),
+    # parse_cols (regex extraction), col_map rename, value transforms, and
+    # pre-aggregation before comparison.
 
-    # Order: combine_cols -> parse_cols -> col_map -> transforms -> agg
+    # Order: combine_cols -> coalesce_cols -> parse_cols -> col_map -> transforms -> agg
     # This order ensures derived columns exist before renaming/aggregation.
 
 
@@ -16963,6 +16973,29 @@ def _apply_recon_params(
         for a in actual[1:]:
             joined = joined.str.cat(df[a].astype(str).str.strip(), sep=sep)
         df[new_col] = joined.str.strip()
+
+    # 0b. Coalesce columns -- first non-empty value across a priority list of
+    #     columns into one new column (e.g. ISIN else CUSIP else SEDOL ->
+    #     instrument_id). The conditional/fallback identifier a single-key recon
+    #     needs when the id lives in different columns per row. Deterministic.
+    for cc in (coalesce_cols or []):
+        if cc.get("side") not in (side, "both"):
+            continue
+        srcs = cc.get("source_cols") or []
+        new_col = cc.get("new_col", "")
+        if not new_col or len(srcs) < 2:
+            continue
+        actual = [next((c for c in df.columns if c.lower() == s.lower()), None) for s in srcs]
+        actual = [a for a in actual if a is not None]
+        if not actual:
+            continue
+        result = df[actual[0]].astype(str).str.strip()
+        for a in actual[1:]:
+            nxt = df[a].astype(str).str.strip()
+            # Fill where the running result is still blank/NaN-like.
+            blank = result.isin(["", "nan", "None", "NaN"]) | result.isna()
+            result = result.where(~blank, nxt)
+        df[new_col] = result
 
     # 1. Regex-based column extraction from free-text fields
     for pc in (parse_cols or []):
@@ -17231,16 +17264,19 @@ def _prepare_recon(src_df: pd.DataFrame, tgt_df: pd.DataFrame, params: dict):
     col_map      = params.get("col_map", {}) or {}
     parse_cols   = params.get("parse_cols", []) or []
     combine_cols = params.get("combine_cols", []) or []
+    coalesce_cols = params.get("coalesce_cols", []) or []
     key_cols_raw = params.get("key_cols") or (
         [params["key_col"]] if params.get("key_col") else []
     )
     exclude = params.get("exclude", [])
 
-    # Apply combine_cols + parse_cols + col_map + transforms + agg to each side
+    # Apply combine_cols + coalesce_cols + parse_cols + col_map + transforms + agg
     src_df = _apply_recon_params(src_df, params.get("src_agg"), transforms, "src",
-                                  col_map=col_map, parse_cols=parse_cols, combine_cols=combine_cols)
+                                  col_map=col_map, parse_cols=parse_cols,
+                                  combine_cols=combine_cols, coalesce_cols=coalesce_cols)
     tgt_df = _apply_recon_params(tgt_df, params.get("tgt_agg"), transforms, "tgt",
-                                  col_map=col_map, parse_cols=parse_cols, combine_cols=combine_cols)
+                                  col_map=col_map, parse_cols=parse_cols,
+                                  combine_cols=combine_cols, coalesce_cols=coalesce_cols)
 
     # Align value columns so both sides share the same column name for comparison.
     # Priority: explicit src_value_col / tgt_value_col from params (LLM-extracted),
