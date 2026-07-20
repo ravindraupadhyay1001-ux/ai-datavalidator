@@ -19,15 +19,19 @@ GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 # Accept either name -- the Settings page writes GEMINI_API_KEY while env-var
 # setups often use GOOGLE_API_KEY; read both so Gemini works via either path.
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL") or os.getenv("GEMINI_MODEL_ID", "gemini-1.5-flash")
+# gemini-1.5-flash is retired (404 on v1beta); gemini-2.0-flash is the current
+# free-tier fast model.
+GEMINI_MODEL = os.getenv("GEMINI_MODEL") or os.getenv("GEMINI_MODEL_ID", "gemini-2.0-flash")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL_ID", "claude-opus-4-8")
 # OpenRouter -- OpenAI-compatible gateway with a free tier; a good fallback
-# when the Groq free quota is exhausted. Default to a free model (":free").
+# when the Groq free quota is exhausted. Free model availability changes over
+# time (some ":free" slugs become paid) -- override OPENROUTER_MODEL with any
+# current free model from https://openrouter.ai/models?max_price=0 if needed.
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")
 
 AI_CONFIGURED = bool(MODEL_ID or GROQ_API_KEY or GOOGLE_API_KEY or OPENAI_API_KEY or ANTHROPIC_API_KEY or OPENROUTER_API_KEY)
 TOOL_CALLING_CONFIGURED = bool(GROQ_API_KEY or OPENAI_API_KEY or OPENROUTER_API_KEY)

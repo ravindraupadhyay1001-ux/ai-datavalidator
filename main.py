@@ -333,9 +333,9 @@ async def get_settings(request: Request):
             # Groq
             "groq_model_id": os.getenv("GROQ_MODEL_ID", "llama-3.3-70b-versatile"),
             # OpenRouter (free-tier fallback)
-            "openrouter_model_id": os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free"),
+            "openrouter_model_id": os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free"),
             # Gemini
-            "gemini_model_id": os.getenv("GEMINI_MODEL_ID", "gemini-1.5-flash"),
+            "gemini_model_id": os.getenv("GEMINI_MODEL") or os.getenv("GEMINI_MODEL_ID", "gemini-2.0-flash"),
             # OpenAI
             "openai_model_id": os.getenv("OPENAI_MODEL_ID", "gpt-4o-mini"),
             # Anthropic direct
