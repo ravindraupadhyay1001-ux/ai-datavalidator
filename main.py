@@ -13756,6 +13756,15 @@ JSON schema (omit any key that is not needed):
   "compare_fields": ["col_a","col_b"],  // columns to compare for conflicts (all common columns if omitted)
   "exclude_cols": ["col_c"],       // columns to exclude entirely
   "golden_source": "Source Name",  // which source is authoritative on conflicts (majority-wins if omitted)
+  "combine_cols": [                // JOIN columns into one (build a match key across sources)
+    {{"source_cols": ["First","Last"], "new_col": "Full Name", "sep": " "}}
+  ],
+  "coalesce_cols": [               // FALLBACK identifier: first non-empty wins
+    {{"source_cols": ["ISIN","CUSIP","SEDOL"], "new_col": "instrument_id"}}
+  ],
+  "computed_cols": [               // derived value from arithmetic (compare or key on it)
+    {{"new_col": "notional", "expr": "price * quantity"}}
+  ],
   "exception_rules": [             // custom exception handling beyond exact match
     {{
       "type": "tolerance",         // a numeric conflict within threshold is NOT counted as a conflict
@@ -13767,7 +13776,10 @@ JSON schema (omit any key that is not needed):
 }}
 
 Key rules:
-- key_col and every entry in compare_fields/exclude_cols must be one of the common columns listed above.
+- key_col and every entry in compare_fields/exclude_cols must be one of the common columns listed above,
+  OR a new_col created by combine_cols/coalesce_cols/computed_cols.
+- combine_cols/coalesce_cols/computed_cols are applied to EVERY source before matching, so their
+  source_cols must exist in the sources; after they run you may key/compare on the new_col.
 - golden_source must exactly match one of: {source_names}.
 - Add exception_rules ONLY when the user says small numeric differences across sources shouldn't count as conflicts (rounding, FX, precision).
 - Only include what you are confident about. Reply with ONLY valid JSON, no commentary."""
@@ -13808,6 +13820,23 @@ async def xref_run_llm(session_id: str, request: Request):
     saved_rules = _fp_get_rules(_xrl_username, fingerprint, module="xref")
     params = await asyncio.to_thread(_parse_xref_rules_to_params, saved_rules, [s[0] for s in sources], common_cols)
     llm_error = params.pop("_llm_error", None)
+
+    # Translate every source into an apple-to-apple shape before matching --
+    # same primitives as recon (combine/coalesce/computed), so a split name,
+    # fallback identifier or derived value can become the match key/field
+    # across sources. Reuses the tested _apply_recon_params (side forced to
+    # "both" since xref has no src/tgt sides).
+    _xf_combine = [{**c, "side": "both"} for c in (params.get("combine_cols") or [])]
+    _xf_coalesce = [{**c, "side": "both"} for c in (params.get("coalesce_cols") or [])]
+    _xf_computed = [{**c, "side": "both"} for c in (params.get("computed_cols") or [])]
+    if _xf_combine or _xf_coalesce or _xf_computed:
+        sources = [
+            (n, _apply_recon_params(df, None, [], "both", combine_cols=_xf_combine,
+                                    coalesce_cols=_xf_coalesce, computed_cols=_xf_computed))
+            for n, df in sources
+        ]
+        _log(f"Applied source transforms: {len(_xf_combine)} combine, "
+             f"{len(_xf_coalesce)} coalesce, {len(_xf_computed)} computed")
 
     key_col = params.get("key_col")
     compare_fields = params.get("compare_fields") or None
