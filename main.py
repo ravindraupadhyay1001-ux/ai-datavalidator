@@ -17455,6 +17455,14 @@ def _run_llm_recon_full(session_id: str, username: str = "default") -> dict | No
 
     diff = compare_dataframes(src_df, tgt_df, manual_keys, True, exclude, force_data_cols=force_data_cols)
     diff = _apply_exception_rules(diff, params.get("exception_rules") or [])
+    # Safety net: if the key uses every shared column there is nothing left to
+    # compare, so no value break can EVER appear and the report shows a
+    # confusing "0". Surface it (drives the recovery banner) instead of hiding it.
+    if manual_keys and not diff.get("data_columns"):
+        key_warning = ((key_warning + " ") if key_warning else "") + (
+            f"The key uses all {len(manual_keys)} shared column(s), so there are no columns left "
+            f"to compare -- no value breaks can appear (matches are all-or-nothing). Key on fewer "
+            f"columns (e.g. just the identifier) so the rest can be compared for differences.")
     mapping = analyze_mapping(src_df, tgt_df, base_name, cmp_name, None)
 
     new_session_id = str(uuid.uuid4())
