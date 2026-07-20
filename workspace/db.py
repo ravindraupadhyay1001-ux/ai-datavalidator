@@ -54,6 +54,11 @@ def _conn():
         )
     else:
         import sqlite3
+        # Ensure the parent dir exists so WORKSPACE_SQLITE_PATH can point at a
+        # fresh mounted volume (e.g. /data/workspace.db) without a manual mkdir.
+        _db_dir = os.path.dirname(_SQLITE_PATH)
+        if _db_dir:
+            os.makedirs(_db_dir, exist_ok=True)
         conn = sqlite3.connect(_SQLITE_PATH, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL;")

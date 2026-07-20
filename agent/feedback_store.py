@@ -67,6 +67,11 @@ def _load() -> dict:
 def _save(store: dict) -> None:
     global _cache
     _cache = store
+    # Ensure the parent dir exists so FEEDBACK_STORE_PATH can point at a fresh
+    # mounted volume (e.g. /data/feedback_rules.json) without a manual mkdir.
+    _dir = os.path.dirname(_STORE_PATH)
+    if _dir:
+        os.makedirs(_dir, exist_ok=True)
     with open(_STORE_PATH, "w", encoding="utf-8") as fh:
         json.dump(store, fh, indent=2, ensure_ascii=False)
 
