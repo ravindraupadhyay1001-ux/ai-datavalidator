@@ -16662,10 +16662,22 @@ async def chat(request: Request):
 
     context = _chat_contexts.get(session_id, {})
 
-    if context.get("mode") == "recon" and re.match(r"^(please\s+)?run\s*recon(ciliation)?[.!]?$", question, re.IGNORECASE):
+    # "run recon" intent -- detect it regardless of context so a lost session
+    # (server restarted / slept, wiping in-memory state) gets a clear message
+    # instead of falling through to the generic chat, where the LLM has no data
+    # and invents a misleading "no files loaded" reply.
+    _is_run_recon = bool(re.match(r"^(please\s+)?run\s*recon(ciliation)?[.!]?$", question, re.IGNORECASE))
+    if _is_run_recon and (context.get("mode") != "recon" or session_id not in _results_store):
+        return JSONResponse({"reply": (
+            "⚠️ Your reconciliation session has expired -- the server restarted and the loaded files "
+            "are no longer in memory. Please re-upload the two files and run Reconciliation again "
+            "(saved rules for this dataset will re-apply automatically)."
+        )})
+
+    if _is_run_recon and context.get("mode") == "recon":
         result = await asyncio.to_thread(_run_llm_recon_full, session_id, _chat_username)
         if result is None:
-            return JSONResponse({"reply": "I couldn't find both files for this session anymore -- please re-upload and try again."})
+            return JSONResponse({"reply": "I couldn't find both files for this session anymore -- please re-upload and run Reconciliation again."})
         c = result["counts"]
         n_rules = result.get("rules_applied", 0)
         if result.get("llm_error"):
