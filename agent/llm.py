@@ -104,13 +104,31 @@ def _ask_groq(messages, system=None):
 def _ask_gemini(messages, system=None):
     if not GOOGLE_API_KEY:
         raise RuntimeError("GOOGLE_API_KEY not configured.")
-    import google.generativeai as genai
-    genai.configure(api_key=GOOGLE_API_KEY)
-    model = genai.GenerativeModel(GEMINI_MODEL, system_instruction=system or None)
     convo = "\n\n".join(f"{m['role'].upper()}: {m['content']}" for m in messages)
-    resp = model.generate_content(
-        convo, generation_config={"max_output_tokens": 2000, "temperature": 0.2})
-    return resp.text
+    # Prefer the current `google-genai` SDK; fall back to the deprecated
+    # `google-generativeai` if only that is installed, so Gemini keeps working
+    # either way during the dependency transition.
+    try:
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=GOOGLE_API_KEY)
+        resp = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=convo,
+            config=types.GenerateContentConfig(
+                system_instruction=system or None,
+                max_output_tokens=2000,
+                temperature=0.2,
+            ),
+        )
+        return resp.text
+    except ImportError:
+        import google.generativeai as genai
+        genai.configure(api_key=GOOGLE_API_KEY)
+        model = genai.GenerativeModel(GEMINI_MODEL, system_instruction=system or None)
+        resp = model.generate_content(
+            convo, generation_config={"max_output_tokens": 2000, "temperature": 0.2})
+        return resp.text
 
 
 def _ask_openai(messages, system=None):
