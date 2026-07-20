@@ -228,7 +228,7 @@
           <span class="seg-btn" data-mode="ai" onclick="setCmpMode('ai')">&#9889; AI Copilot</span>
         </div>
         <button onclick="runReconciliation()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">&#10005; Run Reconciliation</button>
-        <span class="text-gray-500 text-xs" id="cmp-mode-help">Standard compare &mdash; match by key columns, show differences.</span>
+        <span class="text-gray-500 text-xs" id="cmp-mode-help">Standard &mdash; direct apple-to-apple match on auto-inferred keys, for files that already line up.</span>
       </div>
       <div id="cmp-out" class="mt-6"></div>
     </section>
@@ -1013,8 +1013,8 @@ function setCmpMode(mode){
   cmpMode = mode;
   document.querySelectorAll('#cmp-seg .seg-btn').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
   document.getElementById('cmp-mode-help').textContent = mode==='standard'
-    ? 'Standard compare — auto-inferred key columns, show differences.'
-    : 'AI Copilot — the LLM reads any saved rules for this schema, derives keys/exclusions/transforms, then reconciles and opens the chat for follow-up.';
+    ? 'Standard — direct apple-to-apple match on auto-inferred keys, for files that already line up.'
+    : 'AI Copilot — for misaligned/complex files: applies your saved rules (rename, combine/split, fallback & computed keys, tolerances) to translate both sides into an apple-to-apple match, then reconciles.';
 }
 function runReconciliation(){ return cmpMode==='standard' ? runCompare() : runCompareAI(); }
 
@@ -2465,6 +2465,10 @@ const HELP_CONTENT = {
   compare: `<h3 class="font-semibold text-sky-300 mb-2">Reconciliation</h3>
     <p>Compares two files (or two saved Workspace connections) and reports matched rows, rows only in one side,
     and modified rows with per-field diffs. Keys are auto-inferred if left blank.</p>
+    <p class="mt-2 text-gray-400"><b>Standard</b> is a direct apple-to-apple match &mdash; use it when both files
+    already line up on a shared key. <b>AI Copilot</b> is for misaligned or complex files: describe the differences
+    in plain English (rename, combine/split columns, fallback or computed keys, tolerances) and the agent
+    translates both sides into an apple-to-apple match, then reconciles &mdash; and remembers it for next time.</p>
     <p class="mt-2 text-gray-400">After a run, open <b>Adjust columns &amp; rerun</b> in the Summary tab to pick
     the join key or exclude columns and rerun in place.</p>
     <p class="mt-3 font-semibold text-sky-300">&#9889; AI Copilot &mdash; LLM-driven reconciliation</p>
