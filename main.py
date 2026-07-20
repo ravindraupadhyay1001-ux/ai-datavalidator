@@ -13675,6 +13675,61 @@ async def xref_analyze(request: Request):
     }))
 
 
+def _apply_xref_exception_rules(xr: dict, rules: list[dict]) -> dict:
+    """Post-process an analyze_cross_reference() result with tolerance rules --
+    the Cross Reference parallel of _apply_exception_rules. A numeric conflict
+    whose spread across the differing sources is within the allowed threshold is
+    moved out of 'conflicts' into a 'within_tolerance' bucket and no longer
+    counts toward conflict_count. Deterministic; the engine still computed the
+    values."""
+    tol = [r for r in (rules or []) if r.get("type") == "tolerance"]
+    conflicts = xr.get("conflicts") or []
+    if not tol or not conflicts:
+        return xr
+
+    def _within(field, values):
+        nums = []
+        for v in (values or {}).values():
+            if v in (None, ""):
+                continue
+            try:
+                nums.append(float(str(v).replace(",", "").strip()))
+            except Exception:
+                return False  # a non-numeric value -> tolerance can't apply
+        if len(nums) < 2:
+            return False
+        spread = max(nums) - min(nums)
+        for r in tol:
+            rc = str(r.get("column", "*"))
+            if rc != "*" and rc.lower() != str(field).lower():
+                continue
+            try:
+                thr = float(r.get("threshold"))
+            except (TypeError, ValueError):
+                continue
+            if str(r.get("mode", "pct")).lower() == "abs":
+                if spread <= thr:
+                    return True
+            else:
+                denom = max(abs(max(nums)), abs(min(nums)), 1e-9)
+                if (spread / denom) * 100 <= thr:
+                    return True
+        return False
+
+    kept, tolerated = [], []
+    for c in conflicts:
+        vals = c.get("source_values") or c.get("values") or {}
+        (tolerated if _within(c.get("field"), vals) else kept).append(c)
+
+    if tolerated:
+        xr["conflicts"] = kept
+        xr["within_tolerance"] = tolerated
+        if isinstance(xr.get("summary"), dict):
+            xr["summary"]["conflict_count"] = len(kept)
+            xr["summary"]["within_tolerance_count"] = len(tolerated)
+    return xr
+
+
 def _parse_xref_rules_to_params(rules: list[dict], source_names: list[str], common_cols: list[str]) -> dict:
     """Ask the LLM to read saved Cross Reference rules and turn them into
     analyze_cross_reference() execution parameters. Mirrors
@@ -13700,12 +13755,21 @@ JSON schema (omit any key that is not needed):
   "key_col": "col_name",           // the identifier column to match rows on across sources
   "compare_fields": ["col_a","col_b"],  // columns to compare for conflicts (all common columns if omitted)
   "exclude_cols": ["col_c"],       // columns to exclude entirely
-  "golden_source": "Source Name"   // which source is authoritative on conflicts (majority-wins if omitted)
+  "golden_source": "Source Name",  // which source is authoritative on conflicts (majority-wins if omitted)
+  "exception_rules": [             // custom exception handling beyond exact match
+    {{
+      "type": "tolerance",         // a numeric conflict within threshold is NOT counted as a conflict
+      "column": "amount",          // a compared column name, or "*" for all
+      "mode": "pct",               // "pct" (percentage spread) or "abs" (absolute spread)
+      "threshold": 1               // e.g. 1 = sources within 1% (pct) or 1.0 (abs) agree
+    }}
+  ]
 }}
 
 Key rules:
 - key_col and every entry in compare_fields/exclude_cols must be one of the common columns listed above.
 - golden_source must exactly match one of: {source_names}.
+- Add exception_rules ONLY when the user says small numeric differences across sources shouldn't count as conflicts (rounding, FX, precision).
 - Only include what you are confident about. Reply with ONLY valid JSON, no commentary."""
 
     try:
@@ -13769,6 +13833,12 @@ async def xref_run_llm(session_id: str, request: Request):
     for c in xr.get("conflicts", []):
         if "values" in c and "source_values" not in c:
             c["source_values"] = c.pop("values")
+    # Apply tolerance rules AFTER normalising to source_values (so within-
+    # tolerance numeric conflicts drop out of the conflict count).
+    xr = _apply_xref_exception_rules(xr, params.get("exception_rules") or [])
+    for c in xr.get("within_tolerance", []):
+        if "values" in c and "source_values" not in c:
+            c["source_values"] = c.pop("values")
     xr["summary"].setdefault("coverage_gap_count", sum(len(v) for v in xr.get("only_in", {}).values()))
     xr["summary"].setdefault("golden_source", xr.get("golden_source", "auto"))
 
@@ -13810,6 +13880,12 @@ async def xref_run_llm(session_id: str, request: Request):
         "sources": _cov_sources,
         "coverage_matrix": _cov_rows,
         "conflicts": _conflicts,
+        "within_tolerance": [
+            {"identifier": c["key"], "field": c["field"],
+             "values": c.get("source_values", c.get("values", {}))}
+            for c in xr.get("within_tolerance", [])
+        ],
+        "within_tolerance_count": _summary.get("within_tolerance_count", 0),
         "dataset_fingerprint": fingerprint,
         "elapsed": total_elapsed,
         "logs": proc_logs,

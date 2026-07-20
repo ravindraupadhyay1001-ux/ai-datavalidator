@@ -2358,6 +2358,14 @@ function renderXrefResult(data, t0){
         (c.golden_value?` <span class="text-gray-400">&rarr; golden:</span> <span class="text-emerald-400 font-semibold">${esc(c.golden_value)}</span>`:'')+
         `</div>`).join('')+`</div>` : '<div class="text-sm text-gray-500">No conflicts.</div>';
 
+  const withinTolHTML = (data.within_tolerance||[]).length ? `<details class="mt-4">
+      <summary class="cursor-pointer card rounded-lg p-2.5 text-sm font-semibold" style="background:rgba(16,185,129,.08)">&#10003; Within tolerance &mdash; sources differ but inside your allowed threshold, not counted as conflicts (${data.within_tolerance_count||data.within_tolerance.length})</summary>
+      <div class="mt-2 space-y-2 text-xs">${data.within_tolerance.slice(0,30).map(c=>`<div class="card rounded-lg p-2">
+        <b class="text-sky-300">${esc(c.identifier)}</b> &middot; ${esc(c.field)}<br>
+        ${Object.entries(c.values||{}).map(([src,v])=>`${esc(src)}=<span class="text-emerald-600">${esc(v)}</span>`).join(' &middot; ')}
+      </div>`).join('')}</div>
+    </details>` : '';
+
   const chips = [
     {label:'Which identifiers are missing from which sources?', q:'Which identifiers are missing from which sources, and does that look like a real gap?'},
     {label:'Explain the conflicts and which value to trust', q:'Explain the conflicts found and which value you would trust as golden, and why.'},
@@ -2365,7 +2373,7 @@ function renderXrefResult(data, t0){
   ];
   out.innerHTML = actionBar(data.session_id, t0!=null?((performance.now()-t0)/1000).toFixed(3):data.elapsed) + resultTabsShell('xref', [
     {key:'summary', label:'Summary', content: summaryHTML},
-    {key:'exceptions', label:`Conflicts (${(data.conflicts||[]).length})`, content: exceptionsHTML},
+    {key:'exceptions', label:`Conflicts (${(data.conflicts||[]).length})${data.within_tolerance_count?` &middot; ${data.within_tolerance_count} in tol.`:''}`, content: exceptionsHTML + withinTolHTML},
     {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('xref','xref', chips)},
     {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
   ], 'summary');
