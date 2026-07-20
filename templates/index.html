@@ -577,16 +577,23 @@
           <label class="text-xs text-gray-400">Provider</label>
           <select id="cfg-llm-provider" class="inp w-full mt-1 text-sm" onchange="showLlmProviderFields(this.value)">
             <option value="groq">Groq &mdash; free tier, no card required</option>
+            <option value="openrouter">OpenRouter &mdash; free tier, many models</option>
             <option value="gemini">Google Gemini</option>
             <option value="openai">OpenAI</option>
             <option value="anthropic">Anthropic Direct</option>
             <option value="bedrock">AWS Bedrock (Claude)</option>
           </select>
+          <div class="text-xs text-gray-500 mt-1">Any keys you set here are all used as automatic fallbacks &mdash; e.g. set both Groq and OpenRouter, and if Groq's free quota runs out the app falls back to OpenRouter automatically.</div>
         </div>
         <div id="llm-fields-groq" class="grid grid-cols-2 gap-3 text-sm">
           <div class="col-span-2 text-xs text-gray-500">Get a free key at <a href="https://console.groq.com/keys" target="_blank" class="text-sky-600 underline">console.groq.com/keys</a> &mdash; no credit card needed.</div>
           <div><label class="text-xs text-gray-400">Model ID</label><input id="cfg-llm-groqmodel" placeholder="llama-3.3-70b-versatile" class="inp w-full mt-1 text-sm"></div>
           <div><label class="text-xs text-gray-400">API Key</label><input id="cfg-llm-groqkey" type="password" class="inp w-full mt-1 text-sm"></div>
+        </div>
+        <div id="llm-fields-openrouter" class="hidden grid grid-cols-2 gap-3 text-sm">
+          <div class="col-span-2 text-xs text-gray-500">Get a free key at <a href="https://openrouter.ai/keys" target="_blank" class="text-sky-600 underline">openrouter.ai/keys</a>. Use a free model (ID ends in <code>:free</code>).</div>
+          <div><label class="text-xs text-gray-400">Model ID</label><input id="cfg-llm-openroutermodel" placeholder="meta-llama/llama-3.3-70b-instruct:free" class="inp w-full mt-1 text-sm"></div>
+          <div><label class="text-xs text-gray-400">API Key</label><input id="cfg-llm-openrouterkey" type="password" class="inp w-full mt-1 text-sm"></div>
         </div>
         <div id="llm-fields-gemini" class="hidden grid grid-cols-2 gap-3 text-sm">
           <div class="col-span-2 text-xs text-gray-500">Get a key at <a href="https://aistudio.google.com/apikey" target="_blank" class="text-sky-600 underline">aistudio.google.com/apikey</a>.</div>
@@ -3673,6 +3680,7 @@ async function loadSettings(){ const d=await fetch('/api/license/status').then(r
     set('cfg-llm-region', s.llm?.region);
     set('cfg-llm-profile', s.llm?.profile);
     set('cfg-llm-groqmodel', s.llm?.groq_model_id);
+    set('cfg-llm-openroutermodel', s.llm?.openrouter_model_id);
     set('cfg-llm-geminimodel', s.llm?.gemini_model_id);
     set('cfg-llm-openaimodel', s.llm?.openai_model_id);
     set('cfg-llm-anthropicmodel', s.llm?.anthropic_model_id);
@@ -3704,6 +3712,7 @@ async function saveAppSettings(){
   const body = {
     llm: { provider: v('cfg-llm-provider'), model_id: v('cfg-llm-model'), region: v('cfg-llm-region'), profile: v('cfg-llm-profile'),
       groq_model_id: v('cfg-llm-groqmodel'), groq_api_key: v('cfg-llm-groqkey'),
+      openrouter_model_id: v('cfg-llm-openroutermodel'), openrouter_api_key: v('cfg-llm-openrouterkey'),
       gemini_model_id: v('cfg-llm-geminimodel'), gemini_api_key: v('cfg-llm-geminikey'),
       openai_model_id: v('cfg-llm-openaimodel'), openai_api_key: v('cfg-llm-openaikey'),
       anthropic_model_id: v('cfg-llm-anthropicmodel'), anthropic_api_key: v('cfg-llm-anthropickey') },

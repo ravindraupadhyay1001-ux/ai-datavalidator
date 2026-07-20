@@ -332,6 +332,8 @@ async def get_settings(request: Request):
             "profile":    os.getenv("AWS_PROFILE", ""),
             # Groq
             "groq_model_id": os.getenv("GROQ_MODEL_ID", "llama-3.3-70b-versatile"),
+            # OpenRouter (free-tier fallback)
+            "openrouter_model_id": os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free"),
             # Gemini
             "gemini_model_id": os.getenv("GEMINI_MODEL_ID", "gemini-1.5-flash"),
             # OpenAI
@@ -403,6 +405,9 @@ async def save_settings(request: Request):
         if llm.get("anthropic_api_key"): _set("ANTHROPIC_API_KEY", llm["anthropic_api_key"])
         if llm.get("anthropic_model_id"): _set("ANTHROPIC_MODEL_ID",
 llm["anthropic_model_id"])
+        # OpenRouter (free-tier fallback when Groq is exhausted)
+        if llm.get("openrouter_api_key"): _set("OPENROUTER_API_KEY", llm["openrouter_api_key"])
+        if llm.get("openrouter_model_id"): _set("OPENROUTER_MODEL", llm["openrouter_model_id"])
 
 
     # Storage settings (client's own DB)
@@ -572,7 +577,7 @@ def _ask_llm(messages: list[dict], system: str = "",
     # wrong profile, etc.) doesn't take down every AI feature in the app.
     # Bedrock's native message format ({"content": [{"text": ...}]}) is used
     # by every caller of _ask_llm; the other providers want plain strings.
-    from agent.llm import LLM_PROVIDER, _ask_groq, _ask_gemini, _ask_openai, _ask_anthropic
+    from agent.llm import LLM_PROVIDER, _ask_groq, _ask_openrouter, _ask_gemini, _ask_openai, _ask_anthropic
 
     plain_messages = [
         {
@@ -581,7 +586,8 @@ def _ask_llm(messages: list[dict], system: str = "",
         }
         for m in messages
     ]
-    providers = [LLM_PROVIDER] + [p for p in ("groq", "gemini", "bedrock", "openai", "anthropic") if p != LLM_PROVIDER]
+    # OpenRouter sits right after Groq -- free fallback when Groq's quota runs out.
+    providers = [LLM_PROVIDER] + [p for p in ("groq", "openrouter", "gemini", "bedrock", "openai", "anthropic") if p != LLM_PROVIDER]
 
     errors: list[str] = []
     for provider in providers:
@@ -590,6 +596,8 @@ def _ask_llm(messages: list[dict], system: str = "",
                 return _ask_llm_bedrock(messages, system, _module, _call_type, _username)
             elif provider == "groq":
                 return _ask_groq(plain_messages, system)
+            elif provider == "openrouter":
+                return _ask_openrouter(plain_messages, system)
             elif provider == "gemini":
                 return _ask_gemini(plain_messages, system)
             elif provider == "openai":

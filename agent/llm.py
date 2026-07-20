@@ -22,9 +22,13 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL_ID", "claude-opus-4-8")
+# OpenRouter -- OpenAI-compatible gateway with a free tier; a good fallback
+# when the Groq free quota is exhausted. Default to a free model (":free").
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.3-70b-instruct:free")
 
-AI_CONFIGURED = bool(MODEL_ID or GROQ_API_KEY or GOOGLE_API_KEY or OPENAI_API_KEY or ANTHROPIC_API_KEY)
-TOOL_CALLING_CONFIGURED = bool(GROQ_API_KEY or OPENAI_API_KEY)
+AI_CONFIGURED = bool(MODEL_ID or GROQ_API_KEY or GOOGLE_API_KEY or OPENAI_API_KEY or ANTHROPIC_API_KEY or OPENROUTER_API_KEY)
+TOOL_CALLING_CONFIGURED = bool(GROQ_API_KEY or OPENAI_API_KEY or OPENROUTER_API_KEY)
 
 
 def _get_bedrock_client():
@@ -66,6 +70,18 @@ def _openai_client():
     return OpenAI(api_key=OPENAI_API_KEY), OPENAI_MODEL
 
 
+def _openrouter_client():
+    if not OPENROUTER_API_KEY:
+        return None
+    from openai import OpenAI
+    # Optional ranking headers OpenRouter recommends; harmless if generic.
+    return OpenAI(
+        api_key=OPENROUTER_API_KEY,
+        base_url="https://openrouter.ai/api/v1",
+        default_headers={"HTTP-Referer": "https://ai-datavalidator.com", "X-Title": "AI DataValidator"},
+    ), OPENROUTER_MODEL
+
+
 def _ask_groq(messages, system=None):
     """Groq's API is OpenAI-compatible, so the `openai` SDK works pointed
     at Groq's base URL — free tier, no separate SDK dependency needed."""
@@ -102,6 +118,19 @@ def _ask_openai(messages, system=None):
     return resp.choices[0].message.content
 
 
+def _ask_openrouter(messages, system=None):
+    """OpenRouter is OpenAI-compatible, so the `openai` SDK works pointed at
+    its base URL. Used as a free fallback when the Groq quota is exhausted."""
+    info = _openrouter_client()
+    if not info:
+        raise RuntimeError("OPENROUTER_API_KEY not configured.")
+    client, model = info
+    full = ([{"role": "system", "content": system}] if system else []) + messages
+    resp = client.chat.completions.create(
+        model=model, messages=full, max_tokens=2000, temperature=0.2)
+    return resp.choices[0].message.content
+
+
 def _ask_anthropic(messages, system=None):
     if not ANTHROPIC_API_KEY:
         raise RuntimeError("ANTHROPIC_API_KEY not configured.")
@@ -118,11 +147,13 @@ def _ask_anthropic(messages, system=None):
 _PROVIDERS = {
     "bedrock": _ask_bedrock,
     "groq": _ask_groq,
+    "openrouter": _ask_openrouter,
     "gemini": _ask_gemini,
     "openai": _ask_openai,
     "anthropic": _ask_anthropic,
 }
-_FALLBACK_ORDER = ["groq", "gemini", "bedrock", "openai", "anthropic"]
+# OpenRouter right after Groq -- the free fallback when Groq's quota runs out.
+_FALLBACK_ORDER = ["groq", "openrouter", "gemini", "bedrock", "openai", "anthropic"]
 
 
 def ask(messages, system=None):
@@ -152,15 +183,16 @@ def ask_safe(messages, system=None):
 def ask_with_tools(messages, tools, system=None):
     """Returns {"content": str|None, "tool_calls": [{"id","name","arguments"}]}
     from whichever tool-calling-capable provider (groq/openai) is configured."""
-    order = [p for p in ([LLM_PROVIDER] + _FALLBACK_ORDER) if p in ("groq", "openai")]
+    order = [p for p in ([LLM_PROVIDER] + _FALLBACK_ORDER) if p in ("groq", "openai", "openrouter")]
     seen = set()
     full = ([{"role": "system", "content": system}] if system else []) + messages
-    last_err = RuntimeError("No tool-calling-capable provider configured (need GROQ_API_KEY or OPENAI_API_KEY).")
+    last_err = RuntimeError("No tool-calling-capable provider configured (need GROQ_API_KEY, OPENROUTER_API_KEY or OPENAI_API_KEY).")
     for provider in order:
         if provider in seen:
             continue
         seen.add(provider)
-        info = _groq_client() if provider == "groq" else _openai_client()
+        info = _groq_client() if provider == "groq" else (
+            _openrouter_client() if provider == "openrouter" else _openai_client())
         if not info:
             continue
         client, model = info
