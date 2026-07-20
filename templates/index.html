@@ -393,7 +393,7 @@
         <button onclick="wsTab('conn')" class="ws-tab tab-btn tab-active px-3 py-1 rounded-lg">Connections</button>
         <button onclick="wsTab('savedconn')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Saved Connectors</button>
         <button onclick="wsTab('jobs')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Jobs</button>
-        <button onclick="wsTab('saved')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Saved Runs</button>
+        <button onclick="wsTab('saved')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Saved Reports</button>
         <button onclick="wsTab('memory')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Memory</button>
         <button onclick="wsTab('audit')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Audit</button>
       </div>
@@ -429,7 +429,10 @@
       </div>
       <div id="ws-savedconn" class="ws-panel hidden"><div id="cn-list"></div></div>
       <div id="ws-jobs" class="ws-panel hidden">
-        <div class="card rounded-xl p-4 mb-4 max-w-3xl grid grid-cols-2 gap-3 text-sm">
+        <div class="text-xs text-gray-500 mb-3">Reusable analysis automations &mdash; run on demand or on a schedule against Saved Connectors. Manage them all below (run, edit, history, delete).</div>
+        <details id="jb-new-details" class="mb-4">
+          <summary class="cursor-pointer btn rounded-lg px-3 py-1.5 text-sm font-medium inline-block list-none" style="list-style:none">&#10011; New job</summary>
+        <div class="card rounded-xl p-4 mt-3 max-w-3xl grid grid-cols-2 gap-3 text-sm">
           <input id="jb-name" placeholder="Job name" class="inp">
           <select id="jb-action" class="inp" onchange="onJbActionChange()">
             <option value="compare">compare</option>
@@ -495,9 +498,13 @@
             <a id="jb-cancel-edit" onclick="cancelJbEdit()" class="hidden text-xs text-gray-400 cursor-pointer hover:text-gray-200">Cancel edit</a>
           </div>
         </div>
+        </details>
+        <div class="text-xs font-semibold text-gray-400 mb-2">Your jobs</div>
         <div id="jb-list"></div>
       </div>
-      <div id="ws-saved" class="ws-panel hidden"><div id="sv-filter-note" class="text-xs text-gray-500 mb-2"></div><div id="sv-list"></div></div>
+      <div id="ws-saved" class="ws-panel hidden">
+        <div class="text-xs text-gray-500 mb-3">One-off analysis snapshots you saved from a results screen (via <b>Save to Workspace</b>) &mdash; download them as Excel later. These are not Jobs; for a job's past executions use its <b>History</b> button on the Jobs tab.</div>
+        <div id="sv-filter-note" class="text-xs text-gray-500 mb-2"></div><div id="sv-list"></div></div>
       <div id="ws-memory" class="ws-panel hidden">
         <div class="text-xs text-gray-500 mb-3">Everything the AI has been trained with, per dataset &mdash; rules you saved during analysis plus steps the AI learned on its own runs. Rules auto-apply whenever a matching dataset is analyzed. Edit or delete anything here, anytime.</div>
         <div id="mem-list"></div>
@@ -2606,9 +2613,10 @@ const HELP_CONTENT = {
     its config) for continuous streaming reconciliation. Turn on <b>Bulk (fan-out)</b> to run the same compare
     across many connection pairs at once (e.g. one per branch) on a single schedule, aggregated into one run.
     Add a notify email to get a report after every run.</p>
-    <p class="mt-2 font-semibold text-sky-300">Saved Runs</p>
-    <p class="text-gray-400">Persist a completed analysis session for later download (Excel) without rerunning
-    it.</p>
+    <p class="mt-2 font-semibold text-sky-300">Saved Reports</p>
+    <p class="text-gray-400">One-off analysis snapshots you saved from a results screen (via <b>Save to
+    Workspace</b>) for later Excel download &mdash; separate from Jobs. For a job's past executions, use its
+    <b>History</b> button on the Jobs tab.</p>
     <p class="mt-2 font-semibold text-sky-300">Memory</p>
     <p class="text-gray-400">Manage everything the AI has been trained with, per dataset &mdash; the rules you
     saved during analysis plus the steps the AI learned on its own AI runs. Add, edit or delete any rule here
@@ -3351,7 +3359,7 @@ async function loadJobs(){ const rows=await fetch('/api/ws/jobs').then(r=>r.json
     <span class="flex gap-2"><button onclick="runJob(${j.id})" class="btn rounded px-2 py-0.5 text-xs">Run</button>
     <button onclick="editJob(${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Edit</button>
     <button onclick="toggleJobHistory(${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">History</button>
-    <button onclick="wsTab('saved', ${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Saved Runs</button>
+    <button onclick="wsTab('saved', ${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Saved Reports</button>
     <button onclick="delJob(${j.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)}
     <div id="jb-hist-${j.id}" class="hidden card rounded-lg p-2 -mt-1 mb-2 text-xs"></div>
   `).join(''):'<div class="text-gray-500 text-sm">No jobs.</div>'; }
@@ -3485,6 +3493,7 @@ async function editJob(id){
   const j = await fetch(`/api/ws/jobs/${id}`).then(x=>x.json());
   if(j.detail){ toast(j.detail); return; }
   _jbEditingId = id;
+  const nd = document.getElementById('jb-new-details'); if(nd) nd.open = true;  // reveal the collapsed form
   document.getElementById('jb-name').value = j.name || '';
   document.getElementById('jb-action').value = j.action || 'compare';
   onJbActionChange();
@@ -3521,6 +3530,7 @@ function cancelJbEdit(){
   document.getElementById('jb-save-btn').textContent = 'Save';
   document.getElementById('jb-cancel-edit').classList.add('hidden');
   const status = document.getElementById('jb-ai-status'); if(status) status.textContent = '';
+  const nd = document.getElementById('jb-new-details'); if(nd) nd.open = false;  // collapse form, focus the list
 }
 async function jbAiSuggest(){
   const action = document.getElementById('jb-action').value;
