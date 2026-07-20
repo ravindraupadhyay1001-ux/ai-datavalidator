@@ -1124,7 +1124,8 @@ function copilotPanelHTML(prefix, context, chips){
         <div id="${prefix}-dc-feedback" class="text-xs mb-1"></div>
         <div id="${prefix}-dc-drift" class="text-xs mb-1"></div>
         <div id="${prefix}-dc-rules" class="text-xs space-y-1"></div>
-        ${_dcRerunAction(prefix, context) ? `<button onclick="${_dcRerunAction(prefix, context)}" class="btn rounded-lg px-2 py-1.5 text-xs mt-2 w-full font-medium">&#128260; Apply saved steps &amp; refresh report</button>` : ''}
+        ${_dcRerunAction(prefix, context) ? `<div id="${prefix}-dc-pending" class="text-xs text-amber-600 mt-2 mb-1 hidden">&#9888;&#65039; Steps changed since the last run &mdash; apply to refresh the report.</div>
+        <button id="${prefix}-dc-apply" onclick="_dcClearDirty('${prefix}');${_dcRerunAction(prefix, context)}" class="btn rounded-lg px-2 py-1.5 text-xs mt-1 w-full font-medium">&#128260; Apply saved steps &amp; refresh report</button>` : ''}
       </div>
     </div>
   </div>`;
@@ -2677,6 +2678,7 @@ async function applyDatasetControl(prefix, context){
   fb.innerHTML = `<span class="text-emerald-400">&check; ${esc(r.feedback||'Saved')}</span>`;
   inp.value='';
   renderDatasetControlRules(prefix, context, r.ctx_rules||[]);
+  _dcMarkDirty(prefix);
   // Apply view filters immediately where the view supports them (the quality
   // column table); for result-changing rules the "Re-run with saved rules
   // applied" button below re-computes the report.
@@ -2706,6 +2708,7 @@ async function rememberChatInsight(mid){
   }
   if(holder) holder.innerHTML = `<span class="text-emerald-400">&check; Remembered: ${esc(r.rule_text||'saved to Dataset Memory')}</span>`;
   renderDatasetControlRules(prefix, context, r.ctx_rules||[]);
+  _dcMarkDirty(prefix);
 }
 
 // ---------- AI-suggested cleanup steps (per-module, grounded in this run) ----
@@ -2751,7 +2754,8 @@ async function saveSuggestedStep(prefix, context, i){
   if(firstError) toast('❌ '+firstError);
   if(saved){
     loadDatasetControlRules(prefix, context);
-    toast(`✅ Saved ${saved} step${saved===1?'':'s'} to Dataset Memory — use "Re-run with saved rules applied" to see the effect.`);
+    _dcMarkDirty(prefix);
+    toast(`✅ Saved ${saved} step${saved===1?'':'s'} to Dataset Memory — click "Apply changes & refresh report" to see the effect.`);
   }
 }
 
@@ -2822,6 +2826,21 @@ async function loadDatasetControlRules(prefix, context){
     renderDatasetControlRules(prefix, context, r.ctx_rules||[]);
   }catch(e){}
 }
+// The report only reflects steps as of the last run -- adding/editing/deleting
+// a step doesn't auto-rerun (that would re-run the engine on every single edit).
+// Instead, flag the "Apply" button so the user knows the report is now stale.
+function _dcMarkDirty(prefix){
+  const note = document.getElementById(`${prefix}-dc-pending`);
+  const btn  = document.getElementById(`${prefix}-dc-apply`);
+  if(note) note.classList.remove('hidden');
+  if(btn){ btn.style.boxShadow = '0 0 0 2px rgba(217,119,6,.6)'; btn.textContent = '🔄 Apply changes & refresh report'; }
+}
+function _dcClearDirty(prefix){
+  const note = document.getElementById(`${prefix}-dc-pending`);
+  const btn  = document.getElementById(`${prefix}-dc-apply`);
+  if(note) note.classList.add('hidden');
+  if(btn){ btn.style.boxShadow = ''; }
+}
 // Schema-drift recovery: after an AI run, flag saved steps that reference a
 // column not in this file and let the agent propose the corrected step.
 async function checkDatasetDrift(prefix, context){
@@ -2848,6 +2867,7 @@ async function applyDriftFix(prefix, context, index, corrected, i){
   const row = document.getElementById(`${prefix}-drift-${i}`);
   if(row) row.outerHTML = `<div class="text-emerald-500 mb-1">&check; Fixed: ${esc(corrected)}</div>`;
   loadDatasetControlRules(prefix, context);
+  _dcMarkDirty(prefix);
   toast('✅ Step updated to match this file.');
 }
 async function saveDatasetControlEdit(prefix, context, index){
@@ -2856,12 +2876,14 @@ async function saveDatasetControlEdit(prefix, context, index){
   if(!val){ _dcCancel(prefix, context); return; }
   if(val !== (_dcRules[index]||'')){
     await J('POST', `/rules/${SESSION}/update`, {rule_index: index, rule: val});
+    _dcMarkDirty(prefix);
   }
   loadDatasetControlRules(prefix, context);
 }
 async function confirmDatasetControlDelete(prefix, context, index){
   await J('POST', `/rules/${SESSION}/delete`, {rule_index: index});
   loadDatasetControlRules(prefix, context);
+  _dcMarkDirty(prefix);
 }
 async function moveDatasetControlRule(prefix, context, pos, dir){
   const order = (_dcLast[prefix]||[]).map(r=>r.index);
