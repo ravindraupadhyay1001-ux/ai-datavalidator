@@ -31,7 +31,7 @@ ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL_ID", "claude-opus-4-8")
 # time (some ":free" slugs become paid) -- override OPENROUTER_MODEL with any
 # current free model from https://openrouter.ai/models?max_price=0 if needed.
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.2-3b-instruct:free")
 
 AI_CONFIGURED = bool(MODEL_ID or GROQ_API_KEY or GOOGLE_API_KEY or OPENAI_API_KEY or ANTHROPIC_API_KEY or OPENROUTER_API_KEY)
 TOOL_CALLING_CONFIGURED = bool(GROQ_API_KEY or OPENAI_API_KEY or OPENROUTER_API_KEY)

@@ -333,7 +333,7 @@ async def get_settings(request: Request):
             # Groq
             "groq_model_id": os.getenv("GROQ_MODEL_ID", "llama-3.3-70b-versatile"),
             # OpenRouter (free-tier fallback)
-            "openrouter_model_id": os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-chat-v3-0324:free"),
+            "openrouter_model_id": os.getenv("OPENROUTER_MODEL", "meta-llama/llama-3.2-3b-instruct:free"),
             # Gemini
             "gemini_model_id": os.getenv("GEMINI_MODEL") or os.getenv("GEMINI_MODEL_ID", "gemini-2.0-flash"),
             # OpenAI
@@ -16828,6 +16828,14 @@ async def chat(request: Request):
         return JSONResponse({"reply": f"Error: {exc}"}, status_code=500)
 
 
+# Cache of LLM-parsed recon params, keyed by a hash of the rules + schema.
+# Re-running with unchanged rules reuses the parsed params instead of making a
+# fresh LLM call every run -- the biggest source of free-tier token burn, since
+# a recon rule-parse is ~4k tokens. Cleared implicitly whenever rules change
+# (different hash). In-memory: lost on restart, which just means one re-parse.
+_recon_param_cache: dict = {}
+
+
 def _parse_recon_rules_to_params(rules: list[dict], src_cols: list[str], tgt_cols: list[str]) -> dict:
     # Ask the LLM to read the saved recon rules and return structured execution parameters.
     #
@@ -16841,6 +16849,14 @@ def _parse_recon_rules_to_params(rules: list[dict], src_cols: list[str], tgt_col
 
     if not rule_text.strip():
         return {}
+
+    import hashlib
+    _cache_key = hashlib.md5(
+        f"{rule_text}||{sorted(src_cols)}||{sorted(tgt_cols)}".encode("utf-8")
+    ).hexdigest()
+    _cached = _recon_param_cache.get(_cache_key)
+    if _cached is not None:
+        return dict(_cached)  # copy so callers mutating it don't corrupt the cache
 
     prompt = f"""You are a data reconciliation parameter extractor.
 
@@ -16984,6 +17000,7 @@ Key rules:
         if not result.get("key_cols") and result.get("key_col"):
             result["key_cols"] = [result["key_col"]]
 
+        _recon_param_cache[_cache_key] = dict(result)  # cache successful parses only
         return result
     except Exception as exc:
         # Surface the failure instead of silently running a plain compare --
