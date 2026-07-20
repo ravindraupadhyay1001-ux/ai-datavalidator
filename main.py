@@ -16869,6 +16869,14 @@ JSON schema (omit any key that is not needed):
 
 Key rules:
 - If a composite key is needed (e.g. InstrumentID + Side), list ALL parts in key_cols.
+- When the user names THE key (e.g. "the key is Full Name", "match on trade_id"), set key_cols
+  to EXACTLY those column(s) and nothing else -- do NOT pad it with other columns. If key_cols is
+  omitted the engine falls back to matching on ALL common columns, which leaves no columns to
+  compare and hides every value break, so an explicit single/short key is important.
+- If the user defines the key AS a combination (e.g. "my key is Full Name = First + Last",
+  "key on First plus Last"), emit BOTH: a combine_cols entry that builds the new column on the side
+  that has the parts, AND key_cols set to just that new column. The other side is expected to
+  already have that column.
 - Set fuzzy_fields (not key_cols) when the user asks for "fuzzy match", "approximate match", "similar
   values", "no exact key available", or names a field known to have typos/formatting differences
   across the two sources (e.g. "match on customer name even if spelled slightly differently").
