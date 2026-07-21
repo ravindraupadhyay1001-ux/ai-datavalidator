@@ -3004,13 +3004,27 @@ async function loadMemoryDatasets(){
     : '<div class="text-gray-500 text-sm">No dataset memory yet &mdash; rules you save during analysis (or that the AI learns during an AI run) will appear here.</div>';
 }
 let _memRules = {};
+let _memFp='', _memLabel='', _memList=[], _memEditIdx=null;
 async function openMemoryDataset(fp){
-  const box=document.getElementById('mem-list'), detail=document.getElementById('mem-detail');
   const r=await fetch(`/api/memory/${fp}/rules`).then(x=>x.json()).catch(()=>({rules:[]}));
+  _memFp=fp; _memLabel=r.label||fp; _memList=r.rules||[]; _memEditIdx=null;
+  _memRules={}; _memList.forEach(it=>_memRules[it.index]=it.rule);
+  _memPaint();
+}
+function _memPaint(){
+  const box=document.getElementById('mem-list'), detail=document.getElementById('mem-detail');
+  const fp=_memFp;
   box.classList.add('hidden'); detail.classList.remove('hidden');
-  _memRules = {};
-  (r.rules||[]).forEach(it=>_memRules[it.index]=it.rule);
-  const rules=(r.rules||[]).map(it=>{
+  const rules=_memList.map(it=>{
+    if(_memEditIdx===it.index){
+      // Inline edit -- no pop-up. Value set in JS below to survive quotes.
+      return `<div class="card rounded-lg p-2 mb-2 flex items-center gap-1">
+        <input id="mem-edit-input" class="inp flex-1 text-xs"
+               onkeydown="if(event.key==='Enter')saveMemoryEdit(${it.index});if(event.key==='Escape')_memCancelEdit()">
+        <button onclick="saveMemoryEdit(${it.index})" class="btn rounded px-2 text-xs">Save</button>
+        <button onclick="_memCancelEdit()" class="btn-ghost rounded px-2 text-xs">Cancel</button>
+      </div>`;
+    }
     let body;
     if(it.hints){
       body = `<div class="text-xs">${memCatBadge(it.category)}<span class="text-gray-500">Steps the AI learned on its last AI run:</span>
@@ -3020,14 +3034,14 @@ async function openMemoryDataset(fp){
     }
     return `<div class="card rounded-lg p-2 mb-2 flex items-start justify-between gap-2">${body}
       <span class="flex gap-1 shrink-0">
-        <button onclick="editMemoryRule('${fp}',${it.index})" class="text-sky-400 text-xs px-1" title="Edit">&#9998;</button>
+        ${it.hints?'':`<button onclick="_memStartEdit(${it.index})" class="text-sky-400 text-xs px-1" title="Edit">&#9998;</button>`}
         <button onclick="delMemoryRule('${fp}',${it.index})" class="text-red-400 text-xs px-1" title="Delete">&times;</button>
       </span></div>`;
   }).join('');
   detail.innerHTML = `
     <div class="flex items-center justify-between mb-3">
       <div><button onclick="loadMemoryDatasets()" class="btn-ghost rounded px-2 py-0.5 text-xs mr-2">&larr; Back</button>
-        <b>${esc(r.label||fp)}</b> <span class="text-gray-500 text-xs">${(r.rules||[]).length} rule${(r.rules||[]).length===1?'':'s'}</span></div>
+        <b>${esc(_memLabel)}</b> <span class="text-gray-500 text-xs">${_memList.length} rule${_memList.length===1?'':'s'}</span></div>
     </div>
     <div class="flex gap-1 mb-3">
       <input id="mem-add-input" placeholder="Add a rule in plain English, e.g. exclude the load_date column" class="inp flex-1 text-xs"
@@ -3036,7 +3050,13 @@ async function openMemoryDataset(fp){
       <button onclick="addMemoryRule('${fp}')" class="btn rounded-lg px-3 text-xs">Add</button>
     </div>
     ${rules || '<div class="text-gray-500 text-sm">No rules for this dataset.</div>'}`;
+  if(_memEditIdx!=null){
+    const ei=document.getElementById('mem-edit-input');
+    if(ei){ ei.value=_memRules[_memEditIdx]||''; ei.focus(); ei.select(); }
+  }
 }
+function _memStartEdit(index){ _memEditIdx=index; _memPaint(); }
+function _memCancelEdit(){ _memEditIdx=null; _memPaint(); }
 async function addMemoryRule(fp){
   const inp=document.getElementById('mem-add-input');
   const rule=inp.value.trim(); if(!rule) return;
@@ -3045,13 +3065,13 @@ async function addMemoryRule(fp){
   if(r.detail||r.error){ toast('❌ '+(r.detail||r.error)); return; }
   openMemoryDataset(fp);
 }
-async function editMemoryRule(fp, index){
-  const currentText=_memRules[index]||'';
-  const updated=prompt('Edit rule:', currentText);
-  if(updated==null || !updated.trim() || updated.trim()===currentText) return;
-  const r=await J('POST',`/api/memory/${fp}/rules/update`,{index, rule:updated.trim()});
+async function saveMemoryEdit(index){
+  const ei=document.getElementById('mem-edit-input');
+  const val=(ei?.value||'').trim();
+  if(!val || val===(_memRules[index]||'')){ _memCancelEdit(); return; }
+  const r=await J('POST',`/api/memory/${_memFp}/rules/update`,{index, rule:val});
   if(r.detail||r.error){ toast('❌ '+(r.detail||r.error)); return; }
-  openMemoryDataset(fp);
+  openMemoryDataset(_memFp);
 }
 async function delMemoryRule(fp, index){
   const r=await J('POST',`/api/memory/${fp}/rules/delete`,{index});
