@@ -18545,12 +18545,18 @@ async def dataset_controls_check_drift(session_id: str, request: Request):
     if not fp:
         return JSONResponse({"drift": []})
     all_rules = _fp_get_rules(username, fp)
-    # Context rules with their 1-based GLOBAL index (matches /rules/*/update).
+    # Only check rules that actually apply to THIS module, so e.g. a
+    # reconciliation rule ("Key on Customer Id") never leaks into the Data
+    # Quality panel's drift check. Recon-family rules apply only to
+    # Reconciliation / Cross Reference; general rules apply everywhere; and
+    # dc_{context}_ rules are that module's own.
     ctx_prefix = f"dc_{context}_"
+    _recon_ctx = context in ("compare", "lineage", "xref")
     ctx = [{"index": i + 1, "rule": r.get("rule", "")}
            for i, r in enumerate(all_rules)
            if r.get("category", "").startswith(ctx_prefix)
-           or r.get("category") in ("general", "recon_rule")]
+           or r.get("category") == "general"
+           or (_recon_ctx and r.get("category") in ("recon_rule", "recon_hints"))]
     if not ctx:
         return JSONResponse({"drift": []})
     dfs = stored.get("dataframes", [])
