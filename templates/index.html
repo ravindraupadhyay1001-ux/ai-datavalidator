@@ -2987,6 +2987,8 @@ const MEM_CATEGORIES = [
   ['dc_governance_rule','Governance only'],
   ['dc_profile_rule','Data Profile only'],
 ];
+// Remember the last-picked scope so it doesn't reset to General after each Add.
+let _memAddCat = 'general';
 function memCatBadge(cat){
   if(cat==='recon_hints') return `<span class="badge mr-1" style="background:rgba(126,34,206,.12);color:#7e22ce">&#129504; AI-learned</span>`;
   const label = cat.startsWith('dc_') ? cat.replace(/^dc_/,'').replace(/_/g,' ') : cat;
@@ -3046,7 +3048,7 @@ function _memPaint(){
     <div class="flex gap-1 mb-3">
       <input id="mem-add-input" placeholder="Add a rule in plain English, e.g. exclude the load_date column" class="inp flex-1 text-xs"
              onkeydown="if(event.key==='Enter')addMemoryRule('${fp}')">
-      <select id="mem-add-cat" class="inp text-xs">${MEM_CATEGORIES.map(([v,l])=>`<option value="${v}">${l}</option>`).join('')}</select>
+      <select id="mem-add-cat" class="inp text-xs" onchange="_memAddCat=this.value">${MEM_CATEGORIES.map(([v,l])=>`<option value="${v}" ${v===_memAddCat?'selected':''}>${l}</option>`).join('')}</select>
       <button onclick="addMemoryRule('${fp}')" class="btn rounded-lg px-3 text-xs">Add</button>
     </div>
     ${rules || '<div class="text-gray-500 text-sm">No rules for this dataset.</div>'}`;
@@ -3061,6 +3063,7 @@ async function addMemoryRule(fp){
   const inp=document.getElementById('mem-add-input');
   const rule=inp.value.trim(); if(!rule) return;
   const cat=document.getElementById('mem-add-cat').value;
+  _memAddCat=cat;  // persist the chosen scope across the re-render
   const r=await J('POST',`/api/memory/${fp}/rules/save`,{rule, category:cat});
   if(r.detail||r.error){ toast('❌ '+(r.detail||r.error)); return; }
   openMemoryDataset(fp);
