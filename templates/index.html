@@ -1282,10 +1282,10 @@ function renderCompareResult(data, t0, mode){
       ${stat('F2 dup rows', data.duplicates?.file2?.duplicate_rows??0, '#a855f7')}
     </div>
     <div id="cmp-history" class="mb-4"></div>
-    <details class="card rounded-xl p-4 text-sm">
+    ${mode==='ai' ? '' : `<details class="card rounded-xl p-4 text-sm">
       <summary class="cursor-pointer text-sky-700 font-semibold">&rarr; Adjust columns &amp; rerun</summary>
       <div class="mt-4">${allCols.length ? keyExcludeCheckboxes('cmp', allCols, data.keys||[]) : '<div class="text-xs text-gray-500">Rerun requires the original session (re-run the compare above first).</div>'}</div>
-    </details>`;
+    </details>`}`;
 
   const wf = data.waterfall || {};
   const topBroken = (wf.top_broken_cols && wf.top_broken_cols.length) ? wf.top_broken_cols.map(t=>[t.col,t.count]) : topBrokenColumns(data.modified);
