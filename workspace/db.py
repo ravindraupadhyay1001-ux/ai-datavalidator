@@ -399,6 +399,18 @@ def set_user_token_cap(username, cap):
     conn.commit()
 
 
+def list_users_with_expiry():
+    """Non-admin users that have an access-expiry set -- for the daily
+    expiry-reminder email job."""
+    cur = _conn().cursor()
+    cur.execute(
+        "SELECT username, display_name, email, role, access_expiry FROM ws_users "
+        "WHERE access_expiry IS NOT NULL AND access_expiry <> '' "
+        "AND COALESCE(role,'') <> 'admin'"
+    )
+    return _rows(cur)
+
+
 def get_user_access_expiry(username):
     cur = _conn().cursor()
     cur.execute(f"SELECT access_expiry FROM ws_users WHERE username={_ph()}", (username,))

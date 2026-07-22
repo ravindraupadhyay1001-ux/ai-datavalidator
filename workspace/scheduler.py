@@ -33,7 +33,53 @@ def start_scheduler():
         return _scheduler
     _scheduler = BackgroundScheduler(timezone="UTC")
     _scheduler.start()
+    # Daily 08:00 UTC: email users whose trial/subscription is about to end.
+    try:
+        _scheduler.add_job(send_expiry_reminders, CronTrigger(hour=8, minute=0, timezone="UTC"),
+                           id="expiry_reminders", replace_existing=True)
+    except Exception as e:
+        print(f"[scheduler] could not register expiry reminders: {e}")
     return _scheduler
+
+
+def send_expiry_reminders():
+    """Daily: email each user (and the admin) when their access expires in 3,
+    1, or 0 days. Best-effort -- silently skips if email isn't configured.
+    Needs an authenticated EMAIL_FROM domain to reach Gmail (see WORKSPACE.md)."""
+    from datetime import date
+    try:
+        users = db.list_users_with_expiry()
+    except Exception:
+        return
+    from_email = os.getenv("EMAIL_FROM", "")
+    admin_email = os.getenv("ADMIN_ALERT_EMAIL", "").strip() or from_email
+    for u in users:
+        exp = u.get("access_expiry")
+        try:
+            days = (date.fromisoformat(str(exp)[:10]) - date.today()).days
+        except Exception:
+            continue
+        if days not in (3, 1, 0):
+            continue
+        when = "today" if days == 0 else (f"in {days} day" + ("" if days == 1 else "s"))
+        name = u.get("display_name") or u.get("username")
+        to = (u.get("email") or "").strip()
+        if to:
+            html = (f"<p>Hi {name},</p><p>Your access to <b>AI DataValidator</b> "
+                    f"expires <b>{when}</b> (on {exp}). To keep using it, please contact your "
+                    f"administrator to renew your subscription.</p>")
+            try:
+                _deliver_email(to, from_email, f"[AI DataValidator] Your access expires {when}", html)
+            except Exception:
+                pass
+        if admin_email:
+            html_a = (f"<p>User <b>{u.get('username')}</b> ({to or 'no email'}) — access expires "
+                      f"<b>{when}</b> (on {exp}). Renew from Users &amp; Roles if appropriate.</p>")
+            try:
+                _deliver_email(admin_email, from_email,
+                               f"[Admin] {u.get('username')} access expires {when}", html_a)
+            except Exception:
+                pass
 
 
 def stop_scheduler():
