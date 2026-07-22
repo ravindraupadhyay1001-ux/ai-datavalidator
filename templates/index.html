@@ -739,6 +739,7 @@
       <button data-help="xref" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Cross Reference</button>
       <button data-help="memory" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Dataset Memory</button>
       <button data-help="workspace" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Workspace</button>
+      <button data-help="security" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">&#128274; Security &amp; Data</button>
       <button data-help="who" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Who Uses This</button>
       <button data-help="contact" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">&#128231; Contact</button>
       <button data-help="ask" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">&#129302; Ask AI</button>
@@ -2690,6 +2691,48 @@ const HELP_CONTENT = {
     anytime, without needing an active analysis session.</p>
     <p class="mt-2 font-semibold text-sky-300">Audit</p>
     <p class="text-gray-400">Live activity feed of every action taken in the workspace, for traceability.</p>`,
+  security: `<h3 class="text-lg font-bold grad-text mb-2">&#128274; Security &amp; Data Protection</h3>
+    <p>How your data is handled when you use this application &mdash; written for security and compliance reviewers.</p>
+    <div class="mt-3 card rounded-lg p-4" style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.25)">
+      <p class="font-semibold text-emerald-300 mb-1">&#9989; Your full dataset never leaves our engine</p>
+      <p class="text-gray-400">Every result &mdash; each reconciliation break, data-quality score, match, and profile
+      statistic &mdash; is computed on the application server by deterministic code. Your records (all rows and
+      values) are processed and stored only within the application's own infrastructure and are <b>never sent to
+      any AI model</b>. The AI only <i>authors rules</i> (turns your plain-English instructions into parameters);
+      it never computes the numbers.</p>
+    </div>
+    <p class="mt-4 font-semibold text-sky-300">What the AI Copilot can and can't see</p>
+    <p class="mt-1 text-gray-400">When you ask the Copilot about a result, it receives a <b>summary, not your rows</b>:</p>
+    <ul class="mt-1 ml-4 list-disc text-gray-400 space-y-0.5">
+      <li><b>Reconciliation</b> &mdash; aggregate counts (matched / added / removed / modified) plus column
+      samples that are <b>PII-masked first</b>.</li>
+      <li><b>Data Quality</b> &mdash; the score, grade, dimension percentages, rule names, and how many rows
+      failed &mdash; <b>not</b> the actual failing values.</li>
+      <li><b>Governance</b> &mdash; classification, which columns are PII (names/counts), regulatory frameworks
+      &mdash; never the values.</li>
+      <li>The failing values you see on screen and in the Excel export stay in your browser and on your own
+      server &mdash; they are never placed into the Copilot's prompt.</li>
+    </ul>
+    <p class="mt-4 font-semibold text-sky-300">PII masking before any sample is shared</p>
+    <p class="mt-1 text-gray-400">The only data-shaped thing ever sent to an AI provider is a handful of masked
+    column samples for schema mapping. A local scan redacts personal data first &mdash; e.g.
+    email &rarr; <code>j***@bank.com</code>, national ID &rarr; <code>***-**-1234</code>,
+    card &rarr; <code>****-****-****-1234</code>, IBAN &rarr; <code>GB12-****-****-7890</code>,
+    name &rarr; <code>[MASKED]</code>.</p>
+    <p class="mt-4 font-semibold text-sky-300">Enterprise / regulated-data mode</p>
+    <p class="mt-1 text-gray-400">Free AI tiers can be locked out entirely. In <b>governed mode</b> the app only
+    ever contacts an enterprise provider under a data-processing agreement (DPA) &mdash; <b>AWS Bedrock</b> inside
+    your own cloud tenancy, or OpenAI / Anthropic under a signed DPA with zero data retention. If none is
+    available, AI features fail closed rather than fall back to a free tier.</p>
+    <p class="mt-4 font-semibold text-sky-300">Access &amp; accountability</p>
+    <ul class="mt-1 ml-4 list-disc text-gray-400 space-y-0.5">
+      <li><b>Per-user isolation</b> &mdash; each user's workspace and saved rules are fully segregated.</li>
+      <li><b>Access control</b> &mdash; hashed passwords, role-based permissions, subscription-expiry enforcement.</li>
+      <li><b>Audit trail</b> &mdash; administrative actions are logged.</li>
+      <li><b>Right to erasure</b> &mdash; an administrator can purge a user's data or delete the account entirely.</li>
+    </ul>
+    <p class="mt-4 text-gray-400">A one-page <b>Data Handling &amp; AI Governance</b> summary is available for your
+    security team &mdash; ask your account contact.</p>`,
   who: `<h3 class="font-semibold text-sky-300 mb-2">Who Uses This</h3>
     <p>Built for Trade Operations, Risk/Quant, Compliance, Data Engineering, Middle Office, Fund Administration,
     and UAT/QA teams working with financial services data across trade, position, payments, and reference-data
