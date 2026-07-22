@@ -3783,8 +3783,16 @@ async function loadUsers(){
       <td>${u.is_blocked?'<span class="badge" style="background:#ef444422;color:#ef4444">Blocked</span>':'<span class="badge" style="background:#10b98122;color:#10b981">Active</span>'}</td>
       <td class="whitespace-nowrap">
         <button class="btn-ghost rounded px-2 py-0.5 text-xs" onclick="blockUser('${esc(u.username)}',${u.is_blocked?'false':'true'})">${u.is_blocked?'Unblock':'Block'}</button>
+        <button class="btn-ghost rounded px-2 py-0.5 text-xs text-amber-500" onclick="cleanUpUser('${esc(u.username)}')" title="Delete this user's connections, jobs, saved runs, history and Dataset Memory rules, but keep the account">Clean up</button>
         <button class="btn-ghost rounded px-2 py-0.5 text-xs text-red-400" onclick="deleteUserConfirm('${esc(u.username)}')">Delete</button>
       </td></tr>`).join('')+`</tbody></table></div>`;
+}
+async function cleanUpUser(username){
+  if(!confirm(`Clean up ALL workspace data and Dataset Memory rules for "${username}"?\n\nThis deletes their connections, jobs, saved runs, history and saved rules — but keeps the account. Cannot be undone.`)) return;
+  const r = await J('POST', `/api/ws/users/${encodeURIComponent(username)}/purge`, {});
+  if(r && r.detail){ toast('❌ '+r.detail); return; }
+  toast(`🧹 Cleaned up ${username}'s data.`);
+  loadUsers();
 }
 function _expiryBadge(expiry){
   if(!expiry) return '';

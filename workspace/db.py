@@ -471,6 +471,25 @@ def delete_user(username):
     conn.commit()
 
 
+def purge_user_data(username):
+    """Wipe a user's workspace DATA (connections, jobs, saved runs, history,
+    rulesets, token usage) but KEEP the account row and the audit trail --
+    for cleaning up a no-longer-active user without deleting the account.
+    Dataset Memory rules live in a separate JSON store; the caller clears
+    those via agent.feedback_store (delete_user_data)."""
+    conn = _conn()
+    cur = conn.cursor()
+    for table in (
+        "ws_connections", "ws_rulesets", "ws_jobs", "ws_run_history",
+        "ws_saved_runs", "ws_dq_history", "ws_recon_history", "ws_token_usage",
+    ):
+        try:
+            cur.execute(f"DELETE FROM {table} WHERE username={_ph()}", (username,))
+        except Exception:
+            pass
+    conn.commit()
+
+
 def count_local_users() -> int:
     """Count of users who have actually registered via local username/password
     auth (as opposed to being auto-provisioned by Windows Auth / SSO)."""

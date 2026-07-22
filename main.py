@@ -20417,6 +20417,25 @@ async def ws_set_user_blocked(username: str, request: Request):
     return JSONResponse({"ok": True, "blocked": blocked})
 
 
+@app.post("/api/ws/users/{username}/purge")
+async def ws_purge_user_data(username: str, request: Request):
+    """Clean up a user's workspace data (connections, rulesets, jobs, saved
+    runs, history, token usage) AND their Dataset Memory rules, but KEEP the
+    account. For a no-longer-active user you want to free up / reset without
+    deleting the account. Admin only."""
+    _ws_check()
+    caller = _ws_get_user(request)
+    caller_role = getattr(request.state, "role", None) or _ws_db.get_user_role(caller)
+    if caller_role != "admin":
+        raise HTTPException(403, "Admin access required.")
+    _ws_db.purge_user_data(username)
+    try:
+        _fp_delete_user(username)  # also wipe their Dataset Memory rules
+    except Exception:
+        pass
+    return JSONResponse({"ok": True})
+
+
 @app.delete("/api/ws/users/{username}")
 async def ws_delete_user(username: str, request: Request):
     """Permanently delete a user and everything scoped to them (connections,
