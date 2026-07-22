@@ -540,30 +540,16 @@
         </div>
       </div>
       <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid var(--primary)">
-        <div class="flex items-center justify-between mb-2">
+        <div class="flex items-center justify-between">
           <div class="flex items-center gap-3">
             <div class="settings-icon" style="background:linear-gradient(135deg,#2563eb,#38bdf8)">&#128101;</div>
-            <h3 class="settings-h">Users &amp; Roles</h3>
+            <div>
+              <h3 class="settings-h">Users &amp; Roles</h3>
+              <p class="text-xs text-gray-500 mt-0.5">Add users, set roles, subscriptions, token caps &amp; clean up data &mdash; opens in its own window.</p>
+            </div>
           </div>
-          <div class="flex gap-2">
-            <button onclick="toggleAddUser()" class="btn rounded-lg px-3 py-1 text-sm">&#10011; Add user</button>
-            <button onclick="loadUsers()" class="btn-ghost rounded-lg px-3 py-1 text-sm">Refresh</button>
-          </div>
+          <button onclick="openUsersModal()" class="btn rounded-lg px-3 py-1.5 text-sm whitespace-nowrap">Manage users &rarr;</button>
         </div>
-        <div id="add-user-form" class="hidden card rounded-lg p-3 mb-3 grid grid-cols-2 gap-2 text-sm">
-          <input id="au-username" placeholder="Username" class="inp">
-          <input id="au-name" placeholder="Display name (optional)" class="inp">
-          <input id="au-email" placeholder="Email (optional)" class="inp">
-          <input id="au-password" type="password" placeholder="Initial password (min 8 chars)" class="inp">
-          <select id="au-role" class="inp"><option value="analyst">Workspace User</option><option value="readonly">Run Only</option><option value="admin">Admin</option></select>
-          <input id="au-expiry" type="date" class="inp" title="Access until (blank = 7-day trial)">
-          <div class="col-span-2 flex gap-2">
-            <button onclick="createUser()" class="btn rounded-lg px-3 py-1">Create</button>
-            <button onclick="toggleAddUser()" class="btn-ghost rounded-lg px-3 py-1">Cancel</button>
-            <span class="text-xs text-gray-500 self-center">Leave "Access until" blank for the default 7-day trial.</span>
-          </div>
-        </div>
-        <div id="users-out" class="text-sm"></div>
       </div>
 
       <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid #16a34a">
@@ -709,6 +695,38 @@
 </template>
 
 <!-- Help Modal / User Guide -->
+<div id="users-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6" style="background:rgba(0,0,0,.65);backdrop-filter:blur(4px)">
+  <div class="card rounded-xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
+    <div class="flex items-center justify-between px-5 py-3 border-b border-[var(--line)]">
+      <div class="flex items-center gap-3">
+        <div class="settings-icon" style="background:linear-gradient(135deg,#2563eb,#38bdf8)">&#128101;</div>
+        <h3 class="settings-h">Users &amp; Roles</h3>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="toggleAddUser()" class="btn rounded-lg px-3 py-1 text-sm">&#10011; Add user</button>
+        <button onclick="loadUsers()" class="btn-ghost rounded-lg px-3 py-1 text-sm">Refresh</button>
+        <button onclick="closeUsersModal()" class="btn-ghost rounded-lg px-3 py-1 text-sm">&times; Close</button>
+      </div>
+    </div>
+    <div class="flex-1 overflow-auto p-5">
+      <div id="add-user-form" class="hidden card rounded-lg p-3 mb-3 grid grid-cols-2 gap-2 text-sm">
+        <input id="au-username" placeholder="Username" class="inp">
+        <input id="au-name" placeholder="Display name (optional)" class="inp">
+        <input id="au-email" placeholder="Email (optional)" class="inp">
+        <input id="au-password" type="password" placeholder="Initial password (min 8 chars)" class="inp">
+        <select id="au-role" class="inp"><option value="analyst">Workspace User</option><option value="readonly">Run Only</option><option value="admin">Admin</option></select>
+        <input id="au-expiry" type="date" class="inp" title="Access until (blank = 7-day trial)">
+        <div class="col-span-2 flex gap-2">
+          <button onclick="createUser()" class="btn rounded-lg px-3 py-1">Create</button>
+          <button onclick="toggleAddUser()" class="btn-ghost rounded-lg px-3 py-1">Cancel</button>
+          <span class="text-xs text-gray-500 self-center">Leave "Access until" blank for the default 7-day trial.</span>
+        </div>
+      </div>
+      <div id="users-out" class="text-sm"></div>
+    </div>
+  </div>
+</div>
+
 <div id="help-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6" style="background:rgba(0,0,0,.65);backdrop-filter:blur(4px)">
   <div class="card rounded-xl w-full max-w-4xl h-[80vh] flex overflow-hidden">
     <nav class="w-52 border-r border-[var(--line)] p-3 flex flex-col gap-1 text-sm overflow-auto">
@@ -2698,6 +2716,8 @@ function openHelpModal(){
   showHelpTab('overview');
 }
 function closeHelpModal(){ document.getElementById('help-modal').classList.add('hidden'); }
+function openUsersModal(){ document.getElementById('users-modal').classList.remove('hidden'); loadUsers(); }
+function closeUsersModal(){ document.getElementById('users-modal').classList.add('hidden'); document.getElementById('add-user-form')?.classList.add('hidden'); }
 function showHelpTab(key){
   document.querySelectorAll('.help-tab-btn').forEach(b=>b.classList.toggle('tab-active', b.dataset.help===key));
   const panels = document.getElementById('help-panels');
