@@ -13441,6 +13441,7 @@ async def preview_file(request: Request):
 
 @app.post("/xref")
 async def xref_analyze(request: Request):
+    _require_active_subscription(request)
 
     # Cross Reference endpoint -- receives N source files/connections,
     # runs analyze_cross_reference(), returns rendered results HTML.
@@ -14022,6 +14023,8 @@ def _quality_response_payload(q: dict, session_id: str, total_elapsed, proc_logs
 
 @app.post("/analyze")
 async def analyze(request: Request):
+    # Block the run if the user's free trial / subscription has expired.
+    _require_active_subscription(request)
     # --- Processing log ---
     _t0 = time.time()
     proc_logs: list[dict] = []
@@ -19419,7 +19422,7 @@ async def parse_file_page(request: Request):
 @app.post("/parse-file")
 
 async def parse_file_api(request: Request):
-
+    _require_active_subscription(request)
 
     # Accept one or more uploaded files, parse each into a structured DataFrame,
 
@@ -20280,12 +20283,40 @@ async def ws_me(request: Request):
 
     username = _ws_get_user(request)
 
+    _role = getattr(request.state, "role", None) or _ws_db.get_user_role(username)
+    try:
+        _sub = _ws_db.subscription_status(username, _role)
+    except Exception:
+        _sub = {"active": True, "expiry": None, "days_left": None, "state": "unlimited"}
     return JSONResponse({
         "username": username,
         "display_name": getattr(request.state, "display_name", username),
-        "role": getattr(request.state, "role", None) or _ws_db.get_user_role(username),
+        "role": _role,
         "hidden_modules": _ws_db.get_hidden_modules(),
+        "subscription": _sub,
     })
+
+
+def _require_active_subscription(request: Request) -> None:
+    """Block a run when the user's free trial / subscription has expired.
+    Admins and users with no expiry set are unlimited. Only enforced when the
+    workspace/local-auth layer is active (single-user local dev is unaffected)."""
+    if not _WS_ENABLED:
+        return
+    try:
+        username = _ws_resolve_username(request) or ""
+        if not username:
+            return
+        role = _ws_db.get_user_role(username)
+        sub = _ws_db.subscription_status(username, role)
+    except Exception:
+        return  # never let a subscription-check error break the app
+    if not sub.get("active", True):
+        raise HTTPException(
+            402,
+            f"Your access expired on {sub.get('expiry')}. Please contact your administrator "
+            f"to renew your subscription.",
+        )
 
 
 _MODULE_TAB_VALUES = {"compare", "quality", "profile", "governance", "parse", "xref"}
@@ -20346,6 +20377,27 @@ async def ws_set_user_role(username: str, request: Request):
         raise HTTPException(400, "You cannot remove your own admin access.")
     _ws_db.set_user_role(username, role)
     return JSONResponse({"ok": True})
+
+
+@app.put("/api/ws/users/{username}/expiry")
+async def ws_set_user_expiry(username: str, request: Request):
+    """Set/extend a user's access-expiry date (YYYY-MM-DD), or clear it for
+    unlimited access. Admin only."""
+    _ws_check()
+    caller = _ws_get_user(request)
+    caller_role = getattr(request.state, "role", None) or _ws_db.get_user_role(caller)
+    if caller_role != "admin":
+        raise HTTPException(403, "Admin access required.")
+    body = await request.json()
+    expiry = str(body.get("expiry", "")).strip()
+    if expiry:
+        try:
+            from datetime import date as _date
+            _date.fromisoformat(expiry[:10])  # validate format
+        except Exception:
+            raise HTTPException(400, "expiry must be a date in YYYY-MM-DD format (or empty to clear).")
+    _ws_db.set_user_access_expiry(username, expiry or None)
+    return JSONResponse({"ok": True, "expiry": expiry or None})
 
 
 @app.put("/api/ws/users/{username}/block")

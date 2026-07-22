@@ -3765,7 +3765,7 @@ async function loadUsers(){
   if(!users.length){ box.innerHTML='<span class="text-gray-500">No users yet.</span>'; return; }
   box.innerHTML=`<div style="overflow-x:auto"><table class="w-full"><thead class="text-gray-400 text-xs"><tr>
       <th class="text-left p-1">User</th><th class="text-left">Role</th><th class="text-left">Last active</th>
-      <th class="text-left">Tokens (mo.)</th><th class="text-left">Dataset Memory</th><th class="text-left">Status</th><th></th>
+      <th class="text-left">Tokens (mo.)</th><th class="text-left">Dataset Memory</th><th class="text-left">Access until</th><th class="text-left">Status</th><th></th>
     </tr></thead><tbody>`+
     users.map(u=>`<tr class="border-t border-[var(--line)]">
       <td class="p-1">${esc(u.display_name||u.username)}</td>
@@ -3775,11 +3775,29 @@ async function loadUsers(){
       <td class="text-xs text-gray-500">${esc(timeAgo(u.last_active))}</td>
       <td class="text-xs">${(u.tokens_this_month||0).toLocaleString()}</td>
       <td class="text-xs">${u.dataset_memory_count||0}</td>
+      <td class="whitespace-nowrap">${u.role==='admin'
+        ? '<span class="text-xs text-gray-500">unlimited</span>'
+        : `<input type="date" value="${esc((u.access_expiry||'').slice(0,10))}" class="inp text-xs" style="padding:2px 4px"
+             onchange="setUserExpiry('${esc(u.username)}',this.value)" title="Set access-expiry date (blank = unlimited)">
+           ${_expiryBadge(u.access_expiry)}`}</td>
       <td>${u.is_blocked?'<span class="badge" style="background:#ef444422;color:#ef4444">Blocked</span>':'<span class="badge" style="background:#10b98122;color:#10b981">Active</span>'}</td>
       <td class="whitespace-nowrap">
         <button class="btn-ghost rounded px-2 py-0.5 text-xs" onclick="blockUser('${esc(u.username)}',${u.is_blocked?'false':'true'})">${u.is_blocked?'Unblock':'Block'}</button>
         <button class="btn-ghost rounded px-2 py-0.5 text-xs text-red-400" onclick="deleteUserConfirm('${esc(u.username)}')">Delete</button>
       </td></tr>`).join('')+`</tbody></table></div>`;
+}
+function _expiryBadge(expiry){
+  if(!expiry) return '';
+  const days = Math.floor((new Date(expiry.slice(0,10)) - new Date(new Date().toDateString()))/86400000);
+  if(days < 0) return '<span class="badge ml-1" style="background:#ef444422;color:#ef4444">expired</span>';
+  if(days <= 3) return `<span class="badge ml-1" style="background:#f59e0b22;color:#b45309">${days}d left</span>`;
+  return `<span class="badge ml-1" style="background:#10b98122;color:#059669">${days}d</span>`;
+}
+async function setUserExpiry(username, expiry){
+  const r = await J('PUT', `/api/ws/users/${encodeURIComponent(username)}/expiry`, {expiry});
+  if(r && r.detail){ toast('❌ '+r.detail); return; }
+  toast(expiry ? `✅ Access set to ${expiry}` : '✅ Set to unlimited');
+  loadUsers();
 }
 async function setUserRole(username, role){
   const r = await J('PUT', `/api/ws/users/${encodeURIComponent(username)}/role`, {role});
@@ -3809,6 +3827,7 @@ const roleColor = {admin:'#f59e0b', analyst:'#38bdf8', readonly:'#94a3b8'};
   badge.className = 'mt-auto mx-3 mb-3 pt-3 text-xs border-t border-[var(--line)]';
   badge.innerHTML = `<span class="badge" style="background:${roleColor[CURRENT_ROLE]}22;color:${roleColor[CURRENT_ROLE]}">${esc(me.display_name||me.username)} &middot; ${esc(ROLE_LABELS[CURRENT_ROLE]||CURRENT_ROLE)}</span> <a href="/logout" class="text-gray-500 hover:text-gray-300 underline">Logout</a>`;
   document.getElementById('licbar').before(badge);
+  showSubscriptionStatus(me.subscription);
   if (CURRENT_ROLE === 'readonly') applyReadonlyUI();
   if (CURRENT_ROLE !== 'admin') {
     const settingsTab = document.querySelector('button[data-tab="settings"]');
@@ -3823,6 +3842,24 @@ const roleColor = {admin:'#f59e0b', analyst:'#38bdf8', readonly:'#94a3b8'};
   }
 }catch(e){} })();
 
+// User-facing trial/subscription status. Unlimited (admins / no expiry) shows
+// nothing; a set expiry shows days-left, and an expired account shows a clear
+// banner (the backend also blocks runs with a 402).
+function showSubscriptionStatus(sub){
+  if(!sub || sub.state === 'unlimited') return;
+  const bar = document.createElement('div');
+  bar.className = 'mx-3 mb-2 text-[11px] rounded px-2 py-1';
+  if(sub.state === 'expired'){
+    bar.style.cssText = 'background:rgba(239,68,68,.1);color:#dc2626';
+    bar.innerHTML = `&#9888;&#65039; <b>Your access expired on ${esc(sub.expiry||'')}.</b> Contact your administrator to renew.`;
+  }else{
+    const d = sub.days_left;
+    const warn = d <= 3;
+    bar.style.cssText = warn ? 'background:rgba(245,158,11,.12);color:#b45309' : 'background:rgba(2,132,199,.1);color:#0369a1';
+    bar.innerHTML = `${warn?'&#9888;&#65039; ':'&#128197; '}${d} day${d===1?'':'s'} left &mdash; access until <b>${esc(sub.expiry||'')}</b>.`;
+  }
+  document.getElementById('licbar').before(bar);
+}
 function applyReadonlyUI(){
   // "Run Only" role -- the backend rejects every /api/ws/* call except /me
   // for this role, so hide the Workspace tab and any write buttons entirely

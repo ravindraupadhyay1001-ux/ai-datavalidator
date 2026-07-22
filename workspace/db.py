@@ -76,6 +76,14 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+TRIAL_DAYS = int(os.getenv("TRIAL_DAYS", "7"))
+
+
+def _trial_expiry() -> str:
+    """Default access-expiry date for a new non-admin user: today + TRIAL_DAYS."""
+    return (datetime.now(timezone.utc) + timedelta(days=TRIAL_DAYS)).date().isoformat()
+
+
 def _b64(obj) -> str:
     return base64.b64encode(json.dumps(obj, default=str).encode("utf-8")).decode("ascii")
 
@@ -109,6 +117,9 @@ _DDL = [
     "ALTER TABLE ws_users ADD COLUMN role TEXT DEFAULT 'analyst'",
     # migration for pre-existing databases created before local username/password auth existed
     "ALTER TABLE ws_users ADD COLUMN password_hash TEXT",
+    # Subscription / free-trial: ISO date (YYYY-MM-DD) the user's access ends.
+    # NULL = unlimited (admins, and pre-existing users grandfathered in).
+    "ALTER TABLE ws_users ADD COLUMN access_expiry TEXT",
     """CREATE TABLE IF NOT EXISTS ws_connections (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL,
@@ -300,10 +311,12 @@ def ensure_user(username, display_name=None, email=None):
         cur.execute("SELECT COUNT(*) FROM ws_users")
         is_first = list(cur.fetchall())[0][0] == 0
         role = "admin" if username.lower() in _FORCED_ADMINS else ("readonly" if is_first else "analyst")
+        # Non-admins get a free trial by default; admins are unlimited (NULL).
+        expiry = None if role == "admin" else _trial_expiry()
         cur.execute(
-            f"INSERT INTO ws_users (username, display_name, email, role, created_at) "
-            f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
-            (username, display_name or username, email or "", role, _now()),
+            f"INSERT INTO ws_users (username, display_name, email, role, created_at, access_expiry) "
+            f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
+            (username, display_name or username, email or "", role, _now(), expiry),
         )
         conn.commit()
     elif username.lower() in _FORCED_ADMINS:
@@ -360,9 +373,48 @@ def list_users():
     cur = _conn().cursor()
     cur.execute(
         "SELECT username, display_name, email, role, created_at, last_active, "
-        "COALESCE(is_blocked, 0) AS is_blocked FROM ws_users ORDER BY created_at ASC"
+        "access_expiry, COALESCE(is_blocked, 0) AS is_blocked FROM ws_users ORDER BY created_at ASC"
     )
     return _rows(cur)
+
+
+def get_user_access_expiry(username):
+    cur = _conn().cursor()
+    cur.execute(f"SELECT access_expiry FROM ws_users WHERE username={_ph()}", (username,))
+    rows = _rows(cur)
+    return (rows[0].get("access_expiry") if rows else None) or None
+
+
+def set_user_access_expiry(username, expiry):
+    """expiry: 'YYYY-MM-DD' string, or None/'' to clear (unlimited)."""
+    conn = _conn()
+    conn.cursor().execute(
+        f"UPDATE ws_users SET access_expiry={_ph()} WHERE username={_ph()}",
+        ((expiry or None), username),
+    )
+    conn.commit()
+
+
+def subscription_status(username, role=None):
+    """Returns {active, expiry, days_left, state} for a user. Admins and users
+    with no expiry set are unlimited. state: unlimited | active | expired."""
+    from datetime import date
+    if role is None:
+        role = get_user_role(username)
+    expiry = get_user_access_expiry(username)
+    if role == "admin" or not expiry:
+        return {"active": True, "expiry": expiry, "days_left": None, "state": "unlimited"}
+    try:
+        exp = date.fromisoformat(expiry[:10])
+    except Exception:
+        return {"active": True, "expiry": expiry, "days_left": None, "state": "unlimited"}
+    days = (exp - date.today()).days
+    return {
+        "active": days >= 0,
+        "expiry": exp.isoformat(),
+        "days_left": days,
+        "state": "active" if days >= 0 else "expired",
+    }
 
 
 def get_user_by_username_or_email(identifier):
@@ -447,10 +499,11 @@ def create_local_user(username, password_hash, full_name="", email=""):
         raise ValueError(f"Username '{username}' is already taken.")
     is_first = count_local_users() == 0
     role = "admin" if username.lower() in _FORCED_ADMINS else ("readonly" if is_first else "analyst")
+    expiry = None if role == "admin" else _trial_expiry()
     cur.execute(
-        f"INSERT INTO ws_users (username, display_name, email, role, created_at, password_hash) "
-        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
-        (username, full_name or username, email or "", role, _now(), password_hash),
+        f"INSERT INTO ws_users (username, display_name, email, role, created_at, password_hash, access_expiry) "
+        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
+        (username, full_name or username, email or "", role, _now(), password_hash, expiry),
     )
     conn.commit()
 
