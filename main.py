@@ -20297,6 +20297,15 @@ async def ws_me(request: Request):
     })
 
 
+def _audit_admin(caller: str, action: str, detail: str) -> None:
+    """Record an admin user-management action in the workspace audit trail --
+    who did what to whom. Best-effort; never breaks the action if it fails."""
+    try:
+        _ws_db.insert_audit(caller or "admin", action, detail)
+    except Exception:
+        pass
+
+
 def _require_active_subscription(request: Request) -> None:
     """Block a run when the user's free trial / subscription has expired.
     Admins and users with no expiry set are unlimited. Only enforced when the
@@ -20376,6 +20385,7 @@ async def ws_set_user_role(username: str, request: Request):
     if username == caller and role != "admin":
         raise HTTPException(400, "You cannot remove your own admin access.")
     _ws_db.set_user_role(username, role)
+    _audit_admin(caller, "user_role_changed", f"{username} -> role {role}")
     return JSONResponse({"ok": True})
 
 
@@ -20397,6 +20407,7 @@ async def ws_set_user_expiry(username: str, request: Request):
         except Exception:
             raise HTTPException(400, "expiry must be a date in YYYY-MM-DD format (or empty to clear).")
     _ws_db.set_user_access_expiry(username, expiry or None)
+    _audit_admin(caller, "user_expiry_changed", f"{username} -> access until {expiry or 'unlimited'}")
     return JSONResponse({"ok": True, "expiry": expiry or None})
 
 
@@ -20414,6 +20425,7 @@ async def ws_set_user_blocked(username: str, request: Request):
     body = await request.json()
     blocked = bool(body.get("blocked", True))
     _ws_db.set_user_blocked(username, blocked)
+    _audit_admin(caller, "user_blocked" if blocked else "user_unblocked", username)
     return JSONResponse({"ok": True, "blocked": blocked})
 
 
@@ -20433,6 +20445,7 @@ async def ws_purge_user_data(username: str, request: Request):
         _fp_delete_user(username)  # also wipe their Dataset Memory rules
     except Exception:
         pass
+    _audit_admin(caller, "user_data_cleaned", username)
     return JSONResponse({"ok": True})
 
 
@@ -20453,6 +20466,7 @@ async def ws_delete_user(username: str, request: Request):
         _fp_delete_user(username)
     except Exception:
         pass
+    _audit_admin(caller, "user_deleted", username)
     return JSONResponse({"ok": True})
 
 
