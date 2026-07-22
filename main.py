@@ -13784,6 +13784,8 @@ JSON schema (omit any key that is not needed):
 }}
 
 Key rules:
+- The rules are ordered oldest-to-newest; if two conflict or set the same thing, the LATER (newer)
+  one wins -- apply the most recent and ignore the earlier conflicting rule.
 - key_col and every entry in compare_fields/exclude_cols must be one of the common columns listed above,
   OR a new_col created by combine_cols/coalesce_cols/computed_cols.
 - combine_cols/coalesce_cols/computed_cols are applied to EVERY source before matching, so their
@@ -16865,8 +16867,14 @@ Given the user rules and two file schemas, produce ONLY a JSON object with execu
 SOURCE columns: {src_cols}
 TARGET columns: {tgt_cols}
 
-User rules:
+User rules (listed OLDEST first, NEWEST last):
 {rule_text}
+
+PRECEDENCE: the rules are ordered oldest-to-newest. If two rules conflict or set the SAME
+thing (e.g. two different keys like "key on Customer Id" then later "key on Full Name", or a
+column renamed two different ways), the LATER (newer, further down the list) rule WINS -- apply
+the most recent instruction and ignore the earlier conflicting one. Non-conflicting rules all
+still apply.
 
 JSON schema (omit any key that is not needed):
 {{
