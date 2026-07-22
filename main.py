@@ -13848,6 +13848,17 @@ async def xref_run_llm(session_id: str, request: Request):
         _log(f"Applied source transforms: {len(_xf_combine)} combine, "
              f"{len(_xf_coalesce)} coalesce, {len(_xf_computed)} computed")
 
+    # User input first: an explicitly-named key overrides the LLM's guess here
+    # too. Candidates include derived columns; the newest key rule wins.
+    _xf_cols = sorted({c for _, df in sources for c in list(df.columns)})
+    _forced = _enforce_explicit_key(
+        {"key_cols": [params["key_col"]] if params.get("key_col") else [],
+         "combine_cols": params.get("combine_cols"), "coalesce_cols": params.get("coalesce_cols"),
+         "computed_cols": params.get("computed_cols")},
+        saved_rules, _xf_cols, _xf_cols)
+    if _forced.get("key_cols"):
+        params["key_col"] = _forced["key_cols"][0]
+
     key_col = params.get("key_col")
     compare_fields = params.get("compare_fields") or None
     exclude_cols = set(params.get("exclude_cols") or [])
@@ -16830,6 +16841,38 @@ async def chat(request: Request):
         return JSONResponse({"reply": f"Error: {exc}"}, status_code=500)
 
 
+def _enforce_explicit_key(result: dict, rules: list, src_cols: list, tgt_cols: list) -> dict:
+    """USER INPUT FIRST: if a rule explicitly names the key, force key_cols to
+    exactly those column(s), overriding whatever the LLM inferred (it sometimes
+    pads the key with every column). Newest key rule wins -- rules are stored
+    oldest-first, so scan in reverse. Only real columns (existing OR created by
+    combine/coalesce/computed) are eligible, and an over-broad match (>4 cols)
+    is ignored as ambiguous rather than risk a wrong key."""
+    if not isinstance(result, dict) or result.get("_llm_error"):
+        return result
+    import re as _re
+    derived = {c.get("new_col", "") for grp in ("combine_cols", "coalesce_cols", "computed_cols")
+               for c in (result.get(grp) or []) if isinstance(c, dict) and c.get("new_col")}
+    candidates = sorted({c for c in list(src_cols) + list(tgt_cols) + list(derived) if c},
+                        key=len, reverse=True)  # longest first so "Full Name" beats "Name"
+    key_re = _re.compile(r'\b(key|lookup\s+key|match\s+on)\b', _re.IGNORECASE)
+    for r in reversed([x for x in rules if x.get("category") not in ("recon_hints",)]):
+        txt = str(r.get("rule", ""))
+        if not key_re.search(txt):
+            continue
+        found = []
+        for c in candidates:
+            if _re.search(r'(?<![A-Za-z0-9])' + _re.escape(c) + r'(?![A-Za-z0-9])', txt, _re.IGNORECASE):
+                # skip a shorter name already covered by a longer picked one
+                if not any(c.lower() in p.lower() for p in found):
+                    found.append(c)
+        if found and len(found) <= 4:
+            result["key_cols"] = found
+            result.pop("key_col", None)
+            return result
+    return result
+
+
 # Cache of LLM-parsed recon params, keyed by a hash of the rules + schema.
 # Re-running with unchanged rules reuses the parsed params instead of making a
 # fresh LLM call every run -- the biggest source of free-tier token burn, since
@@ -16856,7 +16899,7 @@ def _parse_recon_rules_to_params(rules: list[dict], src_cols: list[str], tgt_col
     # _PROMPT_VER bumps whenever the parser prompt changes, so cached results
     # from an older prompt don't mask an improvement (e.g. the "exact key, don't
     # pad" and precedence rules). Bump it on any prompt edit below.
-    _PROMPT_VER = "v3-exactkey-precedence"
+    _PROMPT_VER = "v4-explicit-key-override"
     _cache_key = hashlib.md5(
         f"{_PROMPT_VER}||{rule_text}||{sorted(src_cols)}||{sorted(tgt_cols)}".encode("utf-8")
     ).hexdigest()
@@ -17011,6 +17054,9 @@ Key rules:
         # Normalise: if key_cols not set but key_col is, promote it
         if not result.get("key_cols") and result.get("key_col"):
             result["key_cols"] = [result["key_col"]]
+
+        # User input first: an explicitly-named key overrides the LLM's guess.
+        result = _enforce_explicit_key(result, rules, src_cols, tgt_cols)
 
         _recon_param_cache[_cache_key] = dict(result)  # cache successful parses only
         return result
