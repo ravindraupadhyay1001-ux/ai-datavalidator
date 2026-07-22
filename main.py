@@ -16853,8 +16853,12 @@ def _parse_recon_rules_to_params(rules: list[dict], src_cols: list[str], tgt_col
         return {}
 
     import hashlib
+    # _PROMPT_VER bumps whenever the parser prompt changes, so cached results
+    # from an older prompt don't mask an improvement (e.g. the "exact key, don't
+    # pad" and precedence rules). Bump it on any prompt edit below.
+    _PROMPT_VER = "v3-exactkey-precedence"
     _cache_key = hashlib.md5(
-        f"{rule_text}||{sorted(src_cols)}||{sorted(tgt_cols)}".encode("utf-8")
+        f"{_PROMPT_VER}||{rule_text}||{sorted(src_cols)}||{sorted(tgt_cols)}".encode("utf-8")
     ).hexdigest()
     _cached = _recon_param_cache.get(_cache_key)
     if _cached is not None:
