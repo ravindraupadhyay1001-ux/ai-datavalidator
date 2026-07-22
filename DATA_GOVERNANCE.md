@@ -37,6 +37,14 @@ minimised and masked first:
 All other processing — fuzzy matching, every DQ validator, profiling, and the
 governance PII detector — is 100% local and deterministic (no LLM).
 
+**Reference-document semantic search runs locally too.** When users upload a data
+dictionary / rulebook / mapping spec, the Copilot can search it semantically
+(synonyms, paraphrases) using a small **on-server ONNX embedding model**
+(`fastembed`). The reference text is embedded and matched entirely within the
+application — **no embedding API, no data leaves the box**. It falls back to
+keyword search if the model can't load. Cache the model on the persistent volume
+via `FASTEMBED_CACHE`.
+
 ## 3. Provider governance — `DPA_ONLY`
 
 The free LLM tiers (Groq, OpenRouter, Gemini free) may retain prompts or use

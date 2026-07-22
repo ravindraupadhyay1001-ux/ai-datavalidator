@@ -27,6 +27,10 @@ anthropic>=0.40
 pdfplumber
 fastavro
 
+# Local (on-server) semantic search for reference docs -- ONNX runtime, no
+# PyTorch, no data leaves the box. Falls back to keyword search if absent.
+fastembed
+
 pywin32; sys_platform == "win32" # Outlook email via win32com (Windows only)
 apscheduler>=3.10
 paramiko                         # SFTP (Unix/Linux servers)
