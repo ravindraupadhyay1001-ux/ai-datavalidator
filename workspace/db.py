@@ -120,6 +120,9 @@ _DDL = [
     # Subscription / free-trial: ISO date (YYYY-MM-DD) the user's access ends.
     # NULL = unlimited (admins, and pre-existing users grandfathered in).
     "ALTER TABLE ws_users ADD COLUMN access_expiry TEXT",
+    # Per-user monthly LLM token cap. NULL/0 = unlimited. Stops one user
+    # exhausting the shared free-tier quota.
+    "ALTER TABLE ws_users ADD COLUMN token_cap INTEGER",
     """CREATE TABLE IF NOT EXISTS ws_connections (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL,
@@ -373,9 +376,27 @@ def list_users():
     cur = _conn().cursor()
     cur.execute(
         "SELECT username, display_name, email, role, created_at, last_active, "
-        "access_expiry, COALESCE(is_blocked, 0) AS is_blocked FROM ws_users ORDER BY created_at ASC"
+        "access_expiry, token_cap, COALESCE(is_blocked, 0) AS is_blocked "
+        "FROM ws_users ORDER BY created_at ASC"
     )
     return _rows(cur)
+
+
+def get_user_token_cap(username):
+    cur = _conn().cursor()
+    cur.execute(f"SELECT token_cap FROM ws_users WHERE username={_ph()}", (username,))
+    rows = _rows(cur)
+    return (rows[0].get("token_cap") if rows else None) or None
+
+
+def set_user_token_cap(username, cap):
+    """cap: monthly token limit (int > 0), or None/0 to clear (unlimited)."""
+    conn = _conn()
+    conn.cursor().execute(
+        f"UPDATE ws_users SET token_cap={_ph()} WHERE username={_ph()}",
+        ((int(cap) if cap else None), username),
+    )
+    conn.commit()
 
 
 def get_user_access_expiry(username):

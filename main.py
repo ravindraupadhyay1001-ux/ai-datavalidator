@@ -13441,7 +13441,7 @@ async def preview_file(request: Request):
 
 @app.post("/xref")
 async def xref_analyze(request: Request):
-    _require_active_subscription(request)
+    _gate_run(request)
 
     # Cross Reference endpoint -- receives N source files/connections,
     # runs analyze_cross_reference(), returns rendered results HTML.
@@ -14024,7 +14024,7 @@ def _quality_response_payload(q: dict, session_id: str, total_elapsed, proc_logs
 @app.post("/analyze")
 async def analyze(request: Request):
     # Block the run if the user's free trial / subscription has expired.
-    _require_active_subscription(request)
+    _gate_run(request)
     # --- Processing log ---
     _t0 = time.time()
     proc_logs: list[dict] = []
@@ -19422,7 +19422,7 @@ async def parse_file_page(request: Request):
 @app.post("/parse-file")
 
 async def parse_file_api(request: Request):
-    _require_active_subscription(request)
+    _gate_run(request)
 
     # Accept one or more uploaded files, parse each into a structured DataFrame,
 
@@ -20328,6 +20328,41 @@ def _require_active_subscription(request: Request) -> None:
         )
 
 
+def _require_within_token_cap(request: Request) -> None:
+    """Block a run when the user has hit their monthly LLM token cap, so one
+    user can't exhaust the shared free-tier quota. Admins / no cap = unlimited."""
+    if not _WS_ENABLED:
+        return
+    try:
+        username = _ws_resolve_username(request) or ""
+        if not username:
+            return
+        if _ws_db.get_user_role(username) == "admin":
+            return
+        cap = _ws_db.get_user_token_cap(username)
+        if not cap:
+            return
+        from datetime import datetime as _dt
+        used = _ws_db.get_token_usage_month_total(
+            username, _dt.utcnow().strftime("%Y-%m")).get("total_tokens", 0)
+    except HTTPException:
+        raise
+    except Exception:
+        return
+    if used >= cap:
+        raise HTTPException(
+            429,
+            f"You've reached your monthly usage limit of {cap:,} tokens ({used:,} used). "
+            f"Please contact your administrator to raise it.",
+        )
+
+
+def _gate_run(request: Request) -> None:
+    """Both run gates: valid subscription + within token cap."""
+    _require_active_subscription(request)
+    _require_within_token_cap(request)
+
+
 _MODULE_TAB_VALUES = {"compare", "quality", "profile", "governance", "parse", "xref"}
 
 
@@ -20409,6 +20444,26 @@ async def ws_set_user_expiry(username: str, request: Request):
     _ws_db.set_user_access_expiry(username, expiry or None)
     _audit_admin(caller, "user_expiry_changed", f"{username} -> access until {expiry or 'unlimited'}")
     return JSONResponse({"ok": True, "expiry": expiry or None})
+
+
+@app.put("/api/ws/users/{username}/token-cap")
+async def ws_set_user_token_cap(username: str, request: Request):
+    """Set a user's monthly LLM token cap (int > 0), or 0/empty to clear
+    (unlimited). Admin only."""
+    _ws_check()
+    caller = _ws_get_user(request)
+    caller_role = getattr(request.state, "role", None) or _ws_db.get_user_role(caller)
+    if caller_role != "admin":
+        raise HTTPException(403, "Admin access required.")
+    body = await request.json()
+    raw = str(body.get("cap", "")).strip()
+    try:
+        cap = int(raw) if raw else 0
+    except ValueError:
+        raise HTTPException(400, "cap must be a whole number of tokens (or empty for unlimited).")
+    _ws_db.set_user_token_cap(username, cap if cap > 0 else None)
+    _audit_admin(caller, "user_token_cap_changed", f"{username} -> {cap or 'unlimited'} tokens/mo")
+    return JSONResponse({"ok": True, "cap": cap or None})
 
 
 @app.put("/api/ws/users/{username}/block")

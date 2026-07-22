@@ -3765,7 +3765,7 @@ async function loadUsers(){
   if(!users.length){ box.innerHTML='<span class="text-gray-500">No users yet.</span>'; return; }
   box.innerHTML=`<div style="overflow-x:auto"><table class="w-full"><thead class="text-gray-400 text-xs"><tr>
       <th class="text-left p-1">User</th><th class="text-left">Role</th><th class="text-left">Last active</th>
-      <th class="text-left">Tokens (mo.)</th><th class="text-left">Dataset Memory</th><th class="text-left">Access until</th><th class="text-left">Status</th><th></th>
+      <th class="text-left">Tokens (mo.)</th><th class="text-left">Cap (mo.)</th><th class="text-left">Dataset Memory</th><th class="text-left">Access until</th><th class="text-left">Status</th><th></th>
     </tr></thead><tbody>`+
     users.map(u=>`<tr class="border-t border-[var(--line)]">
       <td class="p-1">${esc(u.display_name||u.username)}</td>
@@ -3773,7 +3773,11 @@ async function loadUsers(){
         ${Object.keys(ROLE_LABELS).map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${ROLE_LABELS[r]}</option>`).join('')}
       </select></td>
       <td class="text-xs text-gray-500">${esc(timeAgo(u.last_active))}</td>
-      <td class="text-xs">${(u.tokens_this_month||0).toLocaleString()}</td>
+      <td class="text-xs ${u.token_cap && (u.tokens_this_month||0)>=u.token_cap ? 'text-red-500 font-semibold':''}">${(u.tokens_this_month||0).toLocaleString()}</td>
+      <td class="whitespace-nowrap">${u.role==='admin'
+        ? '<span class="text-xs text-gray-500">unlimited</span>'
+        : `<input type="number" min="0" step="10000" value="${u.token_cap||''}" placeholder="&infin;" class="inp text-xs" style="width:90px;padding:2px 4px"
+             onchange="setUserTokenCap('${esc(u.username)}',this.value)" title="Monthly token cap (blank = unlimited)">`}</td>
       <td class="text-xs">${u.dataset_memory_count||0}</td>
       <td class="whitespace-nowrap">${u.role==='admin'
         ? '<span class="text-xs text-gray-500">unlimited</span>'
@@ -3805,6 +3809,12 @@ async function setUserExpiry(username, expiry){
   const r = await J('PUT', `/api/ws/users/${encodeURIComponent(username)}/expiry`, {expiry});
   if(r && r.detail){ toast('❌ '+r.detail); return; }
   toast(expiry ? `✅ Access set to ${expiry}` : '✅ Set to unlimited');
+  loadUsers();
+}
+async function setUserTokenCap(username, cap){
+  const r = await J('PUT', `/api/ws/users/${encodeURIComponent(username)}/token-cap`, {cap});
+  if(r && r.detail){ toast('❌ '+r.detail); return; }
+  toast(cap ? `✅ Token cap set to ${(+cap).toLocaleString()}/mo` : '✅ Token cap removed');
   loadUsers();
 }
 async function setUserRole(username, role){
