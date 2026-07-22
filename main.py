@@ -577,7 +577,7 @@ def _ask_llm(messages: list[dict], system: str = "",
     # wrong profile, etc.) doesn't take down every AI feature in the app.
     # Bedrock's native message format ({"content": [{"text": ...}]}) is used
     # by every caller of _ask_llm; the other providers want plain strings.
-    from agent.llm import LLM_PROVIDER, _ask_groq, _ask_openrouter, _ask_gemini, _ask_openai, _ask_anthropic
+    from agent.llm import LLM_PROVIDER, _ask_groq, _ask_openrouter, _ask_gemini, _ask_openai, _ask_anthropic, _governed
 
     plain_messages = [
         {
@@ -587,7 +587,12 @@ def _ask_llm(messages: list[dict], system: str = "",
         for m in messages
     ]
     # OpenRouter sits right after Groq -- free fallback when Groq's quota runs out.
-    providers = [LLM_PROVIDER] + [p for p in ("groq", "openrouter", "gemini", "bedrock", "openai", "anthropic") if p != LLM_PROVIDER]
+    # _governed() drops the free/no-DPA providers when DPA_ONLY is set (regulated data).
+    providers = _governed([LLM_PROVIDER] + [p for p in ("groq", "openrouter", "gemini", "bedrock", "openai", "anthropic") if p != LLM_PROVIDER])
+    if not providers:
+        raise RuntimeError(
+            "DPA_ONLY is enabled but no data-processing-agreement provider "
+            "(Bedrock, OpenAI or Anthropic) is configured.")
 
     errors: list[str] = []
     for provider in providers:

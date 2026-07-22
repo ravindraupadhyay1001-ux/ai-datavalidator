@@ -179,11 +179,35 @@ _PROVIDERS = {
 # OpenRouter right after Groq -- the free fallback when Groq's quota runs out.
 _FALLBACK_ORDER = ["groq", "openrouter", "gemini", "bedrock", "openai", "anthropic"]
 
+# Providers usable under a signed data-processing agreement (DPA) / zero-data-
+# retention terms. The free tiers (groq / openrouter / gemini) are excluded
+# because they may retain prompts or use them for model training. Bedrock runs
+# inside your own AWS tenancy; OpenAI/Anthropic offer enterprise DPAs with
+# zero-retention. Set DPA_ONLY=true for regulated (BFSI) data so only these
+# providers are ever contacted, regardless of what LLM_PROVIDER / the Settings
+# page selects. See DATA_GOVERNANCE.md.
+_DPA_PROVIDERS = {"bedrock", "openai", "anthropic"}
+DPA_ONLY = os.getenv("DPA_ONLY", "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _governed(order):
+    """Restrict a provider order to DPA-capable providers when DPA_ONLY is on,
+    so masked schema samples can never reach a free / no-DPA provider even if
+    one is configured or explicitly selected."""
+    if not DPA_ONLY:
+        return order
+    return [p for p in order if p in _DPA_PROVIDERS]
+
 
 def ask(messages, system=None):
     """Call the configured primary provider; auto-fallback through any other
     provider that has credentials configured if the primary fails."""
-    order = [LLM_PROVIDER] + [p for p in _FALLBACK_ORDER if p != LLM_PROVIDER]
+    order = _governed([LLM_PROVIDER] + [p for p in _FALLBACK_ORDER if p != LLM_PROVIDER])
+    if not order:
+        raise RuntimeError(
+            "DPA_ONLY is enabled but no data-processing-agreement provider "
+            "(Bedrock, OpenAI or Anthropic) is configured. Set one up in "
+            "Settings, or unset DPA_ONLY for non-regulated data.")
     last_err = RuntimeError("No LLM provider configured.")
     for provider in order:
         fn = _PROVIDERS.get(provider)
@@ -207,7 +231,7 @@ def ask_safe(messages, system=None):
 def ask_with_tools(messages, tools, system=None):
     """Returns {"content": str|None, "tool_calls": [{"id","name","arguments"}]}
     from whichever tool-calling-capable provider (groq/openai) is configured."""
-    order = [p for p in ([LLM_PROVIDER] + _FALLBACK_ORDER) if p in ("groq", "openai", "openrouter")]
+    order = _governed([p for p in ([LLM_PROVIDER] + _FALLBACK_ORDER) if p in ("groq", "openai", "openrouter")])
     seen = set()
     full = ([{"role": "system", "content": system}] if system else []) + messages
     last_err = RuntimeError("No tool-calling-capable provider configured (need GROQ_API_KEY, OPENROUTER_API_KEY or OPENAI_API_KEY).")
