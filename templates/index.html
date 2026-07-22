@@ -545,7 +545,23 @@
             <div class="settings-icon" style="background:linear-gradient(135deg,#2563eb,#38bdf8)">&#128101;</div>
             <h3 class="settings-h">Users &amp; Roles</h3>
           </div>
-          <button onclick="loadUsers()" class="btn-ghost rounded-lg px-3 py-1 text-sm">Refresh</button>
+          <div class="flex gap-2">
+            <button onclick="toggleAddUser()" class="btn rounded-lg px-3 py-1 text-sm">&#10011; Add user</button>
+            <button onclick="loadUsers()" class="btn-ghost rounded-lg px-3 py-1 text-sm">Refresh</button>
+          </div>
+        </div>
+        <div id="add-user-form" class="hidden card rounded-lg p-3 mb-3 grid grid-cols-2 gap-2 text-sm">
+          <input id="au-username" placeholder="Username" class="inp">
+          <input id="au-name" placeholder="Display name (optional)" class="inp">
+          <input id="au-email" placeholder="Email (optional)" class="inp">
+          <input id="au-password" type="password" placeholder="Initial password (min 8 chars)" class="inp">
+          <select id="au-role" class="inp"><option value="analyst">Workspace User</option><option value="readonly">Run Only</option><option value="admin">Admin</option></select>
+          <input id="au-expiry" type="date" class="inp" title="Access until (blank = 7-day trial)">
+          <div class="col-span-2 flex gap-2">
+            <button onclick="createUser()" class="btn rounded-lg px-3 py-1">Create</button>
+            <button onclick="toggleAddUser()" class="btn-ghost rounded-lg px-3 py-1">Cancel</button>
+            <span class="text-xs text-gray-500 self-center">Leave "Access until" blank for the default 7-day trial.</span>
+          </div>
         </div>
         <div id="users-out" class="text-sm"></div>
       </div>
@@ -3816,6 +3832,18 @@ async function setUserTokenCap(username, cap){
   if(r && r.detail){ toast('❌ '+r.detail); return; }
   toast(cap ? `✅ Token cap set to ${(+cap).toLocaleString()}/mo` : '✅ Token cap removed');
   loadUsers();
+}
+function toggleAddUser(){ document.getElementById('add-user-form')?.classList.toggle('hidden'); }
+async function createUser(){
+  const v = id => document.getElementById(id)?.value?.trim() || '';
+  const body = { username:v('au-username'), display_name:v('au-name'), email:v('au-email'),
+                 password:document.getElementById('au-password').value, role:v('au-role'), expiry:v('au-expiry') };
+  if(!body.username || (body.password||'').length < 8){ toast('❌ Username and an 8+ char password are required.'); return; }
+  const r = await J('POST', '/api/ws/users', body);
+  if(r && r.detail){ toast('❌ '+r.detail); return; }
+  toast(`✅ User "${body.username}" created.`);
+  ['au-username','au-name','au-email','au-password','au-expiry'].forEach(id=>{const el=document.getElementById(id); if(el) el.value='';});
+  toggleAddUser(); loadUsers();
 }
 async function setUserRole(username, role){
   const r = await J('PUT', `/api/ws/users/${encodeURIComponent(username)}/role`, {role});

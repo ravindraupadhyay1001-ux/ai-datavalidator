@@ -20405,6 +20405,42 @@ async def ws_list_users(request: Request):
     return JSONResponse(users)
 
 
+@app.post("/api/ws/users")
+async def ws_create_user(request: Request):
+    """Admin creates a user directly (username, initial password, role,
+    optional access-expiry). Cleaner client onboarding than self-registration.
+    Admin only."""
+    _ws_check()
+    caller = _ws_get_user(request)
+    caller_role = getattr(request.state, "role", None) or _ws_db.get_user_role(caller)
+    if caller_role != "admin":
+        raise HTTPException(403, "Admin access required.")
+    body = await request.json()
+    username = str(body.get("username", "")).strip()
+    password = str(body.get("password", ""))
+    role = str(body.get("role", "analyst")).strip()
+    expiry = str(body.get("expiry", "")).strip()
+    if role not in ("admin", "analyst", "readonly"):
+        raise HTTPException(400, "role must be one of: admin, analyst, readonly.")
+    try:
+        from workspace.local_auth import register as _register
+        _register(username, password, full_name=str(body.get("display_name", "")).strip(),
+                  email=str(body.get("email", "")).strip())
+    except Exception as exc:
+        raise HTTPException(400, str(exc))
+    uname = username.strip().lower()
+    _ws_db.set_user_role(uname, role)
+    if expiry:
+        try:
+            from datetime import date as _date
+            _date.fromisoformat(expiry[:10])
+            _ws_db.set_user_access_expiry(uname, expiry)
+        except Exception:
+            raise HTTPException(400, "expiry must be YYYY-MM-DD (or empty for the default trial).")
+    _audit_admin(caller, "user_created", f"{uname} (role {role})")
+    return JSONResponse({"ok": True, "username": uname})
+
+
 @app.put("/api/ws/users/{username}/role")
 async def ws_set_user_role(username: str, request: Request):
     """Change a user's role. Admin only."""
