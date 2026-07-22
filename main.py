@@ -18402,14 +18402,24 @@ async def dataset_controls_get_rules(session_id: str, request: Request, context:
     cols2 = list(dfs[1]["df"].columns) if len(dfs) > 1 else None
     all_rules = _fp_get_rules(username, fp, cols1=cols1, cols2=cols2, file_names=file_names)
     ctx_prefix = f"dc_{context}_"
+    _recon_ctx = context in ("compare", "lineage")
+    # Show every rule that actually APPLIES to this module -- not just its own
+    # dc_{context}_ rules. That means general rules (all modules) and, for the
+    # reconciliation family, recon_rule rules too. Otherwise plain-English recon
+    # rules saved via chat ("remember: ...") were invisible in the panel even
+    # though they were being applied. recon_hints (raw AI JSON) stay hidden.
+    def _base(cat):
+        if cat.startswith(ctx_prefix):
+            return cat.replace(ctx_prefix, "")
+        return {"general": "general", "recon_rule": "recon"}.get(cat, cat)
     ctx_rules = [
-
-
         {"rule": r["rule"], "category": r["category"],
-         "base_cat": r["category"].replace(ctx_prefix, ""),
+         "base_cat": _base(r.get("category", "")),
          "index": i + 1}  # i+1 = 1-based global index into all_rules -- matches /rules/delete
         for i, r in enumerate(all_rules)
         if r.get("category", "").startswith(ctx_prefix)
+        or r.get("category") == "general"
+        or (_recon_ctx and r.get("category") == "recon_rule")
     ]
     return JSONResponse({"ctx_rules": ctx_rules, "count": len(ctx_rules)})
 
