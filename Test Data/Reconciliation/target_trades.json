@@ -1,0 +1,82 @@
+[
+  {
+    "TradeID":"T1001",
+    "Full Name":"John Smith",
+    "TradeDate":"03\/15\/2026",
+    "Notional":1250000,
+    "Currency":"USD",
+    "Side":"BUY"
+  },
+  {
+    "TradeID":"T1002",
+    "Full Name":"Aisha Khan",
+    "TradeDate":"03\/16\/2026",
+    "Notional":3400000,
+    "Currency":"EUR",
+    "Side":"SELL"
+  },
+  {
+    "TradeID":"T1003",
+    "Full Name":"Wei Chen",
+    "TradeDate":"03\/17\/2026",
+    "Notional":875000,
+    "Currency":"GBP",
+    "Side":"BUY"
+  },
+  {
+    "TradeID":"T1005",
+    "Full Name":"Priya Patel",
+    "TradeDate":"03\/19\/2026",
+    "Notional":560000,
+    "Currency":"JPY",
+    "Side":"SELL"
+  },
+  {
+    "TradeID":"T1006",
+    "Full Name":"Liam O'Brien",
+    "TradeDate":"03\/20\/2026",
+    "Notional":1750250,
+    "Currency":"USD",
+    "Side":"SELL"
+  },
+  {
+    "TradeID":"T1007",
+    "Full Name":"Sofia Rossi",
+    "TradeDate":"03\/21\/2026",
+    "Notional":940000,
+    "Currency":"EUR",
+    "Side":"BUY"
+  },
+  {
+    "TradeID":"T1008",
+    "Full Name":"Kenji Tanaka",
+    "TradeDate":"03\/22\/2026",
+    "Notional":4200000,
+    "Currency":"GBP",
+    "Side":"SELL"
+  },
+  {
+    "TradeID":"T1009",
+    "Full Name":"Fatima Al-Sayed",
+    "TradeDate":"03\/23\/2026",
+    "Notional":330000,
+    "Currency":"GBP",
+    "Side":"BUY"
+  },
+  {
+    "TradeID":"T1010",
+    "Full Name":"Noah Johnson",
+    "TradeDate":"03\/24\/2026",
+    "Notional":1020000,
+    "Currency":"USD",
+    "Side":"SELL"
+  },
+  {
+    "TradeID":"T1011",
+    "Full Name":"Emma Wilson",
+    "TradeDate":"03\/25\/2026",
+    "Notional":680000,
+    "Currency":"EUR",
+    "Side":"BUY"
+  }
+]

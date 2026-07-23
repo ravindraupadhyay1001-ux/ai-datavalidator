@@ -14,6 +14,9 @@ Two deliberately **misaligned** trade files — the ideal Standard-vs-AI-Copilot
 - **AI Copilot rule to type:** `combine First and Last into Full Name and key on TradeID; strip commas from Notional; source dates are DD/MM, target MM/DD`.
 - **Expected result:** most rows match; **T1002** notional break, **T1005** side break,
   **T1008** currency break; **T1004** only in source; **T1011** only in target.
+- The target is also provided in **CSV, JSON and XML** (`target_trades.csv/.json/.xml`) —
+  identical data — so you can demo any source/target format combination. (XML uses
+  `FullName` since XML element names can't contain spaces.)
 
 ### Multi-format trade book (XML / FIX / SWIFT / JSON)
 The same 6 trades (`T2001`–`T2006`) in four financial formats — reconcile any

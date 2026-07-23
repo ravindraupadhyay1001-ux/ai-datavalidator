@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<trades>
+  <trade>
+    <TradeID>T1001</TradeID>
+    <FullName>John Smith</FullName>
+    <TradeDate>03/15/2026</TradeDate>
+    <Notional>1250000</Notional>
+    <Currency>USD</Currency>
+    <Side>BUY</Side>
+  </trade>
+  <trade>
+    <TradeID>T1002</TradeID>
+    <FullName>Aisha Khan</FullName>
+    <TradeDate>03/16/2026</TradeDate>
+    <Notional>3400000</Notional>
+    <Currency>EUR</Currency>
+    <Side>SELL</Side>
+  </trade>
+  <trade>
+    <TradeID>T1003</TradeID>
+    <FullName>Wei Chen</FullName>
+    <TradeDate>03/17/2026</TradeDate>
+    <Notional>875000</Notional>
+    <Currency>GBP</Currency>
+    <Side>BUY</Side>
+  </trade>
+  <trade>
+    <TradeID>T1005</TradeID>
+    <FullName>Priya Patel</FullName>
+    <TradeDate>03/19/2026</TradeDate>
+    <Notional>560000</Notional>
+    <Currency>JPY</Currency>
+    <Side>SELL</Side>
+  </trade>
+  <trade>
+    <TradeID>T1006</TradeID>
+    <FullName>Liam O'Brien</FullName>
+    <TradeDate>03/20/2026</TradeDate>
+    <Notional>1750250</Notional>
+    <Currency>USD</Currency>
+    <Side>SELL</Side>
+  </trade>
+  <trade>
+    <TradeID>T1007</TradeID>
+    <FullName>Sofia Rossi</FullName>
+    <TradeDate>03/21/2026</TradeDate>
+    <Notional>940000</Notional>
+    <Currency>EUR</Currency>
+    <Side>BUY</Side>
+  </trade>
+  <trade>
+    <TradeID>T1008</TradeID>
+    <FullName>Kenji Tanaka</FullName>
+    <TradeDate>03/22/2026</TradeDate>
+    <Notional>4200000</Notional>
+    <Currency>GBP</Currency>
+    <Side>SELL</Side>
+  </trade>
+  <trade>
+    <TradeID>T1009</TradeID>
+    <FullName>Fatima Al-Sayed</FullName>
+    <TradeDate>03/23/2026</TradeDate>
+    <Notional>330000</Notional>
+    <Currency>GBP</Currency>
+    <Side>BUY</Side>
+  </trade>
+  <trade>
+    <TradeID>T1010</TradeID>
+    <FullName>Noah Johnson</FullName>
+    <TradeDate>03/24/2026</TradeDate>
+    <Notional>1020000</Notional>
+    <Currency>USD</Currency>
+    <Side>SELL</Side>
+  </trade>
+  <trade>
+    <TradeID>T1011</TradeID>
+    <FullName>Emma Wilson</FullName>
+    <TradeDate>03/25/2026</TradeDate>
+    <Notional>680000</Notional>
+    <Currency>EUR</Currency>
+    <Side>BUY</Side>
+  </trade>
+</trades>
