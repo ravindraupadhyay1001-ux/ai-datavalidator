@@ -1,0 +1,8 @@
+Deal Ref,Security,B/S,Units,Unit Price,Settlement Ccy,Settlement Date,Counterparty
+TRD-1001,Apple Inc (US0378331005),B,"10,000",185.50,USD,17-Mar-2026,Goldman Sachs
+TRD-1002,Microsoft Corp (US5949181045),S,"5,000",410.20,USD,18-Mar-2026,Morgan Stanley
+TRD-1003,BAE Systems (GB0002634946),B,"8,000",13.75,GBP,19-Mar-2026,Barclays
+TRD-1004,SAP SE (DE0007164600),S,"3,000",178.90,EUR,20-Mar-2026,Deutsche Bank
+TRD-1005,BNP Paribas (FR0000131104),B,"4,000",62.30,EUR,21-Mar-2026,BNP Paribas
+TRD-1006,Alphabet Inc (US02079K3059),B,"2,000",142.10,USD,24-Mar-2026,JP Morgan
+TRD-1007,Nestle SA (CH0038863350),S,"1,500",95.00,CHF,25-Mar-2026,UBS
