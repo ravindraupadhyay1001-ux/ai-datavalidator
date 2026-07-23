@@ -752,6 +752,7 @@
   <div class="card rounded-xl w-full max-w-4xl h-[80vh] flex overflow-hidden">
     <nav class="w-52 border-r border-[var(--line)] p-3 flex flex-col gap-1 text-sm overflow-auto">
       <button data-help="overview" class="help-tab-btn text-left px-3 py-1.5 rounded-lg tab-active">Overview</button>
+      <button data-help="videos" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">&#127916; Video Guide</button>
       <button data-help="compare" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Reconciliation</button>
       <button data-help="quality" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Data Quality</button>
       <button data-help="profile" class="help-tab-btn text-left px-3 py-1.5 rounded-lg">Data Profile</button>
@@ -2585,7 +2586,33 @@ async function runParse(){
 function quickChat(msg){ document.getElementById('chat-in').value = msg; sendChat(); }
 
 // ---------- Help Modal / User Guide ----------
+// In-app video user guide. To publish a new module/feature walkthrough, just
+// add one line here: { id:'<youtube-id>', title:'...', desc:'...' }. The
+// intro is first; the rest render below it automatically.
+const VIDEO_GUIDE = [
+  { id:'0R3sTZoW5D0', title:'Introduction &amp; Overview', desc:'What AI DataValidator does and how to get started.' },
+  // { id:'<youtube-id>', title:'Reconciliation', desc:'Standard vs AI Copilot, keys, transforms, tolerances.' },
+  // { id:'<youtube-id>', title:'Data Quality', desc:'Scoring, dimensions, BFSI validators, anomalies.' },
+];
+function _videoGuideHTML(){
+  const cards = VIDEO_GUIDE.map(v=>`
+    <div class="card rounded-xl p-3 mb-4">
+      <div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:8px">
+        <iframe src="https://www.youtube-nocookie.com/embed/${v.id}" title="${v.title}"
+          style="position:absolute;top:0;left:0;width:100%;height:100%;border:0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+          referrerpolicy="strict-origin-when-cross-origin" loading="lazy" allowfullscreen></iframe>
+      </div>
+      <div class="font-semibold text-sky-300 mt-2">${v.title}</div>
+      <div class="text-xs text-gray-400">${v.desc}</div>
+    </div>`).join('');
+  return `<h3 class="text-lg font-bold grad-text mb-2">&#127916; Video Guide</h3>
+    <p class="text-gray-400 mb-4">Short walkthroughs of AI DataValidator. Start with the intro &mdash; module &amp; feature guides are added here as they're published.</p>`
+    + cards
+    + `<p class="text-xs text-gray-500">More module &amp; feature guides coming soon.</p>`;
+}
 const HELP_CONTENT = {
+  get videos(){ return _videoGuideHTML(); },
   overview: `<h3 class="text-lg font-bold grad-text mb-2">AI Agent &mdash; Data Validation</h3>
     <p>Bring any BFSI data &mdash; upload a file, or pull it live from a Saved Connector (SFTP, S3, a database,
     Kafka, and more) &mdash; and get instant reconciliation, data quality scoring, governance/PII scanning,
