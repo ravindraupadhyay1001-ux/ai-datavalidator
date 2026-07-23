@@ -18282,13 +18282,14 @@ async def recon_download(session_id: str, request: Request):
 @app.post("/agent-chat")
 async def agent_chat(request: Request):
 
-    # AI Copilot endpoint -- backed by the LangChain agent (agent/executor.py).
+    # AI Copilot endpoint -- backed by a custom, lightweight tool-calling loop
+    # (agent/executor.py), not a heavyweight agent framework: we own the loop,
+    # prompts and safety directly for full auditability in a regulated context.
 
-    # Uses ConversationBufferWindowMemory for multi-turn context and the full
-    # LangChain tool suite (compare_files, check_data_quality, map_columns,
-
-
-    # run_governance_check, save_rule, list_rules, delete_rule).
+    # Multi-turn context is a windowed conversation history (_agent_chat_history)
+    # passed to the loop; the read-only tool set (compare_files, check_data_quality,
+    # map_columns, run_governance_check, run_lineage_analysis, query_reference_docs)
+    # inspects the session's already-computed results rather than recomputing.
 
     # Files are registered with the agent during /analyze so tools can reload
     # them without re-upload.
