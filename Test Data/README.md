@@ -15,6 +15,16 @@ Two deliberately **misaligned** trade files — the ideal Standard-vs-AI-Copilot
 - **Expected result:** most rows match; **T1002** notional break, **T1005** side break,
   **T1008** currency break; **T1004** only in source; **T1011** only in target.
 
+### Multi-format trade book (XML / FIX / SWIFT / JSON)
+The same 6 trades (`T2001`–`T2006`) in four financial formats — reconcile any
+two to show **cross-format** matching:
+- `trades_internal.json` (JSON) and `trades_internal.xml` (XML) — the internal book, clean field names (`TradeID`, `ISIN`, `Quantity`…).
+- `trades_venue_fix.txt` (FIX 4.4) — venue execution reports (key `11_ClOrdID`, `48_SecurityID`, `54_Side` 1=Buy/2=Sell, `38_OrderQty`).
+- `trades_settlement_swift.txt` (SWIFT MT541) — settlement messages (key `20_Transaction_Reference`, ISIN/qty in `:35B:`/`:36B:`).
+- **JSON vs XML:** reconcile on `TradeID` — clean match (same field names) — the simplest cross-format demo.
+- **FIX vs SWIFT (or either vs JSON/XML):** use **AI Copilot** to map the keys (`11_ClOrdID` = `20_Transaction_Reference` = `TradeID`) — showcases AI-driven cross-format reconciliation.
+- **Deliberate break:** `T2006` quantity is **2000** in the internal book (JSON/XML) vs **2500** in the venue/settlement feeds (FIX/SWIFT).
+
 ## Data Quality/  — `customer_accounts.xlsx` (Excel)
 One file seeded with issues to light up the DQ report:
 - **Completeness:** blank name (ACC005), blank IBAN/balance (ACC003).

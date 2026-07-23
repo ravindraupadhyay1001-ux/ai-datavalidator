@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<trades>
+  <trade>
+    <TradeID>T2001</TradeID><ISIN>US0378331005</ISIN><Symbol>AAPL</Symbol>
+    <Side>BUY</Side><Quantity>10000</Quantity><Price>185.50</Price>
+    <Currency>USD</Currency><SettleDate>2026-03-17</SettleDate><Counterparty>GOLDMAN SACHS</Counterparty>
+  </trade>
+  <trade>
+    <TradeID>T2002</TradeID><ISIN>US5949181045</ISIN><Symbol>MSFT</Symbol>
+    <Side>SELL</Side><Quantity>5000</Quantity><Price>410.20</Price>
+    <Currency>USD</Currency><SettleDate>2026-03-18</SettleDate><Counterparty>MORGAN STANLEY</Counterparty>
+  </trade>
+  <trade>
+    <TradeID>T2003</TradeID><ISIN>GB0002634946</ISIN><Symbol>BAES</Symbol>
+    <Side>BUY</Side><Quantity>8000</Quantity><Price>13.75</Price>
+    <Currency>GBP</Currency><SettleDate>2026-03-19</SettleDate><Counterparty>BARCLAYS</Counterparty>
+  </trade>
+  <trade>
+    <TradeID>T2004</TradeID><ISIN>DE0007164600</ISIN><Symbol>SAP</Symbol>
+    <Side>SELL</Side><Quantity>3000</Quantity><Price>178.90</Price>
+    <Currency>EUR</Currency><SettleDate>2026-03-20</SettleDate><Counterparty>DEUTSCHE BANK</Counterparty>
+  </trade>
+  <trade>
+    <TradeID>T2005</TradeID><ISIN>FR0000131104</ISIN><Symbol>BNP</Symbol>
+    <Side>BUY</Side><Quantity>4000</Quantity><Price>62.30</Price>
+    <Currency>EUR</Currency><SettleDate>2026-03-21</SettleDate><Counterparty>BNP PARIBAS</Counterparty>
+  </trade>
+  <trade>
+    <TradeID>T2006</TradeID><ISIN>US02079K3059</ISIN><Symbol>GOOGL</Symbol>
+    <Side>BUY</Side><Quantity>2000</Quantity><Price>142.10</Price>
+    <Currency>USD</Currency><SettleDate>2026-03-24</SettleDate><Counterparty>JP MORGAN</Counterparty>
+  </trade>
+</trades>

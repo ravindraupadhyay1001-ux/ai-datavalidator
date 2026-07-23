@@ -1,0 +1,8 @@
+[
+  {"TradeID": "T2001", "ISIN": "US0378331005", "Symbol": "AAPL", "Side": "BUY", "Quantity": 10000, "Price": 185.50, "Currency": "USD", "SettleDate": "2026-03-17", "Counterparty": "GOLDMAN SACHS"},
+  {"TradeID": "T2002", "ISIN": "US5949181045", "Symbol": "MSFT", "Side": "SELL", "Quantity": 5000, "Price": 410.20, "Currency": "USD", "SettleDate": "2026-03-18", "Counterparty": "MORGAN STANLEY"},
+  {"TradeID": "T2003", "ISIN": "GB0002634946", "Symbol": "BAES", "Side": "BUY", "Quantity": 8000, "Price": 13.75, "Currency": "GBP", "SettleDate": "2026-03-19", "Counterparty": "BARCLAYS"},
+  {"TradeID": "T2004", "ISIN": "DE0007164600", "Symbol": "SAP", "Side": "SELL", "Quantity": 3000, "Price": 178.90, "Currency": "EUR", "SettleDate": "2026-03-20", "Counterparty": "DEUTSCHE BANK"},
+  {"TradeID": "T2005", "ISIN": "FR0000131104", "Symbol": "BNP", "Side": "BUY", "Quantity": 4000, "Price": 62.30, "Currency": "EUR", "SettleDate": "2026-03-21", "Counterparty": "BNP PARIBAS"},
+  {"TradeID": "T2006", "ISIN": "US02079K3059", "Symbol": "GOOGL", "Side": "BUY", "Quantity": 2000, "Price": 142.10, "Currency": "USD", "SettleDate": "2026-03-24", "Counterparty": "JP MORGAN"}
+]
