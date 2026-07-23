@@ -1,0 +1,22 @@
+[
+  {"TxnID": "TXN100001", "AccountID": "ACC001", "TxnDate": "2026-03-01", "Amount": 1250.75, "Currency": "USD", "TxnType": "DEBIT", "Channel": "Online", "MerchantCategory": "Groceries", "Status": "Completed"},
+  {"TxnID": "TXN100002", "AccountID": "ACC002", "TxnDate": "2026-03-01", "Amount": 89.20, "Currency": "GBP", "TxnType": "DEBIT", "Channel": "Mobile", "MerchantCategory": "Dining", "Status": "Completed"},
+  {"TxnID": "TXN100003", "AccountID": "ACC001", "TxnDate": "2026-03-02", "Amount": 5000.00, "Currency": "USD", "TxnType": "CREDIT", "Channel": "Branch", "MerchantCategory": "Salary", "Status": "Completed"},
+  {"TxnID": "TXN100004", "AccountID": "ACC003", "TxnDate": "2026-03-02", "Amount": 340.00, "Currency": "SGD", "TxnType": "DEBIT", "Channel": "ATM", "MerchantCategory": "Cash Withdrawal", "Status": "Completed"},
+  {"TxnID": "TXN100005", "AccountID": "ACC004", "TxnDate": "2026-03-03", "Amount": 1200.50, "Currency": "USD", "TxnType": "DEBIT", "Channel": "Online", "MerchantCategory": "Electronics", "Status": "Pending"},
+  {"TxnID": "TXN100006", "AccountID": "ACC002", "TxnDate": "2026-03-03", "Amount": 45.00, "Currency": "GBP", "TxnType": "DEBIT", "Channel": "Mobile", "MerchantCategory": "Transport", "Status": "Completed"},
+  {"TxnID": "TXN100007", "AccountID": "ACC005", "TxnDate": "2026-03-04", "Amount": 9800.00, "Currency": "EUR", "TxnType": "CREDIT", "Channel": "Branch", "MerchantCategory": "Transfer", "Status": "Completed"},
+  {"TxnID": "TXN100008", "AccountID": "ACC001", "TxnDate": "2026-03-04", "Amount": 220.30, "Currency": "USD", "TxnType": "DEBIT", "Channel": "Online", "MerchantCategory": "Utilities", "Status": "Failed"},
+  {"TxnID": "TXN100009", "AccountID": "ACC006", "TxnDate": "2026-03-05", "Amount": 75.99, "Currency": "JPY", "TxnType": "DEBIT", "Channel": "Mobile", "MerchantCategory": "Dining", "Status": "Completed"},
+  {"TxnID": "TXN100010", "AccountID": "ACC003", "TxnDate": "2026-03-05", "Amount": 3400.00, "Currency": "SGD", "TxnType": "DEBIT", "Channel": "Online", "MerchantCategory": "Travel", "Status": "Completed"},
+  {"TxnID": "TXN100011", "AccountID": "ACC007", "TxnDate": "2026-03-06", "Amount": 12.50, "Currency": "EUR", "TxnType": "DEBIT", "Channel": "ATM", "MerchantCategory": "Cash Withdrawal", "Status": "Completed"},
+  {"TxnID": "TXN100012", "AccountID": "ACC004", "TxnDate": "2026-03-06", "Amount": 560.00, "Currency": "USD", "TxnType": "DEBIT", "Channel": "Branch", "MerchantCategory": "Insurance", "Status": "Completed"},
+  {"TxnID": "TXN100013", "AccountID": "ACC008", "TxnDate": "2026-03-07", "Amount": 8900.00, "Currency": "USD", "TxnType": "CREDIT", "Channel": "Online", "MerchantCategory": "Salary", "Status": "Completed"},
+  {"TxnID": "TXN100014", "AccountID": "ACC002", "TxnDate": "2026-03-07", "Amount": 33.10, "Currency": "GBP", "TxnType": "DEBIT", "Channel": "Mobile", "MerchantCategory": "Groceries", "Status": "Completed"},
+  {"TxnID": "TXN100015", "AccountID": "ACC009", "TxnDate": "2026-03-08", "Amount": 1500.00, "Currency": "EUR", "TxnType": "DEBIT", "Channel": "Online", "MerchantCategory": "Rent", "Status": "Pending"},
+  {"TxnID": "TXN100016", "AccountID": "ACC001", "TxnDate": "2026-03-08", "Amount": 62.40, "Currency": "USD", "TxnType": "DEBIT", "Channel": "Mobile", "MerchantCategory": "Dining", "Status": "Completed"},
+  {"TxnID": "TXN100017", "AccountID": "ACC006", "TxnDate": "2026-03-09", "Amount": 210.00, "Currency": "JPY", "TxnType": "DEBIT", "Channel": "ATM", "MerchantCategory": "Cash Withdrawal", "Status": "Completed"},
+  {"TxnID": "TXN100018", "AccountID": "ACC010", "TxnDate": "2026-03-09", "Amount": 4500.00, "Currency": "USD", "TxnType": "CREDIT", "Channel": "Branch", "MerchantCategory": "Transfer", "Status": "Completed"},
+  {"TxnID": "TXN100019", "AccountID": "ACC007", "TxnDate": "2026-03-10", "Amount": 780.25, "Currency": "EUR", "TxnType": "DEBIT", "Channel": "Online", "MerchantCategory": "Electronics", "Status": "Completed"},
+  {"TxnID": "TXN100020", "AccountID": "ACC005", "TxnDate": "2026-03-10", "Amount": 95.00, "Currency": "EUR", "TxnType": "DEBIT", "Channel": "Mobile", "MerchantCategory": "Transport", "Status": "Failed"}
+]

@@ -1,0 +1,37 @@
+TRADE CONFIRMATION
+==================
+Reference: TRD-2026-0001
+On 15 March 2026, we confirm the PURCHASE of 10,000 shares of Apple Inc
+(ISIN US0378331005) at a price of USD 185.50 per share. Trade value:
+USD 1,855,000.00. Settlement date: 17 March 2026. Counterparty: Goldman Sachs.
+Settlement currency: USD.
+
+-----------------------------------------------------------------------
+
+TRADE CONFIRMATION
+==================
+Reference: TRD-2026-0002
+On 16 March 2026, we confirm the SALE of 5,000 shares of Microsoft Corp
+(ISIN US5949181045) at a price of USD 410.20 per share. Trade value:
+USD 2,051,000.00. Settlement date: 18 March 2026. Counterparty: Morgan Stanley.
+Settlement currency: USD.
+
+-----------------------------------------------------------------------
+
+TRADE CONFIRMATION
+==================
+Reference: TRD-2026-0003
+On 17 March 2026, we confirm the PURCHASE of 8,000 shares of BAE Systems
+(ISIN GB0002634946) at a price of GBP 13.75 per share. Trade value:
+GBP 110,000.00. Settlement date: 19 March 2026. Counterparty: Barclays.
+Settlement currency: GBP.
+
+-----------------------------------------------------------------------
+
+TRADE CONFIRMATION
+==================
+Reference: TRD-2026-0004
+On 18 March 2026, we confirm the SALE of 3,000 shares of SAP SE
+(ISIN DE0007164600) at a price of EUR 178.90 per share. Trade value:
+EUR 536,700.00. Settlement date: 20 March 2026. Counterparty: Deutsche Bank.
+Settlement currency: EUR.

@@ -1,0 +1,6 @@
+[
+  {"ISIN": "US0378331005", "SecurityName": "Apple Inc", "Quantity": 10000, "CustodianAccount": "CUST-001"},
+  {"ISIN": "US02079K3059", "SecurityName": "Alphabet Inc", "Quantity": 2000, "CustodianAccount": "CUST-002"},
+  {"ISIN": "DE0007164600", "SecurityName": "SAP SE", "Quantity": 3000, "CustodianAccount": "CUST-003"},
+  {"ISIN": "FR0000131104", "SecurityName": "BNP Paribas", "Quantity": 4000, "CustodianAccount": "CUST-004"}
+]

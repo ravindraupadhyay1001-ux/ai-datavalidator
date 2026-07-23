@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<securities>
+  <security>
+    <ISIN>US0378331005</ISIN>
+    <SecurityName>Apple Inc</SecurityName>
+    <Quantity>10000</Quantity>
+    <Exchange>NASDAQ</Exchange>
+  </security>
+  <security>
+    <ISIN>US5949181045</ISIN>
+    <SecurityName>Microsoft Corp</SecurityName>
+    <Quantity>5000</Quantity>
+    <Exchange>NASDAQ</Exchange>
+  </security>
+  <security>
+    <ISIN>GB0002634946</ISIN>
+    <SecurityName>BAE Systems</SecurityName>
+    <Quantity>8000</Quantity>
+    <Exchange>LSE</Exchange>
+  </security>
+</securities>
