@@ -372,7 +372,14 @@
             <button type="button" onclick="document.getElementById('xref-key').value='trade_id'" class="btn-ghost rounded px-2 py-0.5 text-xs">trade_id</button>
           </div></div>
       </div>
-      <button onclick="runCrossReference()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">&#128279; Run Cross Reference</button>
+      <div class="flex gap-3 items-center flex-wrap">
+        <div class="seg" id="xref-seg">
+          <span class="seg-btn active" data-mode="standard" onclick="setXrefMode('standard')">Standard</span>
+          <span class="seg-btn" data-mode="ai" onclick="setXrefMode('ai')">&#9889; AI Copilot</span>
+        </div>
+        <button onclick="runCrossReferenceOrAI()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">&#128279; Run Cross Reference</button>
+        <span class="text-gray-500 text-xs" id="xref-mode-help">Standard &mdash; match the identifier across sources directly.</span>
+      </div>
       <div id="xref-out" class="mt-6"></div>
     </section>
 
@@ -2504,6 +2511,54 @@ async function runXrefAI(){
     renderXrefResult(data, t0);
   }catch(e){
     out.innerHTML = `<div class="text-red-400">Re-run failed: ${esc(e.message||e)}</div>`;
+  }
+}
+// ---------- Cross Reference: Standard vs AI Copilot mode ----------
+let xrefMode = 'standard';
+function setXrefMode(mode){
+  xrefMode = mode;
+  document.querySelectorAll('#xref-seg .seg-btn').forEach(b=>b.classList.toggle('active', b.dataset.mode===mode));
+  document.getElementById('xref-mode-help').textContent = mode==='standard'
+    ? 'Standard — match the identifier across sources directly.'
+    : 'AI Copilot — applies your saved rules (identifier key, compare fields, exclusions, golden source) then cross-references.';
+}
+function runCrossReferenceOrAI(){ return xrefMode==='standard' ? runCrossReference() : runCrossReferenceAI(); }
+// Upfront AI Copilot run: upload the sources (creates the session), then apply
+// saved rules via /xref/run-llm -- mirrors runCompareAI() so the toggle works
+// from scratch, not only as a post-run re-run.
+async function runCrossReferenceAI(){
+  const out=document.getElementById('xref-out');
+  const t0 = performance.now();
+  out.innerHTML='<span class="text-gray-400">Loading sources for the AI Copilot&hellip;</span>';
+  try{
+    const key=document.getElementById('xref-key').value.trim();
+    const fd=new FormData(); if(key) fd.append('xref_key_col',key);
+    const fileIds=['xref-f1','xref-f2','xref-f3','xref-f4'];
+    const connIds=['xref-conn1','xref-conn2','xref-conn3','xref-conn4'];
+    let sourceCount=0;
+    fileIds.forEach((id,i)=>{
+      const f=document.getElementById(id).files[0];
+      const cv=document.getElementById(connIds[i])?.value;
+      if(f){ fd.append(`xref_files_${i+1}`,f); sourceCount=i+1; }
+      if(cv){ fd.append(`xref_conn_ids_${i+1}`,cv); sourceCount=i+1; }
+    });
+    if(sourceCount<2){ out.innerHTML='<div class="text-red-400">Provide at least 2 source files or connections.</div>'; return; }
+    fd.append('xref_source_count', sourceCount);
+    const r=await fetch('/xref',{method:'POST',body:fd}); const data=await r.json();
+    if(!r.ok){ out.innerHTML=`<div class="text-red-400">${esc(data.detail||data.error||'Error')}</div>`; return; }
+    setSession(data.session_id);
+    out.innerHTML='<span class="text-gray-400">Applying saved rules and running the AI-driven cross reference&hellip;</span>';
+    const rr = await fetch(`/xref/run-llm/${data.session_id}`, {method:'POST'});
+    if(rr.ok){ renderXrefResult(await rr.json(), t0); return; }
+    const err = await rr.json().catch(()=>({}));
+    if(rr.status===402 || rr.status===429){
+      out.innerHTML=`<div class="text-red-400">${esc(err.detail||err.error||'Your access is currently blocked.')}</div>`;
+      return;
+    }
+    // Other non-OK on the AI step: show the standard result we already have.
+    renderXrefResult(data, t0);
+  }catch(e){
+    out.innerHTML=`<div class="text-red-400">Error: ${esc(e && e.message ? e.message : String(e))}</div>`;
   }
 }
 
