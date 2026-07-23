@@ -528,15 +528,15 @@
     <section id="tab-settings" class="tab-panel hidden">
       <h2 class="text-3xl font-bold mb-4 grad-text">Settings &amp; License</h2>
       <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid var(--gold)">
-        <div class="flex items-center gap-3 mb-3">
-          <div class="settings-icon" style="background:linear-gradient(135deg,var(--gold),var(--gold-light))">&#128273;</div>
-          <h3 class="settings-h">License</h3>
-        </div>
-        <div id="lic-state" class="text-sm text-gray-300 mb-3"></div>
-        <div class="flex gap-2">
-          <input id="lic-token" placeholder="Paste license JWT to activate" class="inp flex-1 text-sm font-mono">
-          <button onclick="activateLicense()" class="btn-emerald btn rounded-lg px-3 py-1 text-sm">Activate</button>
-          <button onclick="loadSettings()" class="btn-ghost rounded-lg px-3 py-1 text-sm">Refresh</button>
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="settings-icon" style="background:linear-gradient(135deg,var(--gold),var(--gold-light))">&#128273;</div>
+            <div>
+              <h3 class="settings-h">License</h3>
+              <div id="lic-state-mini" class="text-xs text-gray-500 mt-0.5">&mdash;</div>
+            </div>
+          </div>
+          <button onclick="openLicenseModal()" class="btn rounded-lg px-3 py-1.5 text-sm whitespace-nowrap">Manage license &rarr;</button>
         </div>
       </div>
       <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid var(--primary)">
@@ -694,6 +694,29 @@
 </template>
 
 <!-- Help Modal / User Guide -->
+<div id="license-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6" style="background:rgba(0,0,0,.65);backdrop-filter:blur(4px)">
+  <div class="card rounded-xl w-full max-w-2xl flex flex-col overflow-hidden">
+    <div class="flex items-center justify-between px-5 py-3 border-b border-[var(--line)]">
+      <div class="flex items-center gap-3">
+        <div class="settings-icon" style="background:linear-gradient(135deg,var(--gold),var(--gold-light))">&#128273;</div>
+        <h3 class="settings-h">License</h3>
+      </div>
+      <div class="flex gap-2">
+        <button onclick="loadSettings()" class="btn-ghost rounded-lg px-3 py-1 text-sm">Refresh</button>
+        <button onclick="closeLicenseModal()" class="btn-ghost rounded-lg px-3 py-1 text-sm">&times; Close</button>
+      </div>
+    </div>
+    <div class="p-5">
+      <div id="lic-state" class="text-sm text-gray-300 mb-3"></div>
+      <label class="text-xs text-gray-400">Activate a license</label>
+      <div class="flex gap-2 mt-1">
+        <input id="lic-token" placeholder="Paste license JWT to activate" class="inp flex-1 text-sm font-mono">
+        <button onclick="activateLicense()" class="btn-emerald btn rounded-lg px-3 py-1 text-sm">Activate</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="users-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6" style="background:rgba(0,0,0,.65);backdrop-filter:blur(4px)">
   <div class="card rounded-xl w-full max-w-5xl h-[85vh] flex flex-col overflow-hidden">
     <div class="flex items-center justify-between px-5 py-3 border-b border-[var(--line)]">
@@ -2760,6 +2783,8 @@ function openHelpModal(){
 function closeHelpModal(){ document.getElementById('help-modal').classList.add('hidden'); }
 function openUsersModal(){ document.getElementById('users-modal').classList.remove('hidden'); loadUsers(); }
 function closeUsersModal(){ document.getElementById('users-modal').classList.add('hidden'); document.getElementById('add-user-form')?.classList.add('hidden'); }
+function openLicenseModal(){ document.getElementById('license-modal').classList.remove('hidden'); loadSettings(); }
+function closeLicenseModal(){ document.getElementById('license-modal').classList.add('hidden'); }
 function showHelpTab(key){
   document.querySelectorAll('.help-tab-btn').forEach(b=>b.classList.toggle('tab-active', b.dataset.help===key));
   const panels = document.getElementById('help-panels');
@@ -3765,8 +3790,12 @@ function showLlmProviderFields(provider){
   });
 }
 async function loadSettings(){ const d=await fetch('/api/license/status').then(r=>r.json());
-  document.getElementById('lic-state').innerHTML=`Tier: <b>${d.dev_mode?'DEV (all unlocked)':d.tier}</b> &middot; Status: <b class="${d.valid?'text-emerald-400':'text-red-400'}">${d.valid?'valid':'inactive'}</b>`+
-    (d.expires_at?` &middot; expires ${d.expires_at.slice(0,10)}`:'')+`<br><span class="text-gray-500">${esc(d.message||'')}</span>`;
+  const _licSummary=`Tier: <b>${d.dev_mode?'DEV (all unlocked)':d.tier}</b> &middot; Status: <b class="${d.valid?'text-emerald-400':'text-red-400'}">${d.valid?'valid':'inactive'}</b>`+
+    (d.expires_at?` &middot; expires ${d.expires_at.slice(0,10)}`:'');
+  const _licState=document.getElementById('lic-state');
+  if(_licState) _licState.innerHTML=_licSummary+`<br><span class="text-gray-500">${esc(d.message||'')}</span>`;
+  const _licMini=document.getElementById('lic-state-mini');
+  if(_licMini) _licMini.innerHTML=_licSummary;
   try{
     const me = await fetch('/api/ws/me').then(r=>r.ok?r.json():null);
     const hidden = new Set(me?.hidden_modules || []);
