@@ -668,7 +668,6 @@
         <button onclick="saveAppSettings()" class="btn px-5 py-2 rounded-lg text-sm font-semibold">&#128190; Save Settings</button>
         <span class="text-xs text-gray-500">Written to .env on the server &mdash; some changes need a restart to take effect.</span>
       </div>
-      <pre id="set-out" class="card rounded-xl p-4 text-xs text-gray-300 max-w-3xl"></pre>
     </section>
   </main>
 </div>
@@ -3768,7 +3767,6 @@ function showLlmProviderFields(provider){
 async function loadSettings(){ const d=await fetch('/api/license/status').then(r=>r.json());
   document.getElementById('lic-state').innerHTML=`Tier: <b>${d.dev_mode?'DEV (all unlocked)':d.tier}</b> &middot; Status: <b class="${d.valid?'text-emerald-400':'text-red-400'}">${d.valid?'valid':'inactive'}</b>`+
     (d.expires_at?` &middot; expires ${d.expires_at.slice(0,10)}`:'')+`<br><span class="text-gray-500">${esc(d.message||'')}</span>`;
-  document.getElementById('set-out').textContent=JSON.stringify(d,null,2);
   try{
     const me = await fetch('/api/ws/me').then(r=>r.ok?r.json():null);
     const hidden = new Set(me?.hidden_modules || []);
