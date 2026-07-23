@@ -1733,23 +1733,37 @@ async function runCompareAI(){
   // uploads, so choosing a Saved Connector with no file attached produced
   // "0 upload(s) + 0 connection(s)" even though the connector chip showed
   // as selected in the UI.
-  const {ok,data}=await postForm('compare',
-    [['files_a','cmp-f1','conn_a_ids','cmp-conn1'],['files_b','cmp-f2','conn_b_ids','cmp-conn2'],...cmpExtraFileInputs()],
-    {}, null);
-  if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
-  out.innerHTML='<span class="text-gray-400">Applying saved rules and running the AI-driven reconciliation&hellip;</span>';
-  let finalData = data;
   try{
+    const {ok,data}=await postForm('compare',
+      [['files_a','cmp-f1','conn_a_ids','cmp-conn1'],['files_b','cmp-f2','conn_b_ids','cmp-conn2'],...cmpExtraFileInputs()],
+      {}, null);
+    if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
+    out.innerHTML='<span class="text-gray-400">Applying saved rules and running the AI-driven reconciliation&hellip;</span>';
+    let finalData = data;
     const r = await fetch(`/recon/run-llm/${data.session_id}`, {method:'POST'});
-    if(r.ok) finalData = await r.json();
-  }catch(e){ /* fall back to the plain compare result below */ }
-  _pendingChatPrefill = `Look at these reconciliation results and tell me what's driving the breaks, and whether the key/exclusions should change.`;
-  // A saved rule like "fuzzy match on customer_name" routes the AI Copilot's
-  // run-llm pipeline to the probabilistic engine instead of the exact-key
-  // one -- render with the matching UI rather than forcing it through the
-  // exact-match report.
-  if(finalData.fuzzy){ renderFuzzyResult(finalData, t0); return; }
-  await renderCompareResult(finalData, t0, 'ai');
+    if(r.ok){
+      finalData = await r.json();
+    } else {
+      // Blocked (expired subscription / token cap) or server error on the
+      // second-stage AI run -- surface it instead of silently rendering the
+      // plain compare, so the AI path shows the same clear message as Standard.
+      const err = await r.json().catch(()=>({}));
+      if(r.status===402 || r.status===429){
+        out.innerHTML=`<div class="text-red-400">${err.detail||err.error||'Your access is currently blocked.'}</div>`;
+        return;
+      }
+      // Any other non-OK: fall back to the plain compare result below.
+    }
+    _pendingChatPrefill = `Look at these reconciliation results and tell me what's driving the breaks, and whether the key/exclusions should change.`;
+    // A saved rule like "fuzzy match on customer_name" routes the AI Copilot's
+    // run-llm pipeline to the probabilistic engine instead of the exact-key
+    // one -- render with the matching UI rather than forcing it through the
+    // exact-match report.
+    if(finalData.fuzzy){ renderFuzzyResult(finalData, t0); return; }
+    await renderCompareResult(finalData, t0, 'ai');
+  }catch(e){
+    out.innerHTML=`<div class="text-red-400">Error: ${esc(e && e.message ? e.message : String(e))}</div>`;
+  }
 }
 // ---------- Quality / Profile / Governance -- AI Copilot mode ----------
 // Lean summary card for the AI Copilot's auto-run report, mirroring compare's

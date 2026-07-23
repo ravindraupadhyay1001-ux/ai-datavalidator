@@ -13816,6 +13816,8 @@ async def xref_run_llm(session_id: str, request: Request):
     golden_source, reruns analyze_cross_reference() with them applied, and
     returns the same response shape /xref uses so the frontend can render it
     with the identical results UI."""
+    # Same expiry / token-cap gate as /xref -- keep the AI Copilot path gated.
+    _gate_run(request)
     _xrl_username = _ws_resolve_username(request) or "default"
     stored = _results_store.get(session_id, {})
     if not stored or "dataframes" not in stored:
@@ -17859,6 +17861,9 @@ async def recon_run_llm(session_id: str, request: Request):
     """Direct entry point for AI Copilot mode's "Run Reconciliation" button --
     same LLM-driven rule pipeline as typing "run recon" in chat, but triggered
     immediately on run instead of requiring a follow-up chat message."""
+    # Same expiry / token-cap gate as /analyze -- the AI Copilot path must not
+    # slip past the subscription block that Standard mode enforces.
+    _gate_run(request)
     _rrl_username = _ws_resolve_username(request) or "default"
     result = await asyncio.to_thread(_run_llm_recon_full, session_id, _rrl_username)
     if result is None:
