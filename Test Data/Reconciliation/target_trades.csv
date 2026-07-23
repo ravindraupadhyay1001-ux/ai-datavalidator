@@ -1,4 +1,4 @@
-TradeID,Full Name,TradeDate,Notional,Currency,Side
+TradeID,FullName,TradeDate,Notional,Currency,Side
 T1001,John Smith,03/15/2026,1250000,USD,BUY
 T1002,Aisha Khan,03/16/2026,3400000,EUR,SELL
 T1003,Wei Chen,03/17/2026,875000,GBP,BUY

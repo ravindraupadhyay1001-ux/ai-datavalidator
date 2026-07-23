@@ -1,7 +1,7 @@
 [
   {
     "TradeID":"T1001",
-    "Full Name":"John Smith",
+    "FullName":"John Smith",
     "TradeDate":"03\/15\/2026",
     "Notional":1250000,
     "Currency":"USD",
@@ -9,7 +9,7 @@
   },
   {
     "TradeID":"T1002",
-    "Full Name":"Aisha Khan",
+    "FullName":"Aisha Khan",
     "TradeDate":"03\/16\/2026",
     "Notional":3400000,
     "Currency":"EUR",
@@ -17,7 +17,7 @@
   },
   {
     "TradeID":"T1003",
-    "Full Name":"Wei Chen",
+    "FullName":"Wei Chen",
     "TradeDate":"03\/17\/2026",
     "Notional":875000,
     "Currency":"GBP",
@@ -25,7 +25,7 @@
   },
   {
     "TradeID":"T1005",
-    "Full Name":"Priya Patel",
+    "FullName":"Priya Patel",
     "TradeDate":"03\/19\/2026",
     "Notional":560000,
     "Currency":"JPY",
@@ -33,7 +33,7 @@
   },
   {
     "TradeID":"T1006",
-    "Full Name":"Liam O'Brien",
+    "FullName":"Liam O'Brien",
     "TradeDate":"03\/20\/2026",
     "Notional":1750250,
     "Currency":"USD",
@@ -41,7 +41,7 @@
   },
   {
     "TradeID":"T1007",
-    "Full Name":"Sofia Rossi",
+    "FullName":"Sofia Rossi",
     "TradeDate":"03\/21\/2026",
     "Notional":940000,
     "Currency":"EUR",
@@ -49,7 +49,7 @@
   },
   {
     "TradeID":"T1008",
-    "Full Name":"Kenji Tanaka",
+    "FullName":"Kenji Tanaka",
     "TradeDate":"03\/22\/2026",
     "Notional":4200000,
     "Currency":"GBP",
@@ -57,7 +57,7 @@
   },
   {
     "TradeID":"T1009",
-    "Full Name":"Fatima Al-Sayed",
+    "FullName":"Fatima Al-Sayed",
     "TradeDate":"03\/23\/2026",
     "Notional":330000,
     "Currency":"GBP",
@@ -65,7 +65,7 @@
   },
   {
     "TradeID":"T1010",
-    "Full Name":"Noah Johnson",
+    "FullName":"Noah Johnson",
     "TradeDate":"03\/24\/2026",
     "Notional":1020000,
     "Currency":"USD",
@@ -73,7 +73,7 @@
   },
   {
     "TradeID":"T1011",
-    "Full Name":"Emma Wilson",
+    "FullName":"Emma Wilson",
     "TradeDate":"03\/25\/2026",
     "Notional":680000,
     "Currency":"EUR",
