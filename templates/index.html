@@ -403,7 +403,6 @@
         <button onclick="wsTab('jobs')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Jobs</button>
         <button onclick="wsTab('saved')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Saved Reports</button>
         <button onclick="wsTab('memory')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Memory</button>
-        <button onclick="wsTab('audit')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Audit</button>
       </div>
       <div id="ws-conn" class="ws-panel">
         <div class="card rounded-xl p-4 mb-4 max-w-3xl grid grid-cols-2 gap-3 text-sm">
@@ -517,10 +516,6 @@
         <div class="text-xs text-gray-500 mb-3">Everything the AI has been trained with, per dataset &mdash; rules you saved during analysis plus steps the AI learned on its own runs. Rules auto-apply whenever a matching dataset is analyzed. Edit or delete anything here, anytime.</div>
         <div id="mem-list"></div>
         <div id="mem-detail" class="hidden"></div>
-      </div>
-      <div id="ws-audit" class="ws-panel hidden">
-        <div class="text-sm text-gray-400 mb-2">Live activity feed (SSE)</div>
-        <div id="au-log" class="card rounded-xl p-3 text-xs font-mono space-y-1 h-96 overflow-auto"></div>
       </div>
     </section>
 
@@ -808,7 +803,7 @@ document.querySelectorAll('.tab-btn[data-tab]').forEach(b => b.onclick = () => {
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
   document.getElementById('tab-' + b.dataset.tab).classList.remove('hidden');
   if (b.dataset.tab === 'settings') { loadSettings(); loadUsers(); }
-  if (b.dataset.tab === 'workspace') { wsTab('conn'); startAudit(); }
+  if (b.dataset.tab === 'workspace') { wsTab('conn'); }
 });
 
 function stat(label, val, color){
@@ -3849,9 +3844,6 @@ async function loadSavedRuns(jobId){
     `<div class="text-gray-500 text-sm">${jobId ? 'No saved runs use this job\'s connector(s) yet.' : 'No saved runs.'}</div>`;
 }
 async function delSaved(id){ if(confirm('Delete saved run?')){await fetch(`/api/ws/saved-runs/${id}`,{method:'DELETE'});loadSavedRuns();} }
-let _auditES=null;
-function startAudit(){ if(_auditES)return; _auditES=new EventSource('/api/logs/stream');
-  _auditES.onmessage=e=>{ try{const d=JSON.parse(e.data); const au_log=document.getElementById('au-log'); au_log.innerHTML=`<div><span class="text-gray-500">${(d.created_at||'').slice(11,19)}</span> <span class="text-sky-300">${esc(d.action)}</span> ${esc(d.username||'')} &mdash; ${esc(d.detail||'')}</div>`+au_log.innerHTML;}catch(_){} }; }
 async function saveToWorkspace(){
   if(!SESSION){toast('Run an analysis first.');return;}
   const name=prompt('Name this saved run:'); if(!name)return;
