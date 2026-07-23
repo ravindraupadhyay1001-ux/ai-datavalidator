@@ -953,7 +953,33 @@ def _parse_txt(raw: bytes, encoding: str, delimiter: str | None = None) -> pd.Da
     return _mark(pd.DataFrame({"value": lines}), "")
 
 
+def _xml_infer_types(df: pd.DataFrame) -> pd.DataFrame:
+    """XML carries no data types -- every value arrives as a string. Infer
+    numeric columns (as the CSV/JSON/Excel loaders do) so reconciling an XML
+    file against a typed file doesn't spuriously flag a type mismatch on
+    amount / quantity columns. Conservative: only converts a column when every
+    non-null value is numeric (IDs like 'T1001' and dates stay text)."""
+    for col in list(df.columns):
+        s = df[col]
+        if not (s.dtype == object or pd.api.types.is_string_dtype(s)):
+            continue
+        non_null = s.dropna()
+        if non_null.empty:
+            continue
+        try:
+            if pd.to_numeric(non_null, errors="coerce").notna().all():
+                df[col] = pd.to_numeric(s, errors="coerce")
+        except Exception:
+            pass
+    return df
+
+
 def _parse_xml(raw: bytes) -> pd.DataFrame:
+    """Parse XML, then infer numeric column types (XML values are all strings)."""
+    return _xml_infer_types(_parse_xml_impl(raw))
+
+
+def _parse_xml_impl(raw: bytes) -> pd.DataFrame:
     # Parse XML into a flat tabular DataFrame.
     # Strategy 1 -- Repeating same-tag children of root (most common tabular XML).
     # Uses full recursive dot-path flattening so 3+ level nesting works.
