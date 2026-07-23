@@ -6,8 +6,17 @@ XML, TXT) so demos also prove the app ingests every format. All data is
 
 ---
 
-## Reconciliation/  — `source_trades.csv` (CSV) vs `target_trades.xlsx` (Excel)
-Two deliberately **misaligned** trade files — the ideal Standard-vs-AI-Copilot demo.
+## Reconciliation/
+Two reconciliation modes, two kinds of sample data:
+- **Standard** = files are already *apple-to-apple* (same schema/formats) → direct compare finds the breaks.
+- **AI Copilot** = files are *misaligned* → describe in plain English how to align them (rename/combine/reformat), then the same engine finds the breaks.
+
+### Standard mode — `standard_ledger.csv` vs `standard_counterparty.csv`
+Same schema, same formats (key `TradeID`). Run in **Standard** mode; no transforms needed.
+- **Expected:** T3001/T3004 match; **T3002** Amount break, **T3003** Side break, **T3005** Quantity break, **T3006** Currency break; **T3007** only in ledger; **T3008** only in counterparty. (4 modified, 1 only-A, 1 only-B — no format noise.)
+
+### AI Copilot mode — `source_trades.csv` (CSV) vs `target_trades.xlsx` (Excel)
+Two deliberately **misaligned** trade files — needs AI to bring them apple-to-apple first.
 - Source has `First` + `Last`; target has `Full Name`.
 - Dates: source `DD/MM/YYYY`, target `MM/DD/YYYY`.
 - Amounts: source `"1,250,000"` (comma text), target `1250000` (plain).
