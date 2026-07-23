@@ -1,0 +1,6 @@
+# Treat Office/binary documents as binary so Git never applies line-ending
+# (autocrlf) conversion, which would corrupt the zip container.
+*.docx binary
+*.xlsx binary
+*.pptx binary
+*.pdf  binary
