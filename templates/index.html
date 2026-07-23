@@ -648,14 +648,6 @@
         </div>
       </div>
 
-      <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid #d97706">
-        <div class="flex items-center gap-3 mb-3">
-          <div class="settings-icon" style="background:linear-gradient(135deg,#d97706,#f59e0b)">&#127760;</div>
-          <h3 class="settings-h">License Server</h3>
-        </div>
-        <div><label class="text-xs text-gray-400">License Server URL</label><input id="cfg-license-server" class="inp w-full mt-1 text-sm"></div>
-      </div>
-
       <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid #e11d48">
         <div class="flex items-center gap-3 mb-3">
           <div class="settings-icon" style="background:linear-gradient(135deg,#e11d48,#fb7185)">&#128274;</div>
@@ -712,6 +704,13 @@
       <div class="flex gap-2 mt-1">
         <input id="lic-token" placeholder="Paste license JWT to activate" class="inp flex-1 text-sm font-mono">
         <button onclick="activateLicense()" class="btn-emerald btn rounded-lg px-3 py-1 text-sm">Activate</button>
+      </div>
+      <div class="mt-4 pt-4 border-t border-[var(--line)]">
+        <label class="text-xs text-gray-400">License Server URL <span class="text-gray-600">&mdash; where licenses are validated</span></label>
+        <div class="flex gap-2 mt-1">
+          <input id="cfg-license-server" class="inp flex-1 text-sm" placeholder="https://license.example.com">
+          <button onclick="saveAppSettings()" class="btn rounded-lg px-3 py-1 text-sm">Save</button>
+        </div>
       </div>
     </div>
   </div>
