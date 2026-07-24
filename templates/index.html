@@ -1503,6 +1503,8 @@ function renderCompareResult(data, t0, mode){
     // so the user immediately sees the whole report reflect the new rules.
     initialTab = (t0==null) ? 'summary' : 'copilot';
   } else {
+    // Standard run: no AI Copilot tab -- the Copilot authors/applies rules, which
+    // only belongs to an AI run. Same rule across every module.
     cmpTabs = [
       {key:'summary', label:'Summary', content: summaryHTML},
       {key:'exceptions', label:`Exceptions (${(c.modified||0)+(c.file1_only||0)+(c.file2_only||0)})`, content: exceptionsHTML},
@@ -1662,7 +1664,7 @@ function renderNwayResult(data, t0){
   out.innerHTML = actionBar(data.session_id, t0!=null?((performance.now()-t0)/1000).toFixed(3):data.elapsed) + resultTabsShell('cmp', [
     {key:'summary', label:'Summary', content: summaryHTML},
     {key:'exceptions', label:`Exceptions (${(c.partial||0)+(c.value_breaks||0)})`, content: exceptionsHTML},
-    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('cmp','compare', chips)},
+    ...(cmpMode==='ai' ? [{key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('cmp','compare', chips)}] : []),
     {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
   ], 'summary');
   _currentReconFingerprint = data.fingerprint || '';
@@ -1738,7 +1740,7 @@ function renderFuzzyResult(data, t0){
   out.innerHTML = actionBar(data.session_id, t0!=null?((performance.now()-t0)/1000).toFixed(3):data.elapsed) + resultTabsShell('cmp', [
     {key:'summary', label:'Summary', content: summaryHTML},
     {key:'exceptions', label:`Exceptions (${(c.modified||0)+(c.file1_only||0)+(c.file2_only||0)})`, content: exceptionsHTML},
-    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('cmp','compare', chips)},
+    ...(cmpMode==='ai' ? [{key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('cmp','compare', chips)}] : []),
     {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
   ], 'summary');
   _currentReconFingerprint = data.fingerprint || '';
@@ -2134,7 +2136,7 @@ function renderQualityReport(data, elapsedStr){
     {key:'summary', label:'Summary', content: summaryHTML},
     {key:'exceptions', label:`Exceptions (${failedRules.length})`, content: exceptionsHTML},
     {key:'anomalies', label:`Anomalies (${anomalyCount})`, content: renderAnomaliesHTML(data)},
-    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('q','quality', qualityChips(data.name))},
+    ...(qMode==='ai' ? [{key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('q','quality', qualityChips(data.name))}] : []),
     {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
   ], 'summary');
   _qColState={rows:data.columns_detail||[], sort:'', dir:1, issues:false, q:''};
@@ -2390,7 +2392,7 @@ async function runProfile(){
   ];
   out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('prof', [
     {key:'summary', label:'Summary', content: summaryHTML},
-    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('prof','profile', chips)},
+    ...(profMode==='ai' ? [{key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('prof','profile', chips)}] : []),
     {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
   ], 'summary');
   loadDatasetControlRules('prof','profile');
@@ -2440,7 +2442,7 @@ async function runGovernance(){
   out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('gov', [
     {key:'summary', label:'Summary', content: summaryHTML},
     {key:'exceptions', label:`Exceptions (${(data.mandatory_breaches||[]).length})`, content: exceptionsHTML},
-    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('gov','governance', chips)},
+    ...(govMode==='ai' ? [{key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('gov','governance', chips)}] : []),
     {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
   ], 'summary');
   const labels=Object.keys(counts);
@@ -2494,7 +2496,7 @@ function renderXrefResult(data, t0){
   out.innerHTML = actionBar(data.session_id, t0!=null?((performance.now()-t0)/1000).toFixed(3):data.elapsed) + resultTabsShell('xref', [
     {key:'summary', label:'Summary', content: summaryHTML},
     {key:'exceptions', label:`Conflicts (${(data.conflicts||[]).length})${data.within_tolerance_count?` &middot; ${data.within_tolerance_count} in tol.`:''}`, content: exceptionsHTML + withinTolHTML},
-    {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('xref','xref', chips)},
+    ...(xrefMode==='ai' ? [{key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('xref','xref', chips)}] : []),
     {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
   ], 'summary');
   loadDatasetControlRules('xref','xref');
