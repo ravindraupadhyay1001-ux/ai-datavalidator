@@ -1921,10 +1921,23 @@ async function _runAICopilotMode(action, fileId, prefix, context, label, connId)
     {label:`What ${label} issues should I be aware of?`, q:`What ${label} issues should I be aware of in this dataset?`},
     {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
   ];
-  out.innerHTML = actionBar(activeSession, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell(prefix, [
-    {key:'copilot', label:'&#9889; AI Copilot', content: `<div id="${prefix}-ai-report">${renderAiReportCard(context, reportData)}</div>` + copilotPanelHTML(prefix, context, chips)},
-    {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
-  ], 'copilot');
+  const _elapsed = ((performance.now()-t0)/1000).toFixed(3);
+  const _aiCard = `<div id="${prefix}-ai-report">${renderAiReportCard(context, reportData)}</div>`;
+  // Same idea as the reconciliation AI run: when the AI produced a full report,
+  // show the module's real Summary/Exceptions tabs built from it, with the
+  // Copilot opened first. Falls back to chat-only if anything is off.
+  const _aiRenderers = {profile: renderProfileReport, governance: renderGovernanceReport};
+  let _rendered = false;
+  if(reportData && _aiRenderers[context]){
+    try{ _aiRenderers[context](reportData, _elapsed, 'copilot', _aiCard); _rendered = true; }
+    catch(e){ _rendered = false; }
+  }
+  if(!_rendered){
+    out.innerHTML = actionBar(activeSession, _elapsed) + resultTabsShell(prefix, [
+      {key:'copilot', label:'&#9889; AI Copilot', content: _aiCard + copilotPanelHTML(prefix, context, chips)},
+      {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
+    ], 'copilot');
+  }
   mountCopilotChat(prefix);
   loadDatasetControlRules(prefix, context);
   checkDatasetDrift(prefix, context);
@@ -2024,7 +2037,7 @@ async function runQuality(){
 
 // Renders the full standard DQ report. Shared by the initial run and the
 // override-grid re-run (which returns the same JSON shape).
-function renderQualityReport(data, elapsedStr){
+function renderQualityReport(data, elapsedStr, activeTab, aiCardHTML){
   const out=document.getElementById('q-out');
   setSession(data.session_id); const dim=data.dimensions||{};
   const gradeColor={A:'#10b981',B:'#84cc16',C:'#f59e0b',D:'#f97316',F:'#ef4444'}[data.grade]||'#38bdf8';
@@ -2136,9 +2149,9 @@ function renderQualityReport(data, elapsedStr){
     {key:'summary', label:'Summary', content: summaryHTML},
     {key:'exceptions', label:`Exceptions (${failedRules.length})`, content: exceptionsHTML},
     {key:'anomalies', label:`Anomalies (${anomalyCount})`, content: renderAnomaliesHTML(data)},
-    ...(qMode==='ai' ? [{key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('q','quality', qualityChips(data.name))}] : []),
+    ...(qMode==='ai' ? [{key:'copilot', label:'&#9889; AI Copilot', content: (aiCardHTML||'') + copilotPanelHTML('q','quality', qualityChips(data.name))}] : []),
     {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
-  ], 'summary');
+  ], activeTab || 'summary');
   _qColState={rows:data.columns_detail||[], sort:'', dir:1, issues:false, q:''};
   renderQColTable();
   _qOvrRepopulate();
@@ -2236,10 +2249,23 @@ async function runQualityAI(){
     if(r.ok){ const j = await r.json(); if(!j.error){ reportData = j; activeSession = j.session_id; } }
   }catch(e){ /* fall back to chat-only below */ }
   setSession(activeSession);
-  out.innerHTML = actionBar(activeSession, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('q', [
-    {key:'copilot', label:'&#9889; AI Copilot', content: `<div id="q-ai-report">${renderAiReportCard('quality', reportData)}</div>` + copilotPanelHTML('q','quality', qualityChips((reportData||data).file_names?.[0] || reportData?.file_name))},
-    {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
-  ], 'copilot');
+  const _elapsed = ((performance.now()-t0)/1000).toFixed(3);
+  const _aiCard = `<div id="q-ai-report">${renderAiReportCard('quality', reportData)}</div>`;
+  // When the AI run produced a full report, render the SAME Summary/Exceptions/
+  // Anomalies tabs a Standard run shows -- computed from the AI's own results --
+  // with the Copilot tab opened first. Falls back to chat-only if the report is
+  // missing or its shape is unexpected.
+  let _rendered = false;
+  if(reportData){
+    try{ renderQualityReport(reportData, _elapsed, 'copilot', _aiCard); _rendered = true; }
+    catch(e){ _rendered = false; }
+  }
+  if(!_rendered){
+    out.innerHTML = actionBar(activeSession, _elapsed) + resultTabsShell('q', [
+      {key:'copilot', label:'&#9889; AI Copilot', content: _aiCard + copilotPanelHTML('q','quality', qualityChips((reportData||data).file_names?.[0] || reportData?.file_name))},
+      {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
+    ], 'copilot');
+  }
   mountCopilotChat('q');
   loadDatasetControlRules('q','quality');
   checkDatasetDrift('q','quality');
@@ -2366,6 +2392,13 @@ async function runProfile(){
   const {ok,data}=await postForm('quality',[['files','prof-f1','conn_ids','prof-conn1']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   setSession(data.session_id);
+  renderProfileReport(data, ((performance.now()-t0)/1000).toFixed(3));
+}
+
+// Renders the profile report. Shared by the Standard run and the AI run, so an
+// AI run shows the same Summary tab -- computed from the AI's own report data.
+function renderProfileReport(data, elapsedStr, activeTab, aiCardHTML){
+  const out=document.getElementById('prof-out');
   let summaryHTML=`<div class="grid grid-cols-3 gap-3 mb-4 text-sm">
     ${stat('Rows', data.rows, '#a855f7')}${stat('Columns', data.columns, '#38bdf8')}${stat('Duplicate rows', data.duplicate_rows, '#f59e0b')}</div>
     <div class="card rounded-xl p-3 overflow-auto"><table class="w-full text-xs"><thead class="text-gray-400">
@@ -2390,11 +2423,11 @@ async function runProfile(){
     {label:'What columns look like join keys?', q:'Which columns look like good join keys for reconciling this file against another?'},
     {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
   ];
-  out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('prof', [
+  out.innerHTML = actionBar(data.session_id, elapsedStr) + resultTabsShell('prof', [
     {key:'summary', label:'Summary', content: summaryHTML},
-    ...(profMode==='ai' ? [{key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('prof','profile', chips)}] : []),
+    ...(profMode==='ai' ? [{key:'copilot', label:'&#9889; AI Copilot', content: (aiCardHTML||'') + copilotPanelHTML('prof','profile', chips)}] : []),
     {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
-  ], 'summary');
+  ], activeTab || 'summary');
   loadDatasetControlRules('prof','profile');
 }
 
@@ -2405,6 +2438,13 @@ async function runGovernance(){
   const {ok,data}=await postForm('governance',[['files','gov-f1','conn_ids','gov-conn1']]);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
   setSession(data.session_id);
+  renderGovernanceReport(data, ((performance.now()-t0)/1000).toFixed(3));
+}
+
+// Renders the governance report. Shared by the Standard run and the AI run, so an
+// AI run shows the same Summary/Exceptions tabs -- from the AI's own report data.
+function renderGovernanceReport(data, elapsedStr, activeTab, aiCardHTML){
+  const out=document.getElementById('gov-out');
   const rc={low:'#16a34a',medium:'#d97706',high:'#ea580c',critical:'#dc2626'}[data.overall_risk];
   const sc={public:'#16a34a',internal:'#0284c7',confidential:'#d97706','highly restricted':'#dc2626',restricted:'#dc2626'};
   const counts={}; data.columns.forEach(c=>counts[c.sensitivity]=(counts[c.sensitivity]||0)+1);
@@ -2439,12 +2479,12 @@ async function runGovernance(){
     {label:'Explain the regulatory flags', q:'Explain the regulatory frameworks that apply here and why.'},
     {label:'What do you know about this dataset?', q:'What do you know about this dataset?', special:true},
   ];
-  out.innerHTML = actionBar(data.session_id, ((performance.now()-t0)/1000).toFixed(3)) + resultTabsShell('gov', [
+  out.innerHTML = actionBar(data.session_id, elapsedStr) + resultTabsShell('gov', [
     {key:'summary', label:'Summary', content: summaryHTML},
     {key:'exceptions', label:`Exceptions (${(data.mandatory_breaches||[]).length})`, content: exceptionsHTML},
-    ...(govMode==='ai' ? [{key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('gov','governance', chips)}] : []),
+    ...(govMode==='ai' ? [{key:'copilot', label:'&#9889; AI Copilot', content: (aiCardHTML||'') + copilotPanelHTML('gov','governance', chips)}] : []),
     {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
-  ], 'summary');
+  ], activeTab || 'summary');
   const labels=Object.keys(counts);
   chart('govChart',{type:'bar',data:{labels,datasets:[{data:labels.map(k=>counts[k]),
     backgroundColor:labels.map(k=>sc[k]),borderRadius:6}]},options:{plugins:{legend:{display:false}},
