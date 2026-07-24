@@ -74,9 +74,11 @@
     .user-name{ font-size:12.5px; font-weight:600; color:var(--txt-primary);
       white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .user-role{ font-size:10.5px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; }
-    .logout-ico{ flex:none; width:28px; height:28px; border-radius:8px; display:flex; align-items:center;
-      justify-content:center; color:var(--txt-secondary); transition:background .15s, color .15s; }
-    .logout-ico:hover{ background:rgba(239,68,68,.12); color:#ef4444; }
+    .logout-btn{ display:flex; align-items:center; justify-content:center; gap:7px; width:100%;
+      margin-top:7px; padding:7px 10px; border-radius:9px; border:1.5px solid var(--line);
+      background:#fff; font-size:12px; font-weight:600; color:var(--txt-secondary);
+      transition:border-color .15s, color .15s, background .15s; }
+    .logout-btn:hover{ border-color:#ef4444; color:#ef4444; background:rgba(239,68,68,.07); }
     .inp{ background:#fff; border:1.5px solid var(--line); border-radius:9px; padding:7px 11px; color:var(--txt-primary); transition:border-color .15s, box-shadow .15s; }
     .inp:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 3.5px var(--primary-dim); }
     .logo-mark{ width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center;
@@ -4157,8 +4159,8 @@ const roleColor = {admin:'#f59e0b', analyst:'#38bdf8', readonly:'#94a3b8'};
         <div class="user-name">${esc(_who)}</div>
         <div class="user-role" style="color:${_rc}">${esc(_role)}</div>
       </div>
-      <a href="/logout" class="logout-ico" title="Log out" aria-label="Log out"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></a>
-    </div>`;
+    </div>
+    <a href="/logout" class="logout-btn" title="Sign out of your account"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>Log out</a>`;
   document.getElementById('licbar').before(badge);
   showSubscriptionStatus(me.subscription);
   if (CURRENT_ROLE === 'readonly') applyReadonlyUI();
