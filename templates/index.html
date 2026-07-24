@@ -1904,6 +1904,64 @@ function renderAiReportCard(context, data){
   }
   return '';
 }
+// Extra Summary blocks for Profile / Governance AI runs, built from those
+// endpoints' own payloads. The compact AI card omits most of this detail, which
+// the Standard summaries do show (near-key columns, correlations, PII table...).
+function _aiProfileExtras(rd){
+  if(!rd) return '';
+  const cols = rd.columns || [], tb = rd.type_breakdown || {};
+  const num = v => v==null ? '&mdash;' : (typeof v==='number' ? (Number.isInteger(v)?v:(+v).toFixed(2)) : esc(''+v));
+  return `
+  ${rd.memory_mb!=null||Object.keys(tb).length ? `<div class="grid grid-cols-2 gap-3 mb-4 text-sm">
+    ${rd.memory_mb!=null?stat('Memory (MB)', rd.memory_mb, '#0284c7'):''}
+    ${Object.keys(tb).length?`<div class="card rounded-xl p-3 text-xs"><div class="text-gray-400 mb-1">Type breakdown</div>
+      <div class="flex flex-wrap gap-1">${Object.entries(tb).map(([k,v])=>`<span class="badge" style="background:rgba(56,189,248,.12);color:#0284c7">${esc(k)}: ${v}</span>`).join('')}</div></div>`:''}
+  </div>`:''}
+  ${(rd.near_key_cols||[]).length||(rd.correlations||[]).length ? `<div class="grid grid-cols-2 gap-4 mb-4 text-sm">
+    ${(rd.near_key_cols||[]).length?`<div class="card rounded-xl p-4">
+      <div class="text-xs text-gray-400 mb-2">Near-key columns <span class="text-gray-600">(candidate join keys)</span></div>
+      <div class="flex flex-wrap gap-1">${rd.near_key_cols.map(c=>`<span class="badge" style="background:rgba(147,51,234,.12);color:#7e22ce">${esc(typeof c==='string'?c:(c.name||''))}</span>`).join('')}</div></div>`:''}
+    ${(rd.correlations||[]).length?`<div class="card rounded-xl p-4">
+      <div class="text-xs text-gray-400 mb-2">Correlated columns</div>
+      <div class="space-y-1 text-xs">${rd.correlations.map(c=>`<div>${esc(c.col_a||c.a||'')} &harr; ${esc(c.col_b||c.b||'')}: <b>${num(c.r)}</b></div>`).join('')}</div></div>`:''}
+  </div>`:''}
+  ${cols.length?`<div class="card rounded-xl p-3 overflow-auto mb-4">
+    <div class="text-xs text-gray-400 mb-2">Columns (${cols.length})</div>
+    <table class="w-full text-xs"><thead class="text-gray-400"><tr>
+      <th class="text-left p-1">Column</th><th>Type</th><th>Null %</th><th>Distinct</th><th>Min</th><th>Max</th><th>Outlier %</th></tr></thead><tbody>
+      ${cols.map(c=>`<tr class="border-t border-[var(--line)]">
+        <td class="p-1">${esc(c.name||'')}</td>
+        <td class="text-center text-sky-300">${esc(c.dtype||'')}</td>
+        <td class="text-center">${c.null_pct!=null?(+c.null_pct).toFixed(1):'&mdash;'}</td>
+        <td class="text-center">${c.unique_n!=null?c.unique_n:'&mdash;'}</td>
+        <td class="text-center text-gray-400">${num(c.min)}</td>
+        <td class="text-center text-gray-400">${num(c.max)}</td>
+        <td class="text-center">${c.outlier_pct?(+c.outlier_pct).toFixed(1):'&mdash;'}</td></tr>`).join('')}
+    </tbody></table></div>`:''}`;
+}
+
+function _aiGovExtras(rd){
+  if(!rd) return '';
+  const pii = rd.pii_columns || [], und = rd.undocumented || [];
+  return `
+  <div class="grid grid-cols-2 gap-3 mb-4 text-sm">
+    ${stat('Rows', rd.total_rows!=null?rd.total_rows:'&mdash;', '#a855f7')}${stat('Columns', rd.total_cols!=null?rd.total_cols:'&mdash;', '#38bdf8')}</div>
+  ${pii.length?`<div class="card rounded-xl p-3 overflow-auto mb-4">
+    <div class="text-xs text-gray-400 mb-2">PII / sensitive columns (${pii.length})</div>
+    <table class="w-full text-xs"><thead class="text-gray-400"><tr>
+      <th class="text-left p-1">Column</th><th>Sensitivity</th><th>PII types</th><th>Regulatory</th><th>Access</th></tr></thead><tbody>
+      ${pii.map(c=>`<tr class="border-t border-[var(--line)]">
+        <td class="p-1">${esc(c.name||'')}</td>
+        <td class="text-center">${c.sensitivity?`<span class="badge" style="background:rgba(220,38,38,.12);color:#dc2626">${esc(c.sensitivity)}</span>`:'&mdash;'}</td>
+        <td class="text-center">${(c.pii_types||[]).map(esc).join(', ')||'&mdash;'}</td>
+        <td class="text-center">${(c.regulatory||[]).map(esc).join(', ')||'&mdash;'}</td>
+        <td class="text-center text-gray-400">${c.access?esc(c.access):'&mdash;'}</td></tr>`).join('')}
+    </tbody></table></div>`:''}
+  ${und.length?`<div class="card rounded-xl p-3 mb-3 text-xs">
+    <div class="text-gray-400 mb-1">No data-dictionary entry (${und.length})</div>
+    <div class="flex flex-wrap gap-1">${und.map(c=>`<span class="badge" style="background:rgba(245,158,11,.14);color:#b45309">${esc(typeof c==='string'?c:(c.name||''))}</span>`).join('')}</div></div>`:''}`;
+}
+
 async function _runAICopilotMode(action, fileId, prefix, context, label, connId){
   const out=document.getElementById(prefix+'-out'); out.innerHTML='<span class="text-gray-400">Loading file for the AI Copilot&hellip;</span>';
   const t0 = performance.now();
@@ -1927,8 +1985,14 @@ async function _runAICopilotMode(action, fileId, prefix, context, label, connId)
   // total_cols, ...), NOT the Standard run's shape (rows, columns, columns_detail),
   // so the Standard renderers cannot be reused here -- they would render a blank,
   // misleading Summary. The AI report card IS the summary for an AI run.
+  const _extras = !reportData ? ''
+    : context==='profile'    ? _aiProfileExtras(reportData)
+    : context==='governance' ? _aiGovExtras(reportData) : '';
+  const _breaches = (context==='governance' && reportData) ? (reportData.mandatory_breaches||[]) : [];
   out.innerHTML = actionBar(activeSession, _elapsed) + resultTabsShell(prefix, [
-    ...(reportData ? [{key:'summary', label:'Summary', content: _aiCard}] : []),
+    ...(reportData ? [{key:'summary', label:'Summary', content: _aiCard + _extras}] : []),
+    ...(_breaches.length ? [{key:'exceptions', label:`Exceptions (${_breaches.length})`, content:
+      `<div class="card rounded-xl p-3 text-xs space-y-1">${_breaches.map(b=>`<div>${esc(typeof b==='string'?b:JSON.stringify(b))}</div>`).join('')}</div>`}] : []),
     {key:'copilot', label:'&#9889; AI Copilot', content: (reportData ? '' : _aiCard) + copilotPanelHTML(prefix, context, chips)},
     {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
   ], 'copilot');
@@ -2234,6 +2298,53 @@ async function saveOverridesToMemory(){
 }
 
 // ---------- Quality: AI Copilot mode ----------
+// Extra Summary blocks for a Data Quality AI run, built from the AI payload
+// (total_rows / col_completeness / precision / drift_alerts / ai_rules...).
+// Restores the per-column and dimension detail the Standard summary shows but
+// the compact AI report card omits.
+function _aiQualityExtras(rd){
+  if(!rd) return '';
+  const gc = v => v>=90?'#059669':v>=70?'#b45309':'#dc2626';
+  const dimsExtra = [
+    ['precision',  rd.precision,  'Not measured — needs a decimals rule on a numeric column'],
+    ['timeliness', rd.timeliness, 'Not measured — needs a max-age rule on a date column'],
+  ];
+  const cc = rd.col_completeness || [];
+  const lists = [
+    ['Drift alerts',       (rd.drift_alerts||[]).map(a=>`<b class="text-sky-300">${esc(a.col||'')}</b> &middot; ${esc(a.metric||'')}: ${esc(a.detail||'')}`)],
+    ['Categorical drift',  (rd.cat_drift||[]).map(c=>`<b class="text-sky-300">${esc(c.col||'')}</b>: ${esc(c.detail||'')}`)],
+    ['Consistency issues', (rd.consistency_issues||[]).map(c=>`<b class="text-sky-300">${esc(c.col||'')}</b> ${esc(c.check||'')} &mdash; ${c.failed||0} failed`)],
+    ['Numeric clusters',   (rd.numeric_clusters||[]).map(c=>`<b class="text-sky-300">${esc(c.col||'')}</b>: ${esc(c.detail||'')}`)],
+  ].filter(([,a])=>a.length);
+  const aiRules = (rd.ai_rules||[]).map(r=>typeof r==='string'?r:(r.rule||r.name||''))
+                                   .filter(Boolean);
+  return `
+  <div class="grid grid-cols-3 gap-3 mb-4 text-sm">
+    ${stat('Rows', rd.total_rows!=null?rd.total_rows:'&mdash;', '#a855f7')}${stat('Columns', rd.total_cols!=null?rd.total_cols:'&mdash;', '#38bdf8')}${stat('Duplicate rows', rd.duplicate_rows||0, '#f59e0b')}</div>
+  <div class="card rounded-xl p-4 mb-4 text-xs">
+    <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Other dimensions</div>
+    <div class="grid grid-cols-3 gap-3">${dimsExtra.map(([k,v,why])=>v!=null
+      ? `<div class="text-center"><div class="text-xl font-extrabold" style="color:${gc(+v)}">${(+v).toFixed(1)}<span class="text-xs">%</span></div><div class="text-gray-500 mt-0.5">${k}</div></div>`
+      : `<div class="text-center" title="${why}"><div class="text-xl font-extrabold text-gray-300">&mdash;</div><div class="text-gray-400 mt-0.5">${k}</div></div>`).join('')}</div>
+  </div>
+  ${cc.length ? `<div class="card rounded-xl p-3 overflow-auto mb-4">
+    <div class="text-xs text-gray-400 mb-2">Per-column quality (${cc.length} columns)</div>
+    <table class="w-full text-xs"><thead class="text-gray-400"><tr>
+      <th class="text-left p-1">Column</th><th>Null %</th><th>Score</th><th>Grade</th></tr></thead><tbody>
+      ${cc.map(c=>`<tr class="border-t border-[var(--line)]">
+        <td class="p-1">${esc(c.name||'')}</td>
+        <td class="text-center">${c.null_pct!=null?(+c.null_pct).toFixed(1):'&mdash;'}</td>
+        <td class="text-center">${c.dq_score!=null?`<span style="color:${gc(+c.dq_score)}">${(+c.dq_score).toFixed(1)}</span>`:'&mdash;'}</td>
+        <td class="text-center">${c.dq_grade?esc(c.dq_grade):'&mdash;'}</td></tr>`).join('')}
+    </tbody></table></div>` : ''}
+  ${lists.map(([t,arr])=>`<div class="card rounded-xl p-3 mb-3 text-xs">
+    <div class="text-gray-400 mb-1">${t} (${arr.length})</div>
+    <div class="space-y-1">${arr.map(x=>`<div>${x}</div>`).join('')}</div></div>`).join('')}
+  ${aiRules.length ? `<div class="card rounded-xl p-3 mb-3 text-xs">
+    <div class="text-gray-400 mb-1">AI-defined rules (${aiRules.length})</div>
+    <div class="flex flex-wrap gap-1">${aiRules.map(r=>`<span class="badge" style="background:rgba(56,189,248,.12);color:#0284c7">${esc(r)}</span>`).join('')}</div></div>` : ''}`;
+}
+
 async function runQualityAI(){
   const out=document.getElementById('q-out'); out.innerHTML='<span class="text-gray-400">Loading file for the AI Copilot&hellip;</span>';
   const t0 = performance.now();
@@ -2265,7 +2376,7 @@ async function runQualityAI(){
         ${(r.examples||[]).length?`<div class="text-gray-500 ml-3 mt-0.5">e.g. ${r.examples.map(x=>esc(''+x)).join(', ')}</div>`:''}
       </div>`).join('')}</div>` : '<div class="text-sm text-gray-500">No rule failures.</div>'}`;
     out.innerHTML = actionBar(activeSession, _elapsed) + resultTabsShell('q', [
-      {key:'summary', label:'Summary', content: _aiCard},
+      {key:'summary', label:'Summary', content: _aiCard + _aiQualityExtras(reportData)},
       {key:'exceptions', label:`Exceptions (${_fails.length})`, content: _exHTML},
       {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('q','quality', qualityChips(reportData.file_name || data.file_names?.[0]))},
       {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
