@@ -2064,7 +2064,7 @@ function renderQualityReport(data, elapsedStr, activeTab, aiCardHTML){
     ${fixFirst.length>6?`<div class="text-gray-500">&hellip;and ${fixFirst.length-6} more &mdash; use "Issues only" on the column table below.</div>`:''}</div>
   </div>` : '';
 
-  const summaryHTML = `<div class="card rounded-xl p-5 mb-4 flex items-center gap-6 flex-wrap">
+  let summaryHTML = `<div class="card rounded-xl p-5 mb-4 flex items-center gap-6 flex-wrap">
     <div class="text-center shrink-0 pr-6" style="border-right:1px solid var(--line)">
       <div class="text-5xl font-extrabold leading-none" style="color:${gradeColor}">${data.score}<span class="text-lg font-semibold text-gray-400">/100</span></div>
       <div class="mt-2"><span class="badge text-sm font-bold px-3 py-0.5" style="background:${gradeColor}22;color:${gradeColor}">Grade ${data.grade}</span></div>
@@ -2102,7 +2102,10 @@ function renderQualityReport(data, elapsedStr, activeTab, aiCardHTML){
       <div class="text-xs text-gray-400 mb-2">Correlated columns <span class="text-gray-600">(|r| &gt; 0.7)</span></div>
       <div class="space-y-1">${data.correlations.map(c=>`<div>${esc(c.col_a)} &harr; ${esc(c.col_b)}: <span class="${Math.abs(c.r)>0.9?'text-emerald-300':'text-amber-300'}">${c.r}</span></div>`).join('')}</div></div>` : ''}
   </div>` : ''}
-  <div id="q-history" class="mt-4"></div>
+  <div id="q-history" class="mt-4"></div>`;
+  // The per-column override grid re-runs the STANDARD scoring path, so it has no
+  // meaning in an AI run -- that run owns its own rules. Only render it outside AI mode.
+  if(qMode!=='ai') summaryHTML += `
   <details class="text-sm mt-3"><summary class="cursor-pointer text-sky-300">&#9998; Results not as expected? Override column rules &amp; re-run</summary>
     <div class="text-xs text-gray-400 mt-2 mb-2">Adjust rules per column and click Re-run &mdash; blank fields keep the auto-inferred defaults. Changes apply to this session only; "Save as steps" persists them to Dataset Memory.</div>
     <div class="card rounded-xl p-3 overflow-auto">
