@@ -283,6 +283,10 @@ _DDL = [
         hidden_modules TEXT,
         updated_at TEXT
     )""",
+    # Admin runtime toggle for semantic search (fastembed). 1/NULL = enabled,
+    # 0 = disabled (keyword-only) to free the embedding model's resident RAM
+    # on memory-constrained plans. See agent/rag.set_semantic_enabled().
+    "ALTER TABLE ws_app_config ADD COLUMN semantic_search_enabled INTEGER DEFAULT 1",
 ]
 
 
@@ -367,6 +371,39 @@ def set_hidden_modules(modules: list[str]) -> None:
     else:
         cur.execute(
             f"INSERT INTO ws_app_config (id, hidden_modules, updated_at) VALUES (1,{_ph()},{_ph()})",
+            (val, _now()),
+        )
+    conn.commit()
+
+
+def get_semantic_enabled() -> bool:
+    """Admin runtime toggle for fastembed semantic search. Defaults to enabled
+    when unset; 0 => keyword-only (frees the embedding model's resident RAM)."""
+    cur = _conn().cursor()
+    try:
+        cur.execute("SELECT semantic_search_enabled FROM ws_app_config WHERE id=1")
+        rows = _rows(cur)
+    except Exception:
+        return True
+    if not rows:
+        return True
+    val = rows[0].get("semantic_search_enabled")
+    return True if val is None else bool(val)
+
+
+def set_semantic_enabled(enabled: bool) -> None:
+    conn = _conn()
+    cur = conn.cursor()
+    val = 1 if enabled else 0
+    cur.execute("SELECT id FROM ws_app_config WHERE id=1")
+    if _rows(cur):
+        cur.execute(
+            f"UPDATE ws_app_config SET semantic_search_enabled={_ph()}, updated_at={_ph()} WHERE id=1",
+            (val, _now()),
+        )
+    else:
+        cur.execute(
+            f"INSERT INTO ws_app_config (id, semantic_search_enabled, updated_at) VALUES (1,{_ph()},{_ph()})",
             (val, _now()),
         )
     conn.commit()

@@ -565,6 +565,17 @@
         <span id="mod-vis-status" class="text-xs text-gray-500 ml-2"></span>
       </div>
 
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid #0ea5e9">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="settings-icon" style="background:linear-gradient(135deg,#0ea5e9,#38bdf8)">&#129504;</div>
+          <h3 class="settings-h">Semantic Search</h3>
+        </div>
+        <p class="text-xs text-gray-500 mb-3">Local AI ranking (fastembed) for reference-document search. Turning it <b>off</b> frees ~100&ndash;300&nbsp;MB of server memory and falls back to keyword search &mdash; useful on memory-constrained plans when running very large reconciliations. Reconciliation, Data Quality and Governance results are unaffected either way. Takes effect immediately; re-enable any time.</p>
+        <label class="flex items-center gap-2 text-sm mb-3"><input type="checkbox" id="semantic-cb" class="accent-sky-500" checked> Enable semantic search</label>
+        <button onclick="saveSemanticSearch()" class="btn rounded-lg px-3 py-1 text-sm">Save</button>
+        <span id="semantic-status" class="text-xs text-gray-500 ml-2"></span>
+      </div>
+
       <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid #7c3aed">
         <div class="flex items-center gap-3 mb-3">
           <div class="settings-icon" style="background:linear-gradient(135deg,#7c3aed,#a855f7)">&#129302;</div>
@@ -3885,6 +3896,8 @@ async function loadSettings(){ const d=await fetch('/api/license/status').then(r
     const me = await fetch('/api/ws/me').then(r=>r.ok?r.json():null);
     const hidden = new Set(me?.hidden_modules || []);
     document.querySelectorAll('.mod-vis-cb').forEach(cb => { cb.checked = !hidden.has(cb.value); });
+    const semCb = document.getElementById('semantic-cb');
+    if(semCb) semCb.checked = me?.semantic_search_enabled !== false;
   }catch(e){}
   try{
     const s = await fetch('/api/settings').then(r=>r.json());
@@ -3918,6 +3931,15 @@ async function saveModuleVisibility(){
   try{
     await J('POST', '/api/ws/app-config', {hidden_modules: hidden});
     status.textContent = '✅ Saved.';
+  }catch(e){ status.textContent = '❌ Could not save: ' + e; }
+}
+async function saveSemanticSearch(){
+  const enabled = !!document.getElementById('semantic-cb')?.checked;
+  const status = document.getElementById('semantic-status');
+  status.textContent = 'Saving…';
+  try{
+    await J('POST', '/api/ws/app-config', {semantic_search_enabled: enabled});
+    status.textContent = enabled ? '✅ Enabled.' : '✅ Disabled — memory freed.';
   }catch(e){ status.textContent = '❌ Could not save: ' + e; }
 }
 

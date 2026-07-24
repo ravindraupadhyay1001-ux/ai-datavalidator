@@ -29,6 +29,8 @@ fastavro
 
 # Local (on-server) semantic search for reference docs -- ONNX runtime, no
 # PyTorch, no data leaves the box. Falls back to keyword search if absent.
+# Admin can disable this at runtime (Admin > Settings) to free ~100-300MB of
+# resident RAM on constrained plans -- see agent/rag.py _SEMANTIC_ENABLED.
 fastembed
 
 pywin32; sys_platform == "win32" # Outlook email via win32com (Windows only)

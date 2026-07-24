@@ -9,6 +9,11 @@ text never leaves the server -- consistent with the app's data-governance model
 or the model can't load (e.g. constrained memory), it falls back to the original
 keyword / term-frequency search, so the feature never breaks a deploy.
 
+An admin can also disable semantic search at runtime (Admin > Settings) to free
+the ~100-300MB the embedding model holds resident -- see set_semantic_enabled().
+When disabled the model never loads (or is dropped if already loaded) and search
+falls back to keyword-only.
+
 Env vars:
   EMBED_MODEL       -- fastembed model id (default BAAI/bge-small-en-v1.5, ~small ONNX)
   FASTEMBED_CACHE   -- dir to cache the downloaded model (point at the /data volume
@@ -93,12 +98,48 @@ _embedder_failed = False
 _emb_cache: dict = {}        # passages-hash -> (passages, normalized embeddings ndarray)
 _EMB_CACHE_MAX = 8
 
+# Admin runtime kill-switch. When False, the embedding model is never loaded
+# (and dropped if already resident) and search() serves keyword-only results.
+# An env var provides the boot-time default; the admin UI persists the live
+# value in ws_app_config and pushes changes here via set_semantic_enabled().
+_SEMANTIC_ENABLED = os.getenv("SEMANTIC_SEARCH", "1").lower() not in ("0", "false", "no", "off")
+
+
+def semantic_enabled() -> bool:
+    """Current state of the semantic-search kill-switch."""
+    return _SEMANTIC_ENABLED
+
+
+def set_semantic_enabled(enabled: bool) -> None:
+    """Enable/disable semantic search at runtime (called by the admin toggle).
+
+    Disabling drops the resident embedding model and the passage-embedding cache
+    and forces a garbage collection to release the ~100-300MB back to the process
+    (ONNX runtime may not return all of it to the OS immediately, but nothing new
+    is allocated and it never reloads while disabled). Enabling lets the next
+    search lazily reload the model."""
+    global _SEMANTIC_ENABLED, _embedder, _embedder_failed
+    _SEMANTIC_ENABLED = bool(enabled)
+    if not _SEMANTIC_ENABLED:
+        _embedder = None
+        _embedder_failed = False
+        _emb_cache.clear()
+        try:
+            import gc
+            gc.collect()
+        except Exception:
+            pass
+
 
 def _get_embedder():
     """Lazily load the local embedding model once. Any failure (not installed,
     OOM, no network for first download) disables semantic search permanently
     for this process and the caller falls back to keyword search."""
     global _embedder, _embedder_failed
+    # Admin runtime kill-switch: when disabled, never load the model -- serve
+    # keyword-only so the ~100-300MB stays unallocated on constrained plans.
+    if not _SEMANTIC_ENABLED:
+        return None
     if _embedder is not None or _embedder_failed:
         return _embedder
     try:

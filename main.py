@@ -138,6 +138,13 @@ try:
     async def _workspace_startup():
         _lic_load()  # validate license before anything else starts
         _ws_init_db()
+        # Apply the admin semantic-search toggle so a "disabled" setting survives
+        # restarts -- the embedding model then never loads, keeping baseline RAM low.
+        try:
+            from agent import rag as _rag
+            _rag.set_semantic_enabled(_ws_db.get_semantic_enabled())
+        except Exception:
+            pass
         _ws_start_scheduler()
         _ws_load_jobs()
         # Daily license heartbeat -- runs every 24 hrs via APScheduler
@@ -20330,6 +20337,7 @@ async def ws_me(request: Request):
         "display_name": getattr(request.state, "display_name", username),
         "role": _role,
         "hidden_modules": _ws_db.get_hidden_modules(),
+        "semantic_search_enabled": _ws_db.get_semantic_enabled(),
         "subscription": _sub,
     })
 
@@ -20412,10 +20420,28 @@ async def ws_set_app_config(request: Request):
     _ws_check()
     _require_settings_admin(request)
     body = await request.json()
-    requested = body.get("hidden_modules") or []
-    hidden = [m for m in requested if m in _MODULE_TAB_VALUES]
-    _ws_db.set_hidden_modules(hidden)
-    return JSONResponse({"hidden_modules": hidden, "status": "ok"})
+    resp = {"status": "ok"}
+    # Module visibility (only touched when the key is present, so a semantic-only
+    # save never wipes the hidden-modules list, and vice versa).
+    if "hidden_modules" in body:
+        requested = body.get("hidden_modules") or []
+        hidden = [m for m in requested if m in _MODULE_TAB_VALUES]
+        _ws_db.set_hidden_modules(hidden)
+        resp["hidden_modules"] = hidden
+    # Semantic-search runtime kill-switch: persist + apply live (drops the
+    # resident embedding model when disabled, freeing ~100-300MB).
+    if "semantic_search_enabled" in body:
+        enabled = bool(body.get("semantic_search_enabled"))
+        _ws_db.set_semantic_enabled(enabled)
+        try:
+            from agent import rag as _rag
+            _rag.set_semantic_enabled(enabled)
+        except Exception:
+            pass
+        _audit_admin(_ws_get_user(request), "semantic_search",
+                     "enabled" if enabled else "disabled")
+        resp["semantic_search_enabled"] = enabled
+    return JSONResponse(resp)
 
 
 @app.get("/api/ws/users")
