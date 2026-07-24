@@ -1923,21 +1923,15 @@ async function _runAICopilotMode(action, fileId, prefix, context, label, connId)
   ];
   const _elapsed = ((performance.now()-t0)/1000).toFixed(3);
   const _aiCard = `<div id="${prefix}-ai-report">${renderAiReportCard(context, reportData)}</div>`;
-  // Same idea as the reconciliation AI run: when the AI produced a full report,
-  // show the module's real Summary/Exceptions tabs built from it, with the
-  // Copilot opened first. Falls back to chat-only if anything is off.
-  const _aiRenderers = {profile: renderProfileReport, governance: renderGovernanceReport};
-  let _rendered = false;
-  if(reportData && _aiRenderers[context]){
-    try{ _aiRenderers[context](reportData, _elapsed, 'copilot', _aiCard); _rendered = true; }
-    catch(e){ _rendered = false; }
-  }
-  if(!_rendered){
-    out.innerHTML = actionBar(activeSession, _elapsed) + resultTabsShell(prefix, [
-      {key:'copilot', label:'&#9889; AI Copilot', content: _aiCard + copilotPanelHTML(prefix, context, chips)},
-      {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
-    ], 'copilot');
-  }
+  // The /rerun-{context}-json endpoints return their own flat shape (total_rows,
+  // total_cols, ...), NOT the Standard run's shape (rows, columns, columns_detail),
+  // so the Standard renderers cannot be reused here -- they would render a blank,
+  // misleading Summary. The AI report card IS the summary for an AI run.
+  out.innerHTML = actionBar(activeSession, _elapsed) + resultTabsShell(prefix, [
+    ...(reportData ? [{key:'summary', label:'Summary', content: _aiCard}] : []),
+    {key:'copilot', label:'&#9889; AI Copilot', content: (reportData ? '' : _aiCard) + copilotPanelHTML(prefix, context, chips)},
+    {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
+  ], 'copilot');
   mountCopilotChat(prefix);
   loadDatasetControlRules(prefix, context);
   checkDatasetDrift(prefix, context);
@@ -2254,18 +2248,31 @@ async function runQualityAI(){
   setSession(activeSession);
   const _elapsed = ((performance.now()-t0)/1000).toFixed(3);
   const _aiCard = `<div id="q-ai-report">${renderAiReportCard('quality', reportData)}</div>`;
-  // When the AI run produced a full report, render the SAME Summary/Exceptions/
-  // Anomalies tabs a Standard run shows -- computed from the AI's own results --
-  // with the Copilot tab opened first. Falls back to chat-only if the report is
-  // missing or its shape is unexpected.
-  let _rendered = false;
+  // /rerun-quality-json returns its OWN flat shape (score/grade/all_rules/anomalies),
+  // not the Standard /quality shape (rule_results/columns_detail). Reusing
+  // renderQualityReport here produced an empty, misleading Summary -- "Rule Fails 1"
+  // next to "Exceptions (0)". So render the AI shape directly: the AI report card
+  // IS the summary, and Exceptions is built from all_rules so the counts agree.
   if(reportData){
-    try{ renderQualityReport(reportData, _elapsed, 'copilot', _aiCard); _rendered = true; }
-    catch(e){ _rendered = false; }
-  }
-  if(!_rendered){
+    const _fails = (reportData.all_rules||[]).filter(r=>r.status==='FAIL');
+    const _total = (reportData.all_rules||[]).length;
+    const _exHTML = `
+      <div class="text-sm text-gray-400 mb-2">Rule failures: <span class="text-red-400 font-semibold">${_fails.length}</span> of ${_total}</div>
+      ${_fails.length ? `<div class="card rounded-xl p-3 text-xs space-y-2">${_fails.map(r=>`<div>
+        <b class="text-sky-300">${esc(r.col||'')}</b> &middot; ${esc(r.rule||r.type||'')}
+        ${r.failed!=null?`<span class="text-gray-500"> &mdash; ${r.failed} row${r.failed===1?'':'s'} failed${r.pass_pct!=null?` (${r.pass_pct}% pass)`:''}</span>`:''}
+        ${r.severity?`<span class="badge ml-1" style="background:rgba(220,38,38,.12);color:#dc2626">${esc(r.severity)}</span>`:''}
+        ${(r.examples||[]).length?`<div class="text-gray-500 ml-3 mt-0.5">e.g. ${r.examples.map(x=>esc(''+x)).join(', ')}</div>`:''}
+      </div>`).join('')}</div>` : '<div class="text-sm text-gray-500">No rule failures.</div>'}`;
     out.innerHTML = actionBar(activeSession, _elapsed) + resultTabsShell('q', [
-      {key:'copilot', label:'&#9889; AI Copilot', content: _aiCard + copilotPanelHTML('q','quality', qualityChips((reportData||data).file_names?.[0] || reportData?.file_name))},
+      {key:'summary', label:'Summary', content: _aiCard},
+      {key:'exceptions', label:`Exceptions (${_fails.length})`, content: _exHTML},
+      {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('q','quality', qualityChips(reportData.file_name || data.file_names?.[0]))},
+      {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
+    ], 'copilot');
+  } else {
+    out.innerHTML = actionBar(activeSession, _elapsed) + resultTabsShell('q', [
+      {key:'copilot', label:'&#9889; AI Copilot', content: _aiCard + copilotPanelHTML('q','quality', qualityChips(data.file_names?.[0]))},
       {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
     ], 'copilot');
   }
