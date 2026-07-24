@@ -1,3 +1,6 @@
 # Office temp/lock files
 ~$*
 .~lock.*
+
+# Marketing/promo build output (large media, regenerated on demand)
+promo/

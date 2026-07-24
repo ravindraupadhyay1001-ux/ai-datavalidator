@@ -64,6 +64,19 @@
     .btn-ghost{ background:#fff; border:1.5px solid var(--line); border-radius:10px; color:var(--txt-secondary); transition:all .15s; font-weight:500; }
     .btn-ghost:hover{ border-color:var(--primary); color:var(--primary); background:var(--primary-dim); transform:translateY(-1px); }
     .badge{ padding:3px 11px; border-radius:9999px; font-weight:700; font-size:11px; letter-spacing:.01em; }
+    /* Sidebar footer: signed-in user card + logout */
+    .user-card{ display:flex; align-items:center; gap:9px; padding:6px 7px; border-radius:10px;
+      border:1.5px solid transparent; transition:background .15s, border-color .15s; }
+    .user-card:hover{ background:#fff; border-color:var(--line); }
+    .user-av{ width:30px; height:30px; flex:none; border-radius:50%; display:flex; align-items:center;
+      justify-content:center; font-size:11px; font-weight:700; letter-spacing:.02em; }
+    .user-meta{ min-width:0; flex:1; line-height:1.25; }
+    .user-name{ font-size:12.5px; font-weight:600; color:var(--txt-primary);
+      white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .user-role{ font-size:10.5px; font-weight:700; letter-spacing:.03em; text-transform:uppercase; }
+    .logout-ico{ flex:none; width:28px; height:28px; border-radius:8px; display:flex; align-items:center;
+      justify-content:center; color:var(--txt-secondary); transition:background .15s, color .15s; }
+    .logout-ico:hover{ background:rgba(239,68,68,.12); color:#ef4444; }
     .inp{ background:#fff; border:1.5px solid var(--line); border-radius:9px; padding:7px 11px; color:var(--txt-primary); transition:border-color .15s, box-shadow .15s; }
     .inp:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 3.5px var(--primary-dim); }
     .logo-mark{ width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center;
@@ -149,7 +162,7 @@
 <body class="min-h-screen">
 <!-- Floating "Contact us" call-to-action for clients -->
 <button id="contact-fab" onclick="toggleContactCard()" class="fixed bottom-5 right-5 z-50 rounded-full px-4 py-2.5 text-sm font-semibold text-white shadow-lg"
-  style="background:linear-gradient(90deg,#0ea5e9,#6366f1)" title="Get in touch">&#128172; Contact us</button>
+  style="background:linear-gradient(90deg,#0ea5e9,#6366f1)" title="Get in touch &mdash; drag to move">&#128172; Contact us</button>
 <div id="contact-card" class="fixed bottom-20 right-5 z-50 hidden card rounded-xl p-4 shadow-2xl text-sm" style="width:280px">
   <div class="font-semibold text-sky-300 mb-1">Let's talk</div>
   <div class="text-xs text-gray-400 mb-3">Questions, a demo, or want this for your team? Reach out &mdash; happy to help.</div>
@@ -2866,7 +2879,12 @@ const HELP_CONTENT = {
   ask: '',
 };
 function toggleContactCard(){
-  document.getElementById('contact-card')?.classList.toggle('hidden');
+  // A drag just ended -- swallow the click so the card doesn't toggle.
+  if(window.__fabDragged){ window.__fabDragged=false; return; }
+  const card=document.getElementById('contact-card');
+  if(!card) return;
+  card.classList.toggle('hidden');
+  if(!card.classList.contains('hidden') && window.__positionContactCard) window.__positionContactCard();
 }
 // Close the contact card when clicking outside it.
 document.addEventListener('click', e=>{
@@ -2875,6 +2893,67 @@ document.addEventListener('click', e=>{
     card.classList.add('hidden');
   }
 });
+// Draggable "Contact us" FAB. Default position (bottom-right) is untouched --
+// the Tailwind bottom-5/right-5 classes are only dropped once the user actually
+// moves it. The chosen spot persists in localStorage across sessions.
+(function(){
+  const KEY='contactFabPos';
+  const fab=document.getElementById('contact-fab');
+  const card=document.getElementById('contact-card');
+  if(!fab) return;
+  fab.style.touchAction='none';
+  fab.style.cursor='grab';
+
+  const clamp=p=>{
+    const w=fab.offsetWidth||140, h=fab.offsetHeight||40;
+    return {left:Math.min(Math.max(6,p.left), innerWidth-w-6),
+            top: Math.min(Math.max(6,p.top),  innerHeight-h-6)};
+  };
+  const applyPos=p=>{
+    fab.classList.remove('bottom-5','right-5');
+    fab.style.left=p.left+'px'; fab.style.top=p.top+'px';
+    fab.style.right='auto';     fab.style.bottom='auto';
+    fab.dataset.moved='1';
+  };
+  try{ const s=JSON.parse(localStorage.getItem(KEY)||'null'); if(s) applyPos(clamp(s)); }catch(e){}
+
+  let sx=0,sy=0,ox=0,oy=0,down=false,drag=false;
+  fab.addEventListener('pointerdown',e=>{
+    down=true; drag=false; sx=e.clientX; sy=e.clientY;
+    const r=fab.getBoundingClientRect(); ox=r.left; oy=r.top;
+    try{ fab.setPointerCapture(e.pointerId); }catch(_){}
+  });
+  fab.addEventListener('pointermove',e=>{
+    if(!down) return;
+    const dx=e.clientX-sx, dy=e.clientY-sy;
+    if(!drag && Math.hypot(dx,dy)>4){ drag=true; fab.style.cursor='grabbing'; }
+    if(drag){ e.preventDefault(); applyPos(clamp({left:ox+dx, top:oy+dy})); }
+  });
+  fab.addEventListener('pointerup',e=>{
+    down=false; fab.style.cursor='grab';
+    try{ fab.releasePointerCapture(e.pointerId); }catch(_){}
+    if(drag){
+      window.__fabDragged=true;
+      const r=fab.getBoundingClientRect();
+      try{ localStorage.setItem(KEY, JSON.stringify({left:r.left, top:r.top})); }catch(_){}
+    }
+  });
+  addEventListener('resize',()=>{
+    if(!fab.dataset.moved) return;
+    const r=fab.getBoundingClientRect(); applyPos(clamp({left:r.left, top:r.top}));
+  });
+  // Keep the card anchored to the button -- only once the button has been moved,
+  // so the default card position stays exactly as designed.
+  window.__positionContactCard=function(){
+    if(!fab.dataset.moved || !card) return;
+    const r=fab.getBoundingClientRect();
+    card.classList.remove('bottom-20','right-5');
+    const w=card.offsetWidth||280, h=card.offsetHeight||170;
+    let top=r.top-h-10; if(top<8) top=r.bottom+10;
+    card.style.left=Math.min(Math.max(8, r.right-w), innerWidth-w-8)+'px';
+    card.style.top=top+'px'; card.style.right='auto'; card.style.bottom='auto';
+  };
+})();
 function openHelpModal(){
   document.getElementById('help-modal').classList.remove('hidden');
   showHelpTab('overview');
@@ -4067,8 +4146,19 @@ const roleColor = {admin:'#f59e0b', analyst:'#38bdf8', readonly:'#94a3b8'};
   if(!me) return;
   CURRENT_ROLE = me.role || 'analyst';
   const badge = document.createElement('div');
-  badge.className = 'mt-auto mx-3 mb-3 pt-3 text-xs border-t border-[var(--line)]';
-  badge.innerHTML = `<span class="badge" style="background:${roleColor[CURRENT_ROLE]}22;color:${roleColor[CURRENT_ROLE]}">${esc(me.display_name||me.username)} &middot; ${esc(ROLE_LABELS[CURRENT_ROLE]||CURRENT_ROLE)}</span> <a href="/logout" class="text-gray-500 hover:text-gray-300 underline">Logout</a>`;
+  badge.className = 'mt-auto mx-3 mb-3 pt-3 border-t border-[var(--line)]';
+  const _who  = me.display_name || me.username || '';
+  const _ini  = (_who.trim().match(/\b\w/g) || ['?']).slice(0,2).join('').toUpperCase();
+  const _role = ROLE_LABELS[CURRENT_ROLE] || CURRENT_ROLE;
+  const _rc   = roleColor[CURRENT_ROLE];
+  badge.innerHTML = `<div class="user-card" title="${esc(_who)} &middot; ${esc(_role)}">
+      <div class="user-av" style="background:${_rc}22;color:${_rc}">${esc(_ini)}</div>
+      <div class="user-meta">
+        <div class="user-name">${esc(_who)}</div>
+        <div class="user-role" style="color:${_rc}">${esc(_role)}</div>
+      </div>
+      <a href="/logout" class="logout-ico" title="Log out" aria-label="Log out"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></a>
+    </div>`;
   document.getElementById('licbar').before(badge);
   showSubscriptionStatus(me.subscription);
   if (CURRENT_ROLE === 'readonly') applyReadonlyUI();
