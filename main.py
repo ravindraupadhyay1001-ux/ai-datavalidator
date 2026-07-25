@@ -12510,6 +12510,32 @@ async def get_recon_baseline_endpoint(fingerprint: str, request: Request):
         return JSONResponse(None)
 
 
+@app.get("/api/analytics/runs")
+async def analytics_runs(request: Request):
+    """Run-metric history for the current user, for the History & Analytics page.
+    Each user sees only their own runs (data is per-user isolated). Optional
+    ?module= and ?fingerprint= filters; ?limit= caps rows (default 200)."""
+    if not _WS_ENABLED:
+        return JSONResponse({"runs": [], "retention": 50})
+    try:
+        username = _ws_resolve_username(request) or "default"
+    except Exception:
+        username = "default"
+    qp = request.query_params
+    module = qp.get("module") or None
+    fingerprint = qp.get("fingerprint") or None
+    try:
+        limit = max(1, min(int(qp.get("limit", 200)), 1000))
+    except Exception:
+        limit = 200
+    try:
+        rows = _ws_db.get_run_metrics(username, module, fingerprint, limit=limit)
+        retention = _ws_db.get_metrics_retention()
+    except Exception as _e:
+        return JSONResponse({"runs": [], "retention": 50, "error": str(_e)})
+    return JSONResponse(_sanitize_json({"runs": rows, "retention": retention}))
+
+
 # Rule Templates (cross-schema rule copying) removed with its UI panel --
 # Workspace → Memory is now the single place to review/manage saved rules.
 
@@ -20415,6 +20441,7 @@ async def ws_me(request: Request):
         "role": _role,
         "hidden_modules": _ws_db.get_hidden_modules(),
         "semantic_search_enabled": _ws_db.get_semantic_enabled(),
+        "metrics_retention": _ws_db.get_metrics_retention(),
         "subscription": _sub,
     })
 
@@ -20518,6 +20545,16 @@ async def ws_set_app_config(request: Request):
         _audit_admin(_ws_get_user(request), "semantic_search",
                      "enabled" if enabled else "disabled")
         resp["semantic_search_enabled"] = enabled
+    # Run-history retention: how many run-metric rows to keep per (user, module,
+    # dataset). Older rows are auto-deleted on the next run. Clamped in db (5-500).
+    if "metrics_retention" in body:
+        try:
+            n = int(body.get("metrics_retention"))
+        except (TypeError, ValueError):
+            n = 50
+        _ws_db.set_metrics_retention(n)
+        _audit_admin(_ws_get_user(request), "metrics_retention", str(n))
+        resp["metrics_retention"] = _ws_db.get_metrics_retention()
     return JSONResponse(resp)
 
 
