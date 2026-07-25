@@ -1877,10 +1877,7 @@ function renderAiReportCard(context, data){
       <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Dimensions</div>
       <div class="grid grid-cols-3 gap-2">${dims.map(k=>`<div><span class="text-gray-500">${esc(k)}:</span> <b>${(+data[k]).toFixed(1)}</b></div>`).join('')}</div>
     </div>`:''}
-    ${data.ai_summary?`<div class="card rounded-xl p-4 mb-4 text-sm text-gray-300">&#9889; ${esc(data.ai_summary)}</div>`:''}
-    <details class="mb-4"><summary class="cursor-pointer text-xs text-sky-300 mb-2">&#128269; Anomalies &amp; drift</summary>
-      <div class="mt-2">${renderAnomaliesHTML(data)}</div>
-    </details>`;
+    ${data.ai_summary?`<div class="card rounded-xl p-4 mb-4 text-sm text-gray-300">&#9889; ${esc(data.ai_summary)}</div>`:''}`;
   }
   if(context === 'profile'){
     return `${_llmErrorBanner(data)}<div class="grid grid-cols-4 gap-3 mb-4">
@@ -2310,11 +2307,11 @@ function _aiQualityExtras(rd){
     ['timeliness', rd.timeliness, 'Not measured — needs a max-age rule on a date column'],
   ];
   const cc = rd.col_completeness || [];
+  // Categorical drift, numeric clusters and per-column/multivariate anomalies live
+  // on the dedicated Anomalies tab -- keep only baseline drift and consistency here.
   const lists = [
-    ['Drift alerts',       (rd.drift_alerts||[]).map(a=>`<b class="text-sky-300">${esc(a.col||'')}</b> &middot; ${esc(a.metric||'')}: ${esc(a.detail||'')}`)],
-    ['Categorical drift',  (rd.cat_drift||[]).map(c=>`<b class="text-sky-300">${esc(c.col||'')}</b>: ${esc(c.detail||'')}`)],
+    ['Drift alerts (vs baseline)', (rd.drift_alerts||[]).map(a=>`<b class="text-sky-300">${esc(a.col||'')}</b> &middot; ${esc(a.metric||'')}: ${esc(a.detail||'')}`)],
     ['Consistency issues', (rd.consistency_issues||[]).map(c=>`<b class="text-sky-300">${esc(c.col||'')}</b> ${esc(c.check||'')} &mdash; ${c.failed||0} failed`)],
-    ['Numeric clusters',   (rd.numeric_clusters||[]).map(c=>`<b class="text-sky-300">${esc(c.col||'')}</b>: ${esc(c.detail||'')}`)],
   ].filter(([,a])=>a.length);
   const aiRules = (rd.ai_rules||[]).map(r=>typeof r==='string'?r:(r.rule||r.name||''))
                                    .filter(Boolean);
@@ -2375,9 +2372,12 @@ async function runQualityAI(){
         ${r.severity?`<span class="badge ml-1" style="background:rgba(220,38,38,.12);color:#dc2626">${esc(r.severity)}</span>`:''}
         ${(r.examples||[]).length?`<div class="text-gray-500 ml-3 mt-0.5">e.g. ${r.examples.map(x=>esc(''+x)).join(', ')}</div>`:''}
       </div>`).join('')}</div>` : '<div class="text-sm text-gray-500">No rule failures.</div>'}`;
+    const _anomCount = (reportData.anomalies||[]).length + (reportData.cat_drift||[]).length
+      + ((reportData.multivariate_anomalies||{}).anomaly_count||0) + (reportData.trend_anomalies||[]).length;
     out.innerHTML = actionBar(activeSession, _elapsed) + resultTabsShell('q', [
       {key:'summary', label:'Summary', content: _aiCard + _aiQualityExtras(reportData)},
       {key:'exceptions', label:`Exceptions (${_fails.length})`, content: _exHTML},
+      {key:'anomalies', label:`Anomalies (${_anomCount})`, content: renderAnomaliesHTML(reportData)},
       {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('q','quality', qualityChips(reportData.file_name || data.file_names?.[0]))},
       {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
     ], 'copilot');
