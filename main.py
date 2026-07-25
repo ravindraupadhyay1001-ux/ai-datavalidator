@@ -16089,6 +16089,17 @@ async def rerun_quality_json(session_id: str, request: Request):
 
                     session_id=new_sid, bfsi_pack=";".join(_hints.keys()), di_scope="quality",
                 )
+                _capture_run_metric(
+                    "quality", "ai", _ws_username, new_sid, fname,
+                    q.get("schema_fingerprint", ""),
+                    {"score": dq.get("score"), "grade": dq.get("grade"),
+                     "rule_fails": _rule_fails_h, "crit_fails": _crit_fails_h,
+                     **{k: dq.get(k) for k in ("completeness", "uniqueness", "validity",
+                        "consistency", "conformity", "precision", "timeliness")
+                        if dq.get(k) is not None}},
+                    status=("FAIL" if _crit_fails_h else "WARN" if _rule_fails_h else "PASS"),
+                    row_count=q.get("total_rows"),
+                )
             except Exception as _eh:
                 pass  # non-fatal
 
@@ -16477,6 +16488,16 @@ async def rerun_profile_json(session_id: str, request: Request):
         except Exception as _e_sum:
             _profile_ai_summary_error = _llm_error_message(_e_sum)
 
+        _capture_run_metric(
+            "profile", "ai", getattr(request.state, "username", None), new_sid, fname,
+            q.get("schema_fingerprint", ""),
+            {"total_rows": q["total_rows"], "total_cols": q.get("total_cols", len(df.columns)),
+             "duplicate_rows": q.get("duplicate_rows", 0),
+             "numeric_cols": sum(1 for c in cols if c.get("is_numeric") or c.get("mean") is not None),
+             "near_key_cols": len(_prof.get("near_key_cols", [])),
+             "correlations": len(_prof.get("correlations", []))},
+            status="PASS", row_count=q["total_rows"],
+        )
         return JSONResponse(_sanitize_json({
             "session_id":  new_sid,
             "file_name":   fname,
@@ -16566,6 +16587,18 @@ async def rerun_governance_json(session_id: str, request: Request):
         except Exception as _e_sum:
             _gov_ai_summary_error = _llm_error_message(_e_sum)
 
+        _gov_breaches = g.get("mandatory_breaches", []) or []
+        _capture_run_metric(
+            "governance", "ai", getattr(request.state, "username", None), new_sid, fname,
+            _dq_schema_fingerprint(df),
+            {"classification": g.get("overall_classification", ""),
+             "pii_col_count": g.get("pii_column_count", 0),
+             "bfsi_id_col_count": g.get("bfsi_identifier_col_count", 0),
+             "frameworks": len(g.get("regulatory_frameworks", []) or []),
+             "mandatory_breaches": len(_gov_breaches)},
+            status=("FAIL" if _gov_breaches else "PASS"),
+            row_count=len(df),
+        )
         return JSONResponse(_sanitize_json({
             "session_id":   new_sid,
             "file_name":    fname,
