@@ -287,6 +287,30 @@ _DDL = [
     # 0 = disabled (keyword-only) to free the embedding model's resident RAM
     # on memory-constrained plans. See agent/rag.set_semantic_enabled().
     "ALTER TABLE ws_app_config ADD COLUMN semantic_search_enabled INTEGER DEFAULT 1",
+    # How many run-metric rows to keep per (user, module, dataset) for the
+    # History & Analytics page. Metric rows are tiny (~1 KB); this bounds growth
+    # on the mounted volume. Snapshot retention is separate (added later).
+    "ALTER TABLE ws_app_config ADD COLUMN metrics_retention INTEGER DEFAULT 50",
+    # Unified per-run metrics for History & Analytics. Deliberately lightweight:
+    # a few indexed columns plus a small JSON blob of headline numbers -- NOT the
+    # full result payload. One row per run per module. Pruned on write to
+    # metrics_retention, so it can never grow unbounded.
+    """CREATE TABLE IF NOT EXISTS ws_run_metrics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        module TEXT,
+        run_mode TEXT,
+        dataset_label TEXT,
+        schema_fingerprint TEXT,
+        session_id TEXT,
+        status TEXT,
+        row_count INTEGER,
+        elapsed REAL,
+        metrics_json TEXT,
+        run_at TEXT
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_runmetrics_lookup ON ws_run_metrics(username, module, schema_fingerprint, run_at)",
+    "CREATE INDEX IF NOT EXISTS idx_runmetrics_user ON ws_run_metrics(username, run_at)",
 ]
 
 
@@ -407,6 +431,100 @@ def set_semantic_enabled(enabled: bool) -> None:
             (val, _now()),
         )
     conn.commit()
+
+
+def get_metrics_retention() -> int:
+    """How many run-metric rows to keep per (user, module, dataset). Default 50."""
+    cur = _conn().cursor()
+    try:
+        cur.execute("SELECT metrics_retention FROM ws_app_config WHERE id=1")
+        rows = _rows(cur)
+    except Exception:
+        return 50
+    if not rows:
+        return 50
+    val = rows[0].get("metrics_retention")
+    try:
+        n = int(val)
+    except (TypeError, ValueError):
+        return 50
+    return max(5, min(n, 500))  # clamp: at least 5 for trends, cap to protect the volume
+
+
+def set_metrics_retention(n: int) -> None:
+    conn = _conn()
+    cur = conn.cursor()
+    val = max(5, min(int(n), 500))
+    cur.execute("SELECT id FROM ws_app_config WHERE id=1")
+    if _rows(cur):
+        cur.execute(
+            f"UPDATE ws_app_config SET metrics_retention={_ph()}, updated_at={_ph()} WHERE id=1",
+            (val, _now()),
+        )
+    else:
+        cur.execute(
+            f"INSERT INTO ws_app_config (id, metrics_retention, updated_at) VALUES (1,{_ph()},{_ph()})",
+            (val, _now()),
+        )
+    conn.commit()
+
+
+def save_run_metric(username, module, dataset_label, schema_fingerprint, session_id,
+                    status, metrics, row_count=None, elapsed=None, run_mode="standard"):
+    """Record one lightweight run metric for History & Analytics, then prune the
+    oldest rows beyond metrics_retention for this (user, module, dataset) so the
+    table can never grow unbounded. Best-effort: callers wrap this in try/except
+    so a metrics-save failure never affects the actual run.
+
+    run_mode is 'standard' or 'ai'. For an AI run the caller MUST pass the
+    LLM/rules-applied result's numbers (not a standard recompute), so the history
+    reflects what the AI run actually produced."""
+    conn = _conn()
+    cur = conn.cursor()
+    payload = _b64(metrics) if isinstance(metrics, (dict, list)) else (metrics or "")
+    cur.execute(
+        f"INSERT INTO ws_run_metrics (username, module, run_mode, dataset_label, schema_fingerprint, "
+        f"session_id, status, row_count, elapsed, metrics_json, run_at) "
+        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
+        (username, module, (run_mode or "standard"), dataset_label, schema_fingerprint or "",
+         session_id or "", status or "", row_count, elapsed, payload, _now()),
+    )
+    conn.commit()
+    # Prune: keep only the newest N for this user+module+dataset.
+    keep = get_metrics_retention()
+    cur.execute(
+        f"DELETE FROM ws_run_metrics WHERE username={_ph()} AND module={_ph()} "
+        f"AND schema_fingerprint={_ph()} AND id NOT IN ("
+        f"  SELECT id FROM ws_run_metrics WHERE username={_ph()} AND module={_ph()} "
+        f"  AND schema_fingerprint={_ph()} ORDER BY id DESC LIMIT {int(keep)})",
+        (username, module, schema_fingerprint or "",
+         username, module, schema_fingerprint or ""),
+    )
+    conn.commit()
+
+
+def get_run_metrics(username, module=None, schema_fingerprint=None, limit=200):
+    """Return run-metric rows (newest first) for the History & Analytics page.
+    Decodes the metrics_json blob back into each row as `metrics`."""
+    cur = _conn().cursor()
+    where = [f"username={_ph()}"]
+    params = [username]
+    if module:
+        where.append(f"module={_ph()}"); params.append(module)
+    if schema_fingerprint:
+        where.append(f"schema_fingerprint={_ph()}"); params.append(schema_fingerprint)
+    cur.execute(
+        f"SELECT id, module, run_mode, dataset_label, schema_fingerprint, session_id, status, "
+        f"row_count, elapsed, metrics_json, run_at FROM ws_run_metrics "
+        f"WHERE {' AND '.join(where)} ORDER BY id DESC LIMIT {int(limit)}",
+        tuple(params),
+    )
+    out = []
+    for r in _rows(cur):
+        d = dict(r)
+        d["metrics"] = _unb64(d.pop("metrics_json", None)) or {}
+        out.append(d)
+    return out
 
 
 def list_users():
