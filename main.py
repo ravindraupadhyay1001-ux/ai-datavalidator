@@ -13730,6 +13730,16 @@ async def xref_analyze(request: Request):
         }
         for c in xr.get("conflicts", [])
     ]
+    try:
+        _xc = _summary.get("conflict_count", 0)
+        _capture_run_metric(
+            "xref", "standard", _xref_username, session_id,
+            (" / ".join(s[0] for s in sources))[:120], _dataset_fingerprint,
+            {"conflicts": _xc, "total_identifiers": _summary.get("total_keys", 0),
+             "in_all_sources": _summary.get("matched_in_all", 0), "sources": len(sources)},
+            status=("FAIL" if _xc else "PASS"), row_count=_summary.get("total_keys", 0))
+    except Exception:
+        pass
     return JSONResponse(_sanitize_json({
         "session_id": session_id,
         "counts": {
@@ -13985,6 +13995,16 @@ async def xref_run_llm(session_id: str, request: Request):
         }
         for c in xr.get("conflicts", [])
     ]
+    try:
+        _xc = _summary.get("conflict_count", 0)
+        _capture_run_metric(
+            "xref", "ai", _xrl_username, new_session_id,
+            (" / ".join(s[0] for s in sources))[:120], fingerprint,
+            {"conflicts": _xc, "total_identifiers": _summary.get("total_keys", 0),
+             "in_all_sources": _summary.get("matched_in_all", 0), "sources": len(sources)},
+            status=("FAIL" if _xc else "PASS"), row_count=_summary.get("total_keys", 0))
+    except Exception:
+        pass
     return JSONResponse(_sanitize_json({
         "session_id": new_session_id,
         "counts": {
@@ -14939,6 +14959,17 @@ async def analyze(request: Request):
         p["file_format"] = df.attrs.get("_format", "")
         profile_reports.append(p)
 
+        try:
+          _capture_run_metric(
+            "profile", "standard", _ws_username, session_id, fname,
+            _dq_schema_fingerprint(df),
+            {"total_rows": p.get("total_rows"), "total_cols": p.get("total_cols"),
+             "duplicate_rows": p.get("duplicate_rows", 0), "numeric_cols": p.get("numeric_cols"),
+             "near_key_cols": len(p.get("near_key_cols") or p.get("near_key_columns") or []),
+             "correlations": len(p.get("correlations") or [])},
+            status="PASS", row_count=p.get("total_rows"))
+        except Exception:
+          pass
 
         _log(f"Profile '{fname}' → {p['total_cols']} cols | "
            f"{p['numeric_cols']} numeric | {len(p['key_candidates'])} key candidates")
@@ -14996,6 +15027,19 @@ async def analyze(request: Request):
                        user_hints=_gov_hints_sa)
         g["file_format"] = df.attrs.get("_format", "")
         governance_reports.append(g)
+        try:
+          _gov_br = g.get("mandatory_breaches", []) or []
+          _capture_run_metric(
+            "governance", "standard", _ws_username, session_id, fname,
+            _dq_schema_fingerprint(df),
+            {"classification": g.get("overall_classification", ""),
+             "pii_col_count": g.get("pii_column_count", 0),
+             "bfsi_id_col_count": g.get("bfsi_identifier_col_count", 0),
+             "frameworks": len(g.get("regulatory_frameworks", []) or []),
+             "mandatory_breaches": len(_gov_br)},
+            status=("FAIL" if _gov_br else "PASS"), row_count=len(df))
+        except Exception:
+          pass
         _log(f"Governance '{fname}' → Classification: {g['overall_classification']} | "
            f"PII columns: {g['pii_column_count']} | Reg: {g['regulatory_frameworks']}")
 
@@ -18108,6 +18152,17 @@ async def recon_run(session_id: str, request: Request):
             "gross_break_total": diff.get("gross_break_total", 0),
             "net_break_total":  diff.get("net_break_total", 0),
         }
+        try:
+            _br = (summary.get("added") or 0) + (summary.get("removed") or 0) + (summary.get("modified") or 0)
+            _capture_run_metric(
+                "compare", "ai", _ws_resolve_username(request), session_id,
+                f"{src_name} vs {tgt_name}", stored.get("dataset_fingerprint", ""),
+                {"file1_only": summary.get("removed"), "file2_only": summary.get("added"),
+                 "modified": summary.get("modified"), "method": summary.get("key_method"),
+                 "gross_break": summary.get("gross_break_total")},
+                status=("FAIL" if _br else "PASS"), row_count=summary.get("src_rows"))
+        except Exception:
+            pass
         return JSONResponse(_sanitize_json(summary))
 
     except Exception as exc:
