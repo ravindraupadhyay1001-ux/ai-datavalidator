@@ -419,6 +419,12 @@
           <select id="an-module" class="inp ml-1" onchange="anRenderDatasets()"></select></label>
         <label class="text-gray-500">Dataset
           <select id="an-dataset" class="inp ml-1" onchange="anRender()"></select></label>
+        <label class="text-gray-500">Mode
+          <select id="an-mode" class="inp ml-1" onchange="anRender()">
+            <option value="all">Standard + AI</option>
+            <option value="standard">Standard only</option>
+            <option value="ai">AI only</option>
+          </select></label>
         <button onclick="loadAnalytics()" class="btn-ghost rounded-lg px-3 py-1.5 text-xs">&#128260; Refresh</button>
         <span id="an-retention" class="text-xs text-gray-500 ml-auto"></span>
       </div>
@@ -880,9 +886,19 @@ function anRenderDatasets(){
 }
 function anRender(){
   const mod=document.getElementById('an-module').value, ds=document.getElementById('an-dataset').value;
-  const runs=_anRuns.filter(r=>r.module===mod && (r.dataset_label||'(unnamed)')===ds).slice().reverse(); // oldest->newest
-  if(!runs.length) return;
+  const mode=document.getElementById('an-mode')?.value || 'all';
+  const allRuns=_anRuns.filter(r=>r.module===mod && (r.dataset_label||'(unnamed)')===ds).slice().reverse(); // oldest->newest
+  // Tiles/insights/log reflect the chosen mode; the chart shows both split out.
+  const runs = mode==='all' ? allRuns : allRuns.filter(r=>(r.run_mode||'standard')===mode);
+  if(!allRuns.length) return;
   const cfg=AN_METRIC[mod]||AN_METRIC.parse;
+  if(!runs.length){
+    document.getElementById('an-tiles').innerHTML = `<div class="card rounded-xl p-4 text-sm text-gray-500" style="grid-column:1/-1">No ${mode==='ai'?'AI':'Standard'} runs for this dataset yet.</div>`;
+    document.getElementById('an-insights').innerHTML='';
+    document.getElementById('an-log').innerHTML='';
+    if(_charts['anChart']){_charts['anChart'].destroy(); delete _charts['anChart'];}
+    return;
+  }
   const series=runs.map(cfg.f), vals=series.filter(v=>v!=null);
   const last=runs[runs.length-1], prev=runs[runs.length-2];
   const lastV=cfg.f(last), prevV=prev?cfg.f(prev):null;
@@ -917,9 +933,22 @@ function anRender(){
     card('Behaviour', `<b style="color:${clsColor}">${cls}</b>`) +
     card('Change', deltaHtml) +
     card('Outlook', (proj||'Not enough runs yet') + (anomaly?`<div class="text-xs text-amber-600 mt-1">${anomaly}</div>`:''));
-  const labels=runs.map(r=>(r.run_at||'').replace('T',' ').slice(5,16));
-  chart('anChart', {type:'line', data:{labels, datasets:[{label:cfg.label, data:series, borderColor:'#6366f1', backgroundColor:'rgba(99,102,241,.12)', tension:.25, spanGaps:true, fill:true, pointBackgroundColor:runs.map(r=>r.status==='FAIL'?'#dc2626':r.status==='WARN'?'#f59e0b':'#059669'), pointRadius:4}]},
-    options:{plugins:{legend:{display:false}}, scales:{x:{ticks:{color:'#94a3b8',maxRotation:0,autoSkip:true}}, y:{ticks:{color:'#94a3b8'},grid:{color:'#e2e8f0'}}}}});
+  // Trend: when viewing both, split into separate Standard vs AI lines so it's
+  // clear which mode produced each point (AI applies rules, so values differ).
+  let anLabels, anDatasets;
+  if(mode==='all'){
+    anLabels = allRuns.map(r=>(r.run_at||'').replace('T',' ').slice(5,16));
+    const pick = m => allRuns.map(r=> ((r.run_mode||'standard')===m ? cfg.f(r) : null));
+    anDatasets = [
+      {label:'Standard', data:pick('standard'), borderColor:'#6366f1', backgroundColor:'rgba(99,102,241,.12)', tension:.25, spanGaps:true, pointRadius:4},
+      {label:'AI', data:pick('ai'), borderColor:'#14b8a6', backgroundColor:'rgba(20,184,166,.12)', tension:.25, spanGaps:true, pointRadius:4, borderDash:[5,4]},
+    ];
+  } else {
+    anLabels = runs.map(r=>(r.run_at||'').replace('T',' ').slice(5,16));
+    anDatasets = [{label:cfg.label, data:series, borderColor:mode==='ai'?'#14b8a6':'#6366f1', backgroundColor:'rgba(99,102,241,.12)', tension:.25, spanGaps:true, fill:true, pointBackgroundColor:runs.map(r=>r.status==='FAIL'?'#dc2626':r.status==='WARN'?'#f59e0b':'#059669'), pointRadius:4}];
+  }
+  chart('anChart', {type:'line', data:{labels:anLabels, datasets:anDatasets},
+    options:{plugins:{legend:{display:mode==='all'}}, scales:{x:{ticks:{color:'#94a3b8',maxRotation:0,autoSkip:true}}, y:{ticks:{color:'#94a3b8'},grid:{color:'#e2e8f0'}}}}});
   const logRows=runs.slice().reverse();
   document.getElementById('an-log').innerHTML = `<table class="w-full text-xs"><thead class="text-gray-400"><tr>
     <th class="text-left p-1">When</th><th>Mode</th><th>Status</th><th>${esc(cfg.label)}</th><th>Rows</th><th>Time (s)</th></tr></thead><tbody>
