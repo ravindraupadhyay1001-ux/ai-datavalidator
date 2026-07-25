@@ -201,6 +201,7 @@
       <button data-tab="parse" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#128206; Parse</button>
       <button data-tab="xref" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#128279; Cross Reference</button>
       <div class="my-2 border-t border-[var(--line)]"></div>
+      <button data-tab="analytics" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#128200; History &amp; Analytics</button>
       <button data-tab="workspace" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#9889; Workspace</button>
       <button data-tab="settings" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#9881;&#65039; Settings</button>
       <button onclick="openHelpModal()" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#128218; User Guide</button>
@@ -409,6 +410,33 @@
       <div id="par-out" class="mt-6"></div>
     </section>
 
+    <!-- HISTORY & ANALYTICS -->
+    <section id="tab-analytics" class="tab-panel hidden">
+      <h2 class="text-3xl font-bold mb-4 grad-text">History &amp; Analytics</h2>
+      <p class="text-sm text-gray-500 mb-4">Every run is recorded so you can see how a dataset behaves over time &mdash; trend, drift, and reliability, not just the latest snapshot. Standard and AI runs are tracked separately. Older runs beyond your retention limit are auto-deleted.</p>
+      <div class="flex flex-wrap items-center gap-3 mb-4 text-sm">
+        <label class="text-gray-500">Module
+          <select id="an-module" class="inp ml-1" onchange="anRenderDatasets()"></select></label>
+        <label class="text-gray-500">Dataset
+          <select id="an-dataset" class="inp ml-1" onchange="anRender()"></select></label>
+        <button onclick="loadAnalytics()" class="btn-ghost rounded-lg px-3 py-1.5 text-xs">&#128260; Refresh</button>
+        <span id="an-retention" class="text-xs text-gray-500 ml-auto"></span>
+      </div>
+      <div id="an-empty" class="card rounded-xl p-6 text-sm text-gray-500 hidden">No run history yet. Run any module and it will appear here.</div>
+      <div id="an-body">
+        <div id="an-tiles" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4"></div>
+        <div id="an-insights" class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4"></div>
+        <div class="card rounded-xl p-4 mb-4">
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Trend</div>
+          <canvas id="anChart" height="110"></canvas>
+        </div>
+        <div class="card rounded-xl p-3 overflow-auto">
+          <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Run log</div>
+          <div id="an-log"></div>
+        </div>
+      </div>
+    </section>
+
     <!-- WORKSPACE -->
     <section id="tab-workspace" class="tab-panel hidden">
       <h2 class="text-3xl font-bold mb-4 grad-text">Workspace</h2>
@@ -589,6 +617,18 @@
         <label class="flex items-center gap-2 text-sm mb-3"><input type="checkbox" id="semantic-cb" class="accent-sky-500" checked> Enable semantic search</label>
         <button onclick="saveSemanticSearch()" class="btn rounded-lg px-3 py-1 text-sm">Save</button>
         <span id="semantic-status" class="text-xs text-gray-500 ml-2"></span>
+      </div>
+
+      <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid #14b8a6">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="settings-icon" style="background:linear-gradient(135deg,#14b8a6,#2dd4bf)">&#128200;</div>
+          <h3 class="settings-h">Run History &amp; Analytics</h3>
+        </div>
+        <p class="text-xs text-gray-500 mb-3">How many past runs to keep per dataset (per module) for the History &amp; Analytics page. Each run stores only a tiny metrics row (~1&nbsp;KB); older runs beyond this limit are <b>auto-deleted</b> so storage stays bounded on constrained plans. Range 5&ndash;500.</p>
+        <label class="flex items-center gap-2 text-sm mb-3">Keep last
+          <input type="number" id="metrics-retention" min="5" max="500" step="1" value="50" class="inp text-sm" style="width:90px;padding:4px 8px"> runs per dataset</label>
+        <button onclick="saveMetricsRetention()" class="btn rounded-lg px-3 py-1 text-sm">Save</button>
+        <span id="metrics-retention-status" class="text-xs text-gray-500 ml-2"></span>
       </div>
 
       <div class="card rounded-xl p-5 mb-4 max-w-3xl" style="border-top:3.5px solid #7c3aed">
@@ -806,6 +846,92 @@ let SESSION = sessionStorage.getItem('SESSION') || null;
 function setSession(id){ SESSION = id || null; if(id) sessionStorage.setItem('SESSION', id); else sessionStorage.removeItem('SESSION'); }
 const _charts = {};
 function chart(id, cfg){ if(_charts[id])_charts[id].destroy(); const el=document.getElementById(id); if(el)_charts[id]=new Chart(el,cfg); }
+
+// ---------- History & Analytics ----------
+let _anRuns = [];
+const AN_MODULES = {compare:'Reconciliation', quality:'Data Quality', profile:'Data Profile', governance:'Governance', xref:'Cross Reference', parse:'Parse'};
+// Per-module key metric: how to read it, its label, and whether higher is better.
+const AN_METRIC = {
+  compare:   {f:r=>r.metrics.break_rate!=null?+r.metrics.break_rate:((r.metrics.file1_only||0)+(r.metrics.file2_only||0)+(r.metrics.modified||0)), label:'Breaks', goodHigh:false},
+  quality:   {f:r=>r.metrics.score!=null?+r.metrics.score:null, label:'DQ score', goodHigh:true},
+  governance:{f:r=>r.metrics.mandatory_breaches!=null?+r.metrics.mandatory_breaches:(r.metrics.pii_col_count||0), label:'Mandatory breaches', goodHigh:false},
+  profile:   {f:r=>r.metrics.total_rows!=null?+r.metrics.total_rows:null, label:'Rows', goodHigh:null},
+  xref:      {f:r=>r.metrics.conflicts!=null?+r.metrics.conflicts:null, label:'Conflicts', goodHigh:false},
+  parse:     {f:r=>r.metrics.rows!=null?+r.metrics.rows:null, label:'Rows', goodHigh:null},
+};
+async function loadAnalytics(){
+  try{
+    const d = await fetch('/api/analytics/runs?limit=1000').then(r=>r.json());
+    _anRuns = d.runs || [];
+    const el=document.getElementById('an-retention'); if(el) el.textContent = `Keeping last ${d.retention||50} runs per dataset`;
+  }catch(e){ _anRuns=[]; }
+  const empty=document.getElementById('an-empty'), body=document.getElementById('an-body');
+  if(!_anRuns.length){ empty.classList.remove('hidden'); body.classList.add('hidden'); return; }
+  empty.classList.add('hidden'); body.classList.remove('hidden');
+  const mods=[...new Set(_anRuns.map(r=>r.module))];
+  document.getElementById('an-module').innerHTML = mods.map(m=>`<option value="${m}">${AN_MODULES[m]||m}</option>`).join('');
+  anRenderDatasets();
+}
+function anRenderDatasets(){
+  const mod=document.getElementById('an-module').value;
+  const ds=[...new Set(_anRuns.filter(r=>r.module===mod).map(r=>r.dataset_label||'(unnamed)'))];
+  document.getElementById('an-dataset').innerHTML = ds.map(d=>`<option value="${esc(d)}">${esc(d)}</option>`).join('');
+  anRender();
+}
+function anRender(){
+  const mod=document.getElementById('an-module').value, ds=document.getElementById('an-dataset').value;
+  const runs=_anRuns.filter(r=>r.module===mod && (r.dataset_label||'(unnamed)')===ds).slice().reverse(); // oldest->newest
+  if(!runs.length) return;
+  const cfg=AN_METRIC[mod]||AN_METRIC.parse;
+  const series=runs.map(cfg.f), vals=series.filter(v=>v!=null);
+  const last=runs[runs.length-1], prev=runs[runs.length-2];
+  const lastV=cfg.f(last), prevV=prev?cfg.f(prev):null;
+  let cls='&mdash;', clsColor='#94a3b8';
+  if(cfg.goodHigh!=null && lastV!=null && prevV!=null){
+    if(lastV===prevV){cls='Stable';clsColor='#64748b';}
+    else{const better=cfg.goodHigh?lastV>prevV:lastV<prevV; cls=better?'Improving':'Degrading'; clsColor=better?'#059669':'#dc2626';}
+  }
+  const passN=runs.filter(r=>r.status==='PASS').length, slaPct=Math.round(passN/runs.length*100);
+  let anomaly='';
+  if(vals.length>=4 && lastV!=null){
+    const hist=vals.slice(0,-1), mean=hist.reduce((a,b)=>a+b,0)/hist.length;
+    const sd=Math.sqrt(hist.reduce((a,b)=>a+(b-mean)**2,0)/hist.length);
+    if(sd>0){const z=Math.abs(lastV-mean)/sd; if(z>=2) anomaly=`&#9888;&#65039; Unusual vs history (${z.toFixed(1)}σ from avg ${mean.toFixed(1)}).`;}
+  }
+  let proj='';
+  if(vals.length>=3){
+    const n=Math.min(6,vals.length), seg=vals.slice(-n), xm=(n-1)/2, ym=seg.reduce((a,b)=>a+b,0)/n;
+    let num=0,den=0; seg.forEach((y,i)=>{num+=(i-xm)*(y-ym);den+=(i-xm)**2;});
+    const slope=den?num/den:0, next=seg[n-1]+slope;
+    proj=`Projected next run: <b>${next.toFixed(1)}</b> ${slope>0?'↗':slope<0?'↘':'→'}`;
+  }
+  document.getElementById('an-tiles').innerHTML =
+    stat('Runs stored', runs.length, '#0284c7') +
+    stat('Latest status', last.status||'&mdash;', last.status==='PASS'?'#059669':last.status==='FAIL'?'#dc2626':'#b45309') +
+    stat(cfg.label, lastV!=null?(+lastV).toFixed(1):'&mdash;', '#7c3aed') +
+    stat('SLA (runs passing)', slaPct+'%', slaPct>=90?'#059669':slaPct>=70?'#b45309':'#dc2626');
+  const card=(t,html)=>`<div class="card rounded-xl p-3 text-sm"><div class="text-xs text-gray-400 mb-1">${t}</div>${html}</div>`;
+  let deltaHtml='&mdash;';
+  if(lastV!=null&&prevV!=null){const d=lastV-prevV; const col=d===0?'#64748b':((cfg.goodHigh?d>0:d<0)?'#059669':'#dc2626'); deltaHtml=`<b style="color:${col}">${d>0?'+':''}${d.toFixed(1)}</b> vs previous run`;}
+  document.getElementById('an-insights').innerHTML =
+    card('Behaviour', `<b style="color:${clsColor}">${cls}</b>`) +
+    card('Change', deltaHtml) +
+    card('Outlook', (proj||'Not enough runs yet') + (anomaly?`<div class="text-xs text-amber-600 mt-1">${anomaly}</div>`:''));
+  const labels=runs.map(r=>(r.run_at||'').replace('T',' ').slice(5,16));
+  chart('anChart', {type:'line', data:{labels, datasets:[{label:cfg.label, data:series, borderColor:'#6366f1', backgroundColor:'rgba(99,102,241,.12)', tension:.25, spanGaps:true, fill:true, pointBackgroundColor:runs.map(r=>r.status==='FAIL'?'#dc2626':r.status==='WARN'?'#f59e0b':'#059669'), pointRadius:4}]},
+    options:{plugins:{legend:{display:false}}, scales:{x:{ticks:{color:'#94a3b8',maxRotation:0,autoSkip:true}}, y:{ticks:{color:'#94a3b8'},grid:{color:'#e2e8f0'}}}}});
+  const logRows=runs.slice().reverse();
+  document.getElementById('an-log').innerHTML = `<table class="w-full text-xs"><thead class="text-gray-400"><tr>
+    <th class="text-left p-1">When</th><th>Mode</th><th>Status</th><th>${esc(cfg.label)}</th><th>Rows</th><th>Time (s)</th></tr></thead><tbody>
+    ${logRows.map(r=>{const v=cfg.f(r); return `<tr class="border-t border-[var(--line)]">
+      <td class="p-1">${esc((r.run_at||'').replace('T',' ').slice(0,19))}</td>
+      <td class="text-center">${r.run_mode==='ai'?'<span class="badge" style="background:rgba(56,189,248,.14);color:#0284c7">AI</span>':'<span class="badge" style="background:rgba(148,163,184,.15);color:#64748b">Std</span>'}</td>
+      <td class="text-center">${r.status==='PASS'?'<span style="color:#059669">PASS</span>':r.status==='FAIL'?'<span style="color:#dc2626">FAIL</span>':`<span style="color:#b45309">${esc(r.status||'&mdash;')}</span>`}</td>
+      <td class="text-center">${v!=null?(+v).toFixed(1):'&mdash;'}</td>
+      <td class="text-center text-gray-500">${r.row_count!=null?r.row_count:'&mdash;'}</td>
+      <td class="text-center text-gray-500">${r.elapsed!=null?(+r.elapsed).toFixed(2):'&mdash;'}</td></tr>`;}).join('')}
+  </tbody></table>`;
+}
 const esc = s => (''+s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
 // Non-blocking replacement for window.alert -- notifications shouldn't stop
@@ -830,6 +956,7 @@ document.querySelectorAll('.tab-btn[data-tab]').forEach(b => b.onclick = () => {
   document.getElementById('tab-' + b.dataset.tab).classList.remove('hidden');
   if (b.dataset.tab === 'settings') { loadSettings(); loadUsers(); }
   if (b.dataset.tab === 'workspace') { wsTab('conn'); }
+  if (b.dataset.tab === 'analytics') { loadAnalytics(); }
 });
 
 function stat(label, val, color){
@@ -4142,6 +4269,8 @@ async function loadSettings(){ const d=await fetch('/api/license/status').then(r
     document.querySelectorAll('.mod-vis-cb').forEach(cb => { cb.checked = !hidden.has(cb.value); });
     const semCb = document.getElementById('semantic-cb');
     if(semCb) semCb.checked = me?.semantic_search_enabled !== false;
+    const retIn = document.getElementById('metrics-retention');
+    if(retIn && me?.metrics_retention) retIn.value = me.metrics_retention;
   }catch(e){}
   try{
     const s = await fetch('/api/settings').then(r=>r.json());
@@ -4184,6 +4313,19 @@ async function saveSemanticSearch(){
   try{
     await J('POST', '/api/ws/app-config', {semantic_search_enabled: enabled});
     status.textContent = enabled ? '✅ Enabled.' : '✅ Disabled — memory freed.';
+  }catch(e){ status.textContent = '❌ Could not save: ' + e; }
+}
+async function saveMetricsRetention(){
+  let n = parseInt(document.getElementById('metrics-retention')?.value, 10);
+  if(isNaN(n)) n = 50;
+  n = Math.max(5, Math.min(n, 500));
+  const status = document.getElementById('metrics-retention-status');
+  status.textContent = 'Saving…';
+  try{
+    const r = await J('POST', '/api/ws/app-config', {metrics_retention: n});
+    const applied = r?.metrics_retention ?? n;
+    document.getElementById('metrics-retention').value = applied;
+    status.textContent = `✅ Keeping last ${applied} runs per dataset.`;
   }catch(e){ status.textContent = '❌ Could not save: ' + e; }
 }
 
