@@ -2563,14 +2563,13 @@ async function setDqBaseline(fileName){
   toast(r.ok ? '✅ Baseline saved.' : '❌ '+(r.error||'Could not save baseline.'));
 }
 async function loadDqHistory(fileName, currentScore){
+  // Trend chart moved to the History & Analytics page (avoids duplication).
+  // Kept here: the at-a-glance vs-baseline delta + Set-as-Baseline control.
   const box=document.getElementById('q-history'); box.innerHTML='';
   if(!fileName) return;
-  let hist, baseline;
-  try{ hist = await J('GET', `/api/dq/history/${encodeURIComponent(fileName)}?days=30`); }
-  catch(e){ hist = null; }
+  let baseline;
   try{ baseline = await J('GET', `/api/dq/baseline/${encodeURIComponent(fileName)}`); }
   catch(e){ baseline = null; }
-
   let html = '';
   if(baseline && typeof currentScore === 'number' && baseline.score !== currentScore){
     const delta = Math.round((currentScore - baseline.score) * 10) / 10;
@@ -2579,31 +2578,18 @@ async function loadDqHistory(fileName, currentScore){
       <span class="text-gray-400">vs. baseline (${baseline.run_at.slice(0,10)}, score ${baseline.score})</span>
       <span class="font-bold ${good?'text-emerald-400':'text-red-400'}">${good?'&#9650;':'&#9660;'} ${Math.abs(delta)} pts</span></div>`;
   }
-  if(Array.isArray(hist) && hist.length >= 2){
-    html += `<div class="card rounded-xl p-4">
-      <div class="text-xs text-gray-400 mb-2">DQ score trend &mdash; last 30 days (${hist.length} runs)</div>
-      <canvas id="qHistChart" height="80"></canvas></div>`;
-  }
   html += `<button onclick="setDqBaseline('${esc(fileName)}')" class="btn-ghost btn rounded-lg px-3 py-1.5 text-xs mt-2">&#128204; Set as Baseline</button>`;
+  html += `<span class="text-xs text-gray-500 ml-2">Full trend &amp; analytics: <b>History &amp; Analytics</b> tab.</span>`;
   box.innerHTML = html;
-  if(Array.isArray(hist) && hist.length >= 2){
-    chart('qHistChart',{type:'line',data:{
-      labels:hist.map(h=>new Date(h.run_at).toLocaleDateString()),
-      datasets:[{data:hist.map(h=>h.score),borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.12)',
-        fill:true,tension:.3,pointRadius:3}]},
-      options:{plugins:{legend:{display:false}},
-        scales:{x:{ticks:{color:'#64748b'}},y:{min:0,max:100,ticks:{color:'#64748b'},grid:{color:'#e2e8f0'}}}}});
-  }
 }
 async function loadReconHistory(fingerprint, currentBreakRate){
+  // Trend chart moved to the History & Analytics page (avoids duplication).
+  // Kept here: the at-a-glance vs-baseline delta.
   const box=document.getElementById('cmp-history'); if(!box) return; box.innerHTML='';
   if(!fingerprint) return;
-  let hist, baseline;
-  try{ hist = await J('GET', `/api/recon/history/${encodeURIComponent(fingerprint)}?days=30`); }
-  catch(e){ hist = null; }
+  let baseline;
   try{ baseline = await J('GET', `/api/recon/baseline/${encodeURIComponent(fingerprint)}`); }
   catch(e){ baseline = null; }
-
   let html = '';
   if(baseline && typeof currentBreakRate === 'number' && Math.abs(baseline.break_rate - currentBreakRate) > 0.0001){
     const deltaPts = Math.round((currentBreakRate - baseline.break_rate) * 1000) / 10;
@@ -2612,20 +2598,8 @@ async function loadReconHistory(fingerprint, currentBreakRate){
       <span class="text-gray-400">vs. baseline run (${baseline.run_at.slice(0,10)}, break rate ${(baseline.break_rate*100).toFixed(1)}%)</span>
       <span class="font-bold ${better?'text-emerald-600':'text-red-600'}">${better?'&#9660;':'&#9650;'} ${Math.abs(deltaPts)} pts break rate</span></div>`;
   }
-  if(Array.isArray(hist) && hist.length >= 2){
-    html += `<div class="card rounded-xl p-4">
-      <div class="text-xs text-gray-400 mb-2">Break rate trend &mdash; last 30 days (${hist.length} runs)</div>
-      <canvas id="cmpHistChart" height="70"></canvas></div>`;
-  }
+  if(html) html += `<span class="text-xs text-gray-500">Full trend &amp; analytics: <b>History &amp; Analytics</b> tab.</span>`;
   box.innerHTML = html;
-  if(Array.isArray(hist) && hist.length >= 2){
-    chart('cmpHistChart',{type:'line',data:{
-      labels:hist.map(h=>new Date(h.run_at).toLocaleDateString()),
-      datasets:[{data:hist.map(h=>Math.round(h.break_rate*1000)/10),borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,.1)',
-        fill:true,tension:.3,pointRadius:3}]},
-      options:{plugins:{legend:{display:false}},
-        scales:{x:{ticks:{color:'#64748b'}},y:{min:0,ticks:{color:'#64748b',callback:v=>v+'%'},grid:{color:'#e2e8f0'}}}}});
-  }
 }
 function bar(pct){ const c=pct>=90?'#16a34a':pct>=60?'#d97706':'#dc2626';
   return `<div style="background:#e2e8f0;border-radius:4px;height:14px;width:64px;display:inline-block;position:relative;vertical-align:middle">
