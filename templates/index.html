@@ -828,8 +828,9 @@
       </div>
       <label class="flex items-center gap-2 cursor-pointer">
         <input type="checkbox" id="sm-schedule" class="accent-emerald-500" onchange="smToggleSchedule()">
-        <span>Also run it automatically on a schedule &amp; email the results</span>
+        <span>Run it automatically on a schedule &amp; email the results</span>
       </label>
+      <p class="text-[11px] text-gray-500 -mt-2">Off &rarr; a one-off <b>snapshot</b> in Saved Reports (download as Excel). On &rarr; a recurring <b>Job</b> in Jobs (runs itself, emails you). Not both.</p>
       <div id="sm-sched-box" class="hidden space-y-3 border-l-2 border-[var(--line)] pl-4">
         <div class="grid grid-cols-2 gap-3">
           <div>
@@ -4074,9 +4075,29 @@ function _isFastCron(cron){
   return /^\*\/[1-5]$/.test(m) || m === '*';
 }
 let _jbEditingId = null;
+function cronToText(c){
+  if(!c) return 'manual';
+  const p=(''+c).trim().split(/\s+/); if(p.length!==5) return c;
+  const [mi,h,dom,mo,dow]=p;
+  const num=s=>/^\d+$/.test(s), numList=s=>/^\d+(,\d+)*$/.test(s);
+  const DOW={'0':'Sun','1':'Mon','2':'Tue','3':'Wed','4':'Thu','5':'Fri','6':'Sat','7':'Sun'};
+  const hm=(H,M)=>`${String(H).padStart(2,'0')}:${String(M).padStart(2,'0')}`;
+  if(mo!=='*') return c;  // month-specific: show raw
+  if(num(mi)&&h==='*'&&dom==='*'&&dow==='*') return `hourly at :${String(mi).padStart(2,'0')}`;
+  if(num(mi)&&num(h)&&dom==='*'&&dow==='*') return `daily at ${hm(h,mi)}`;
+  if(num(mi)&&num(h)&&dom==='*'&&numList(dow)) return `${dow.split(',').map(d=>DOW[d]||d).join(', ')} at ${hm(h,mi)}`;
+  if(num(mi)&&num(h)&&num(dom)&&dow==='*') return `day ${dom} monthly at ${hm(h,mi)}`;
+  return c;
+}
 async function loadJobs(){ const rows=await fetch('/api/ws/jobs').then(r=>r.json());
-  document.getElementById('jb-list').innerHTML=rows.length?rows.map(j=>`
-    ${row(`<span><b>${esc(j.name)}</b> <span class="text-gray-500">[${j.action}] #${j.id} ${j.schedule_cron||'manual'} &middot; ${j.status||''}</span>
+  document.getElementById('jb-list').innerHTML=rows.length?rows.map(j=>{
+    const st=(j.status||'').toLowerCase();
+    const stColor = st==='active'?'rgba(16,185,129,.12);color:#059669' : st==='paused'?'rgba(245,158,11,.14);color:#b45309' : 'rgba(148,163,184,.15);color:#64748b';
+    return `
+    ${row(`<span><b>${esc(j.name)}</b>
+    <span class="badge ml-1" style="background:rgba(148,163,184,.15);color:#64748b">${esc(j.action)}</span>
+    <span class="text-gray-500 ml-1" title="cron: ${esc(j.schedule_cron||'manual')}">&#128340; ${esc(cronToText(j.schedule_cron))}</span>
+    <span class="badge ml-1" style="background:${stColor}">${esc(j.status||'')}</span>
     ${j.fan_out_pairs?'<span class="badge ml-1" style="background:rgba(31,111,107,.12);color:#1f6f6b">&#128230; bulk</span>':''}
     ${_isFastCron(j.schedule_cron)?'<span class="badge ml-1" style="background:rgba(2,132,199,.12);color:#0369a1">&#9889; near real-time</span>':''}</span>
     <span class="flex gap-2"><button onclick="runJob(${j.id})" class="btn rounded px-2 py-0.5 text-xs">Run</button>
@@ -4085,7 +4106,7 @@ async function loadJobs(){ const rows=await fetch('/api/ws/jobs').then(r=>r.json
     <button onclick="wsTab('saved', ${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Saved Reports</button>
     <button onclick="delJob(${j.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)}
     <div id="jb-hist-${j.id}" class="hidden card rounded-lg p-2 -mt-1 mb-2 text-xs"></div>
-  `).join(''):'<div class="text-gray-500 text-sm">No jobs.</div>'; }
+  `;}).join(''):'<div class="text-gray-500 text-sm">No jobs.</div>'; }
 function onJbActionChange(){
   const action = document.getElementById('jb-action').value;
   const isXref = action==='xref';
@@ -4351,16 +4372,23 @@ async function submitSaveModal(){
   const status=document.getElementById('sm-status');
   if(!name){ status.textContent='Please enter a name.'; document.getElementById('sm-name').focus(); return; }
   status.textContent='Saving…';
-  try{ await J('POST','/api/ws/saved-runs',{session_id:SESSION,name}); }
-  catch(e){ status.textContent='Could not save: '+e; return; }
-  if(!document.getElementById('sm-schedule').checked){ closeSaveModal(); toast('Saved to workspace.'); return; }
-  const email=document.getElementById('sm-email').value.trim();
-  if(!email){ status.textContent='Enter an email address for the scheduled report.'; return; }
-  const cron=smBuildCron();
-  const r=await J('POST','/api/ws/jobs/from-session', {session_id:SESSION, name, schedule_cron:cron, notify_email:email});
-  if(r.detail || r.error){ status.textContent='Saved, but could not schedule it: '+(r.detail||r.error); return; }
-  closeSaveModal();
-  toast('Saved and scheduled — manage it anytime from Workspace → Jobs.');
+  // Either/or -- avoids the confusing "same thing in both Jobs and Saved Reports".
+  // Scheduled -> a recurring Job (Workspace > Jobs). Not scheduled -> a one-off
+  // Saved Report snapshot (Workspace > Saved Reports).
+  if(document.getElementById('sm-schedule').checked){
+    const email=document.getElementById('sm-email').value.trim();
+    if(!email){ status.textContent='Enter an email address for the scheduled report.'; return; }
+    const cron=smBuildCron();
+    const r=await J('POST','/api/ws/jobs/from-session', {session_id:SESSION, name, schedule_cron:cron, notify_email:email});
+    if(r.detail || r.error){ status.textContent='Could not schedule it: '+(r.detail||r.error); return; }
+    closeSaveModal();
+    toast('Scheduled job created — manage it in Workspace → Jobs.');
+  } else {
+    try{ await J('POST','/api/ws/saved-runs',{session_id:SESSION,name}); }
+    catch(e){ status.textContent='Could not save: '+e; return; }
+    closeSaveModal();
+    toast('Snapshot saved — find it in Workspace → Saved Reports.');
+  }
 }
 
 // ---------- Settings ----------
