@@ -438,7 +438,6 @@
         <button onclick="wsTab('conn')" class="ws-tab tab-btn tab-active px-3 py-1 rounded-lg">Connections</button>
         <button onclick="wsTab('savedconn')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Saved Connectors</button>
         <button onclick="wsTab('jobs')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Jobs</button>
-        <button onclick="wsTab('saved')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Saved Reports</button>
         <button onclick="wsTab('memory')" class="ws-tab tab-btn px-3 py-1 rounded-lg">Memory</button>
       </div>
       <div id="ws-conn" class="ws-panel">
@@ -546,9 +545,6 @@
         <div class="text-xs font-semibold text-gray-400 mb-2">Your jobs</div>
         <div id="jb-list"></div>
       </div>
-      <div id="ws-saved" class="ws-panel hidden">
-        <div class="text-xs text-gray-500 mb-3">One-off analysis snapshots you saved from a results screen (via <b>Save to Workspace</b>) &mdash; download them as Excel later. These are not Jobs; for a job's past executions use its <b>History</b> button on the Jobs tab.</div>
-        <div id="sv-filter-note" class="text-xs text-gray-500 mb-2"></div><div id="sv-list"></div></div>
       <div id="ws-memory" class="ws-panel hidden">
         <div class="text-xs text-gray-500 mb-3">Everything the AI has been trained with, per dataset &mdash; rules you saved during analysis plus steps the AI learned on its own runs. Rules auto-apply whenever a matching dataset is analyzed. Edit or delete anything here, anytime.</div>
         <div id="mem-list"></div>
@@ -807,19 +803,15 @@
   <div class="card rounded-xl w-full max-w-lg flex flex-col overflow-hidden">
     <div class="flex items-center gap-3 px-5 py-3 border-b border-[var(--line)]">
       <div class="settings-icon" style="background:linear-gradient(135deg,#059669,#10b981)">&#128190;</div>
-      <h3 class="settings-h">Save to Workspace</h3>
+      <h3 class="settings-h">Schedule this run</h3>
     </div>
     <div class="p-5 space-y-4 text-sm overflow-auto" style="max-height:75vh">
+      <p class="text-xs text-gray-500 -mb-1">Run this analysis automatically on a schedule and email you the results &mdash; it appears in <b>Workspace &rarr; Jobs</b>. For a one-off copy, use the <b>Excel</b> button on the results screen.</p>
       <div>
-        <label class="text-xs text-gray-400">Name this saved run</label>
+        <label class="text-xs text-gray-400">Name this job</label>
         <input id="sm-name" class="inp w-full mt-1" placeholder="e.g. Daily trades reconciliation">
       </div>
-      <label class="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" id="sm-schedule" class="accent-emerald-500" onchange="smToggleSchedule()">
-        <span>Run it automatically on a schedule &amp; email the results</span>
-      </label>
-      <p class="text-[11px] text-gray-500 -mt-2">Off &rarr; a one-off <b>snapshot</b> in Saved Reports (download as Excel). On &rarr; a recurring <b>Job</b> in Jobs (runs itself, emails you). Not both.</p>
-      <div id="sm-sched-box" class="hidden space-y-3 border-l-2 border-[var(--line)] pl-4">
+      <div id="sm-sched-box" class="space-y-3">
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="text-xs text-gray-400">Frequency</label>
@@ -858,7 +850,7 @@
     </div>
     <div class="flex justify-end gap-2 px-5 py-3 border-t border-[var(--line)]">
       <button onclick="closeSaveModal()" class="btn-ghost rounded-lg px-4 py-1.5 text-sm">Cancel</button>
-      <button onclick="submitSaveModal()" class="btn rounded-lg px-4 py-1.5 text-sm font-semibold">Save</button>
+      <button onclick="submitSaveModal()" class="btn rounded-lg px-4 py-1.5 text-sm font-semibold">Schedule</button>
     </div>
   </div>
 </div>
@@ -1049,7 +1041,7 @@ function actionBar(sessionId, elapsedSec){
   // all three (download/email/save) for this role, so don't even show them.
   if (CURRENT_ROLE === 'readonly') {
     return `<div class="card rounded-xl p-3 mb-4 flex items-center gap-2 flex-wrap">
-      <span class="text-xs text-gray-500">Run Only access — download, email, and Save to Workspace aren't available for your role.</span>
+      <span class="text-xs text-gray-500">Run Only access — download, email, and scheduling aren't available for your role.</span>
       ${elapsedSec!=null?`<span class="ml-auto text-xs text-gray-500">&#9201; ${elapsedSec}s</span>`:''}
     </div>`;
   }
@@ -1059,7 +1051,7 @@ function actionBar(sessionId, elapsedSec){
     <a href="/download/${sessionId}?fmt=csv" class="btn-ghost btn rounded-lg px-3 py-1.5 text-xs">&#11015; CSV</a>
     <a href="/download/${sessionId}?fmt=json" class="btn-ghost btn rounded-lg px-3 py-1.5 text-xs">&#11015; JSON</a>
     <button onclick="emailReport('${sessionId}')" class="btn rounded-lg px-3 py-1.5 text-xs" style="background:linear-gradient(90deg,#c2410c,#ea580c)">&#9993; Email Report</button>
-    <button onclick="saveToWorkspace()" class="btn-indigo btn rounded-lg px-3 py-1.5 text-xs">&#9889; Save to Workspace</button>
+    <button onclick="saveToWorkspace()" class="btn-indigo btn rounded-lg px-3 py-1.5 text-xs">&#128340; Schedule</button>
     ${elapsedSec!=null?`<span class="ml-auto text-xs text-gray-500">&#9201; ${elapsedSec}s</span>`:''}
   </div>`;
 }
@@ -3158,10 +3150,11 @@ const HELP_CONTENT = {
     its config) for continuous streaming reconciliation. Turn on <b>Bulk (fan-out)</b> to run the same compare
     across many connection pairs at once (e.g. one per branch) on a single schedule, aggregated into one run.
     Add a notify email to get a report after every run.</p>
-    <p class="mt-2 font-semibold text-sky-300">Saved Reports</p>
-    <p class="text-gray-400">One-off analysis snapshots you saved from a results screen (via <b>Save to
-    Workspace</b>) for later Excel download &mdash; separate from Jobs. For a job's past executions, use its
-    <b>History</b> button on the Jobs tab.</p>
+    <p class="mt-2 font-semibold text-sky-300">Keeping results</p>
+    <p class="text-gray-400">For a one-off copy, use the <b>Excel</b> button on the results screen. To run an
+    analysis automatically and get it emailed, use <b>&#128340; Schedule</b> &mdash; it becomes a Job. Past
+    executions are under a job's <b>History</b> button; trends across runs are on the
+    <b>History &amp; Analytics</b> page.</p>
     <p class="mt-2 font-semibold text-sky-300">Memory</p>
     <p class="text-gray-400">Manage everything the AI has been trained with, per dataset &mdash; the rules you
     saved during analysis plus the steps the AI learned on its own AI runs. Add, edit or delete any rule here
@@ -3522,7 +3515,7 @@ function wsTab(name, jobId){
   document.querySelectorAll('.ws-panel').forEach(p=>p.classList.add('hidden'));
   document.getElementById('ws-'+name).classList.remove('hidden');
   if(name==='savedconn')loadConnections();
-  if(name==='jobs'){loadJobs(); loadConnDropdowns();} if(name==='saved')loadSavedRuns(jobId);
+  if(name==='jobs'){loadJobs(); loadConnDropdowns();}
   if(name==='memory')loadMemoryDatasets();
 }
 
@@ -4016,7 +4009,6 @@ async function loadJobs(){ const rows=await fetch('/api/ws/jobs').then(r=>r.json
     <span class="flex gap-2"><button onclick="runJob(${j.id})" class="btn rounded px-2 py-0.5 text-xs">Run</button>
     <button onclick="editJob(${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Edit</button>
     <button onclick="toggleJobHistory(${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">History</button>
-    <button onclick="wsTab('saved', ${j.id})" class="btn-ghost rounded px-2 py-0.5 text-xs">Saved Reports</button>
     <button onclick="delJob(${j.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)}
     <div id="jb-hist-${j.id}" class="hidden card rounded-lg p-2 -mt-1 mb-2 text-xs"></div>
   `;}).join(''):'<div class="text-gray-500 text-sm">No jobs.</div>'; }
@@ -4206,27 +4198,6 @@ async function jbAiSuggest(){
   if(status) status.textContent = s.description || 'Suggestion applied.';
 }
 async function delJob(id){ if(confirm('Delete job?')){await fetch(`/api/ws/jobs/${id}`,{method:'DELETE'});loadJobs();} }
-function _fmtSavedAt(iso){
-  if(!iso) return '';
-  const d = new Date(iso);
-  if(isNaN(d.getTime())) return iso;
-  return d.toLocaleString(undefined, {year:'numeric', month:'short', day:'numeric', hour:'2-digit', minute:'2-digit'});
-}
-async function loadSavedRuns(jobId){
-  const note = document.getElementById('sv-filter-note');
-  const url = jobId ? `/api/ws/saved-runs?job_id=${jobId}` : '/api/ws/saved-runs';
-  const rows = await fetch(url).then(r=>r.json());
-  if(jobId){
-    note.innerHTML = `Showing saved runs that used the same connector(s) as this job. <a href="#" onclick="loadSavedRuns();return false;" class="text-sky-400 underline">Show all saved runs</a>`;
-  } else {
-    note.textContent = '';
-  }
-  document.getElementById('sv-list').innerHTML=rows.length?rows.map(s=>row(`<span><b>${esc(s.name)}</b> <span class="text-gray-500">[${s.action}] ${_fmtSavedAt(s.saved_at)}</span></span>
-    <span class="flex gap-2"><a href="/download/${s.session_id}" class="btn-emerald btn rounded px-2 py-0.5 text-xs">Excel</a>
-    <button onclick="delSaved(${s.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join(''):
-    `<div class="text-gray-500 text-sm">${jobId ? 'No saved runs use this job\'s connector(s) yet.' : 'No saved runs.'}</div>`;
-}
-async function delSaved(id){ if(confirm('Delete saved run?')){await fetch(`/api/ws/saved-runs/${id}`,{method:'DELETE'});loadSavedRuns();} }
 const SM_DOW = [['1','Mon'],['2','Tue'],['3','Wed'],['4','Thu'],['5','Fri'],['6','Sat'],['0','Sun']];
 function saveToWorkspace(){
   if(!SESSION){toast('Run an analysis first.');return;}
@@ -4239,16 +4210,12 @@ function saveToWorkspace(){
     dowBox.dataset.built='1';
   }
   document.getElementById('sm-name').value='';
-  document.getElementById('sm-schedule').checked=false;
   document.getElementById('sm-status').textContent='';
-  smToggleSchedule(); smSyncFields();
+  smSyncFields();
   document.getElementById('save-modal').classList.remove('hidden');
   document.getElementById('sm-name').focus();
 }
 function closeSaveModal(){ document.getElementById('save-modal').classList.add('hidden'); }
-function smToggleSchedule(){
-  document.getElementById('sm-sched-box').classList.toggle('hidden', !document.getElementById('sm-schedule').checked);
-}
 function smSyncFields(){
   const f=document.getElementById('sm-freq').value;
   document.getElementById('sm-time-wrap').classList.toggle('hidden', f==='hourly');
@@ -4284,24 +4251,14 @@ async function submitSaveModal(){
   const name=document.getElementById('sm-name').value.trim();
   const status=document.getElementById('sm-status');
   if(!name){ status.textContent='Please enter a name.'; document.getElementById('sm-name').focus(); return; }
-  status.textContent='Saving…';
-  // Either/or -- avoids the confusing "same thing in both Jobs and Saved Reports".
-  // Scheduled -> a recurring Job (Workspace > Jobs). Not scheduled -> a one-off
-  // Saved Report snapshot (Workspace > Saved Reports).
-  if(document.getElementById('sm-schedule').checked){
-    const email=document.getElementById('sm-email').value.trim();
-    if(!email){ status.textContent='Enter an email address for the scheduled report.'; return; }
-    const cron=smBuildCron();
-    const r=await J('POST','/api/ws/jobs/from-session', {session_id:SESSION, name, schedule_cron:cron, notify_email:email});
-    if(r.detail || r.error){ status.textContent='Could not schedule it: '+(r.detail||r.error); return; }
-    closeSaveModal();
-    toast('Scheduled job created — manage it in Workspace → Jobs.');
-  } else {
-    try{ await J('POST','/api/ws/saved-runs',{session_id:SESSION,name}); }
-    catch(e){ status.textContent='Could not save: '+e; return; }
-    closeSaveModal();
-    toast('Snapshot saved — find it in Workspace → Saved Reports.');
-  }
+  const email=document.getElementById('sm-email').value.trim();
+  if(!email){ status.textContent='Enter an email address for the scheduled report.'; document.getElementById('sm-email').focus(); return; }
+  status.textContent='Scheduling…';
+  const cron=smBuildCron();
+  const r=await J('POST','/api/ws/jobs/from-session', {session_id:SESSION, name, schedule_cron:cron, notify_email:email});
+  if(r.detail || r.error){ status.textContent='Could not schedule it: '+(r.detail||r.error); return; }
+  closeSaveModal();
+  toast('Scheduled job created — manage it in Workspace → Jobs.');
 }
 
 // ---------- Settings ----------
