@@ -815,6 +815,65 @@
   </div>
 </div>
 
+<div id="save-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6" style="background:rgba(0,0,0,.65);backdrop-filter:blur(4px)">
+  <div class="card rounded-xl w-full max-w-lg flex flex-col overflow-hidden">
+    <div class="flex items-center gap-3 px-5 py-3 border-b border-[var(--line)]">
+      <div class="settings-icon" style="background:linear-gradient(135deg,#059669,#10b981)">&#128190;</div>
+      <h3 class="settings-h">Save to Workspace</h3>
+    </div>
+    <div class="p-5 space-y-4 text-sm overflow-auto" style="max-height:75vh">
+      <div>
+        <label class="text-xs text-gray-400">Name this saved run</label>
+        <input id="sm-name" class="inp w-full mt-1" placeholder="e.g. Daily trades reconciliation">
+      </div>
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" id="sm-schedule" class="accent-emerald-500" onchange="smToggleSchedule()">
+        <span>Also run it automatically on a schedule &amp; email the results</span>
+      </label>
+      <div id="sm-sched-box" class="hidden space-y-3 border-l-2 border-[var(--line)] pl-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs text-gray-400">Frequency</label>
+            <select id="sm-freq" class="inp w-full mt-1" onchange="smSyncFields()">
+              <option value="hourly">Hourly</option>
+              <option value="daily" selected>Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <div id="sm-time-wrap">
+            <label class="text-xs text-gray-400">At time</label>
+            <input type="time" id="sm-time" value="06:00" class="inp w-full mt-1" onchange="smPreview()">
+          </div>
+          <div id="sm-minute-wrap" class="hidden">
+            <label class="text-xs text-gray-400">At minute</label>
+            <input type="number" id="sm-minute" min="0" max="59" value="0" class="inp w-full mt-1" onchange="smPreview()">
+          </div>
+          <div id="sm-dom-wrap" class="hidden">
+            <label class="text-xs text-gray-400">Day of month</label>
+            <select id="sm-dom" class="inp w-full mt-1" onchange="smPreview()"></select>
+          </div>
+        </div>
+        <div id="sm-dow-wrap" class="hidden">
+          <label class="text-xs text-gray-400 block mb-1">On days</label>
+          <div id="sm-dow" class="flex flex-wrap gap-1"></div>
+        </div>
+        <div>
+          <label class="text-xs text-gray-400">Email address for the report / alerts</label>
+          <input id="sm-email" type="email" class="inp w-full mt-1" placeholder="name@company.com">
+          <p class="text-[11px] text-gray-500 mt-1">&#9888;&#65039; Scheduling requires this run to have used a <b>Saved Connector</b> (not a direct file upload).</p>
+        </div>
+        <div class="text-xs text-gray-500">Runs <b id="sm-human" class="text-sky-500"></b> <span class="text-gray-400">(cron: <code id="sm-cron"></code>)</span></div>
+      </div>
+      <div id="sm-status" class="text-xs text-gray-500"></div>
+    </div>
+    <div class="flex justify-end gap-2 px-5 py-3 border-t border-[var(--line)]">
+      <button onclick="closeSaveModal()" class="btn-ghost rounded-lg px-4 py-1.5 text-sm">Cancel</button>
+      <button onclick="submitSaveModal()" class="btn rounded-lg px-4 py-1.5 text-sm font-semibold">Save</button>
+    </div>
+  </div>
+</div>
+
 <div id="help-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6" style="background:rgba(0,0,0,.65);backdrop-filter:blur(4px)">
   <div class="card rounded-xl w-full max-w-4xl h-[80vh] flex overflow-hidden">
     <nav class="w-52 border-r border-[var(--line)] p-3 flex flex-col gap-1 text-sm overflow-auto">
@@ -4234,19 +4293,73 @@ async function loadSavedRuns(jobId){
     `<div class="text-gray-500 text-sm">${jobId ? 'No saved runs use this job\'s connector(s) yet.' : 'No saved runs.'}</div>`;
 }
 async function delSaved(id){ if(confirm('Delete saved run?')){await fetch(`/api/ws/saved-runs/${id}`,{method:'DELETE'});loadSavedRuns();} }
-async function saveToWorkspace(){
+const SM_DOW = [['1','Mon'],['2','Tue'],['3','Wed'],['4','Thu'],['5','Fri'],['6','Sat'],['0','Sun']];
+function saveToWorkspace(){
   if(!SESSION){toast('Run an analysis first.');return;}
-  const name=prompt('Name this saved run:'); if(!name)return;
-  await J('POST','/api/ws/saved-runs',{session_id:SESSION,name});
-  if(!confirm('Saved. Also keep this running automatically and email you the results? (requires this run to have used a Saved Connector, not a direct file upload)')){
-    toast('Saved to workspace.'); return;
+  // Build the day-of-month options (1-28 to stay valid in every month) + weekday chips once.
+  const dom=document.getElementById('sm-dom');
+  if(dom && !dom.options.length){ for(let i=1;i<=28;i++){const o=document.createElement('option');o.value=i;o.textContent=i;dom.appendChild(o);} }
+  const dowBox=document.getElementById('sm-dow');
+  if(dowBox && !dowBox.dataset.built){
+    dowBox.innerHTML = SM_DOW.map(([v,l])=>`<label class="suggest-chip cursor-pointer" style="padding:3px 10px"><input type="checkbox" class="sm-dow-cb accent-emerald-500 mr-1" value="${v}" onchange="smPreview()"${v==='1'?' checked':''}>${l}</label>`).join('');
+    dowBox.dataset.built='1';
   }
-  const cron = prompt('How often should it run? (cron expression, e.g. "0 6 * * *" = daily at 6am)', '0 6 * * *');
-  if(!cron) return;
-  const email = prompt('Email address for the report / alerts:');
-  if(!email) return;
-  const r = await J('POST','/api/ws/jobs/from-session', {session_id:SESSION, name, schedule_cron:cron, notify_email:email});
-  if(r.detail || r.error){ toast('Saved, but could not schedule it: '+(r.detail||r.error)); return; }
+  document.getElementById('sm-name').value='';
+  document.getElementById('sm-schedule').checked=false;
+  document.getElementById('sm-status').textContent='';
+  smToggleSchedule(); smSyncFields();
+  document.getElementById('save-modal').classList.remove('hidden');
+  document.getElementById('sm-name').focus();
+}
+function closeSaveModal(){ document.getElementById('save-modal').classList.add('hidden'); }
+function smToggleSchedule(){
+  document.getElementById('sm-sched-box').classList.toggle('hidden', !document.getElementById('sm-schedule').checked);
+}
+function smSyncFields(){
+  const f=document.getElementById('sm-freq').value;
+  document.getElementById('sm-time-wrap').classList.toggle('hidden', f==='hourly');
+  document.getElementById('sm-minute-wrap').classList.toggle('hidden', f!=='hourly');
+  document.getElementById('sm-dow-wrap').classList.toggle('hidden', f!=='weekly');
+  document.getElementById('sm-dom-wrap').classList.toggle('hidden', f!=='monthly');
+  smPreview();
+}
+function smBuildCron(){
+  const f=document.getElementById('sm-freq').value;
+  if(f==='hourly'){ const m=Math.max(0,Math.min(59,parseInt(document.getElementById('sm-minute').value||'0',10))); return `${m} * * * *`; }
+  const [H,M]=(document.getElementById('sm-time').value||'06:00').split(':').map(x=>parseInt(x,10));
+  if(f==='daily')   return `${M} ${H} * * *`;
+  if(f==='weekly'){ const days=[...document.querySelectorAll('.sm-dow-cb:checked')].map(c=>c.value); return `${M} ${H} * * ${days.length?days.join(','):'1'}`; }
+  if(f==='monthly'){ const d=document.getElementById('sm-dom').value||'1'; return `${M} ${H} ${d} * *`; }
+  return `${M} ${H} * * *`;
+}
+function smHuman(){
+  const f=document.getElementById('sm-freq').value;
+  const t=document.getElementById('sm-time').value||'06:00';
+  if(f==='hourly') return `every hour at :${String(document.getElementById('sm-minute').value||'0').padStart(2,'0')}`;
+  if(f==='daily')  return `every day at ${t}`;
+  if(f==='weekly'){ const names=[...document.querySelectorAll('.sm-dow-cb:checked')].map(c=>SM_DOW.find(d=>d[0]===c.value)[1]); return `every ${names.join(', ')||'Mon'} at ${t}`; }
+  if(f==='monthly') return `on day ${document.getElementById('sm-dom').value||'1'} of each month at ${t}`;
+  return '';
+}
+function smPreview(){
+  const c=document.getElementById('sm-cron'), h=document.getElementById('sm-human');
+  if(c) c.textContent=smBuildCron();
+  if(h) h.textContent=smHuman();
+}
+async function submitSaveModal(){
+  const name=document.getElementById('sm-name').value.trim();
+  const status=document.getElementById('sm-status');
+  if(!name){ status.textContent='Please enter a name.'; document.getElementById('sm-name').focus(); return; }
+  status.textContent='Saving…';
+  try{ await J('POST','/api/ws/saved-runs',{session_id:SESSION,name}); }
+  catch(e){ status.textContent='Could not save: '+e; return; }
+  if(!document.getElementById('sm-schedule').checked){ closeSaveModal(); toast('Saved to workspace.'); return; }
+  const email=document.getElementById('sm-email').value.trim();
+  if(!email){ status.textContent='Enter an email address for the scheduled report.'; return; }
+  const cron=smBuildCron();
+  const r=await J('POST','/api/ws/jobs/from-session', {session_id:SESSION, name, schedule_cron:cron, notify_email:email});
+  if(r.detail || r.error){ status.textContent='Saved, but could not schedule it: '+(r.detail||r.error); return; }
+  closeSaveModal();
   toast('Saved and scheduled — manage it anytime from Workspace → Jobs.');
 }
 
