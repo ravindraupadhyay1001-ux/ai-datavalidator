@@ -15532,17 +15532,21 @@ async def analyze(request: Request):
                     session_id, _resp["counts"]["matched"], _resp["counts"]["file1_only"],
                     _resp["counts"]["file2_only"], _resp["counts"]["modified"], method=_resp["method"],
                 )
-                _cnt = _resp.get("counts", {})
-                _brk = (_cnt.get("file1_only", 0) + _cnt.get("file2_only", 0) + _cnt.get("modified", 0))
-                _capture_run_metric(
-                    "compare", "standard", _ws_username, session_id,
-                    f"{_f1_name} vs {_f2_name}", _resolved_fingerprint,
-                    {"matched": _cnt.get("matched"), "file1_only": _cnt.get("file1_only"),
-                     "file2_only": _cnt.get("file2_only"), "modified": _cnt.get("modified"),
-                     "break_rate": _resp.get("break_rate"), "method": _resp.get("method")},
-                    status=("FAIL" if _brk else "PASS"),
-                    row_count=_cnt.get("matched"), elapsed=_resp.get("elapsed"),
-                )
+                # Skip when this compare is just the file-load/base step of an AI
+                # run (runCompareAI posts ai_prep=1, then /recon/run-llm records the
+                # real AI metric). Otherwise an AI recon would log a Standard row.
+                if not str(form.get("ai_prep", "")).strip():
+                    _cnt = _resp.get("counts", {})
+                    _brk = (_cnt.get("file1_only", 0) + _cnt.get("file2_only", 0) + _cnt.get("modified", 0))
+                    _capture_run_metric(
+                        "compare", "standard", _ws_username, session_id,
+                        f"{_f1_name} vs {_f2_name}", _resolved_fingerprint,
+                        {"matched": _cnt.get("matched"), "file1_only": _cnt.get("file1_only"),
+                         "file2_only": _cnt.get("file2_only"), "modified": _cnt.get("modified"),
+                         "break_rate": _resp.get("break_rate"), "method": _resp.get("method")},
+                        status=("FAIL" if _brk else "PASS"),
+                        row_count=_cnt.get("matched"), elapsed=_resp.get("elapsed"),
+                    )
             except Exception as _e_hist:
                 _log(f"Reconciliation history save failed: {_e_hist}")
         return JSONResponse(_sanitize_json(_resp))
@@ -18048,6 +18052,21 @@ async def recon_run_llm(session_id: str, request: Request):
     result = await asyncio.to_thread(_run_llm_recon_full, session_id, _rrl_username)
     if result is None:
         raise HTTPException(404, "Session not found or missing stored files -- please re-upload.")
+    try:
+        _st = _results_store.get(session_id, {})
+        _dfs = _st.get("dataframes", [])
+        _lbl = " vs ".join(str(d.get("name", "")) for d in _dfs[:2]) if _dfs else "reconciliation"
+        _c = result.get("counts", {}) or {}
+        _br = (_c.get("file1_only", 0) or 0) + (_c.get("file2_only", 0) or 0) + (_c.get("modified", 0) or 0)
+        _capture_run_metric(
+            "compare", "ai", _rrl_username, result.get("session_id") or session_id,
+            _lbl, result.get("fingerprint") or _st.get("dataset_fingerprint", ""),
+            {"matched": _c.get("matched"), "file1_only": _c.get("file1_only"),
+             "file2_only": _c.get("file2_only"), "modified": _c.get("modified"),
+             "method": result.get("method")},
+            status=("FAIL" if _br else "PASS"), row_count=_c.get("matched"))
+    except Exception:
+        pass
     return JSONResponse(_sanitize_json(result))
 
 

@@ -1921,7 +1921,7 @@ async function runCompareAI(){
   try{
     const {ok,data}=await postForm('compare',
       [['files_a','cmp-f1','conn_a_ids','cmp-conn1'],['files_b','cmp-f2','conn_b_ids','cmp-conn2'],...cmpExtraFileInputs()],
-      {}, null);
+      {ai_prep:'1'}, null);
     if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
     out.innerHTML='<span class="text-gray-400">Applying saved rules and running the AI-driven reconciliation&hellip;</span>';
     let finalData = data;
