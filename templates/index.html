@@ -3604,8 +3604,9 @@ function saveUiExtractor(){
   loadUiExtractors();
 }
 function testUiExtractor(){
-  const status=document.getElementById('uix-status');
-  status.innerHTML='&#9203; Browser automation isn\'t enabled yet. Once wired, Test opens the page, runs your steps, and previews the extracted rows.';
+  // Prototype: no execution engine yet. Use a toast so the feedback is visible
+  // no matter where Test was clicked (form or a saved-list row).
+  toast('⏳ Browser automation isn\'t wired up yet — this page only defines & saves the extractor. Running the page and pulling the data is the next build slice.');
 }
 function delUiExtractor(id){
   if(!confirm('Delete this UI extractor?')) return;
