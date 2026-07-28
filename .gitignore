@@ -4,3 +4,6 @@
 
 # Marketing/promo build output (large media, regenerated on demand)
 promo/
+
+# Demo/sample data -- not shipped in the deployed app
+Test Data/
