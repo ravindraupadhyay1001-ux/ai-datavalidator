@@ -19,6 +19,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === "aidv-extract") { setLast(msg.payload); sendResponse && sendResponse({ ok: true }); return; }
   if (msg.cmd === "armDownload") { armed = true; sendResponse && sendResponse({ ok: true }); return; }
   if (msg.cmd === "disarmDownload") { armed = false; sendResponse && sendResponse({ ok: true }); return; }
+  // Append a recorded step to the in-progress recipe.
+  if (msg.type === "aidv-rec-step") {
+    chrome.storage.local.get(["recRecipe"], (r) => {
+      const rec = r.recRecipe || { steps: [], startUrl: msg.step && msg.step.url };
+      // Collapse consecutive "set" on the same field into the latest value.
+      const last = rec.steps[rec.steps.length - 1];
+      if (last && msg.step.type === "set" && last.type === "set" && last.selector === msg.step.selector) last.value = msg.step.value;
+      else rec.steps.push(msg.step);
+      chrome.storage.local.set({ recRecipe: rec });
+    });
+    sendResponse && sendResponse({ ok: true });
+    return;
+  }
   return true;
 });
 

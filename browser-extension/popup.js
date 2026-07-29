@@ -96,8 +96,59 @@ $("btn-save").onclick = () => {
   });
 };
 
-chrome.storage.local.get(["appUrl", "appToken"], (r) => {
+// ---------- Automate: record & replay ----------
+function renderRecipes() {
+  chrome.storage.local.get(["recipes"], (r) => {
+    const list = r.recipes || [];
+    $("recipes").innerHTML = list.length ? list.map((rc, i) =>
+      `<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--line);border-radius:8px;padding:6px 8px;margin-top:6px">
+        <span><b>${esc(rc.name)}</b> <span class="muted">${rc.steps.length} steps</span></span>
+        <span><button data-run="${i}">Run</button> <button data-del="${i}">✕</button></span>
+      </div>`).join("") : '<p class="muted" style="margin:6px 0 0">No recorded flows yet.</p>';
+    $("recipes").querySelectorAll("[data-run]").forEach(b => b.onclick = () => runRecipe(+b.dataset.run));
+    $("recipes").querySelectorAll("[data-del]").forEach(b => b.onclick = () => delRecipe(+b.dataset.del));
+  });
+}
+async function runRecipe(i) {
+  const { recipes } = await chrome.storage.local.get(["recipes"]);
+  const rc = recipes[i]; if (!rc) return;
+  await chrome.storage.local.set({ replay: { steps: rc.steps, i: 0 } });
+  const t = await activeTab();
+  if (rc.startUrl && rc.startUrl !== t.url) chrome.tabs.update(t.id, { url: rc.startUrl });
+  else chrome.tabs.reload(t.id); // reload so the content script picks up the replay state
+  window.close();
+}
+async function delRecipe(i) {
+  const { recipes } = await chrome.storage.local.get(["recipes"]);
+  recipes.splice(i, 1); await chrome.storage.local.set({ recipes }); renderRecipes();
+}
+function setRecUI(on) { $("btn-rec").style.display = on ? "none" : ""; $("btn-stop").style.display = on ? "" : "none"; }
+
+$("btn-rec").onclick = async () => {
+  const t = await activeTab();
+  await chrome.storage.local.set({ recording: true, recRecipe: { steps: [], startUrl: t.url } });
+  chrome.tabs.sendMessage(t.id, { cmd: "startRecord" }, () => {});
+  setRecUI(true);
+  $("status").innerHTML = "🔴 Recording — do your steps, then reopen and <b>Stop &amp; save</b>.";
+};
+$("btn-stop").onclick = async () => {
+  const t = await activeTab();
+  await chrome.storage.local.set({ recording: false });
+  chrome.tabs.sendMessage(t.id, { cmd: "stopRecord" }, () => {});
+  const { recRecipe, recipes } = await chrome.storage.local.get(["recRecipe", "recipes"]);
+  setRecUI(false);
+  if (!recRecipe || !recRecipe.steps.length) { $("status").textContent = "No steps captured."; return; }
+  const name = prompt("Name this recorded flow:", "My extraction");
+  if (!name) return;
+  const list = recipes || []; list.unshift({ name, steps: recRecipe.steps, startUrl: recRecipe.startUrl });
+  await chrome.storage.local.set({ recipes: list, recRecipe: null });
+  renderRecipes(); $("status").textContent = `Saved "${name}" (${recRecipe.steps.length} steps).`;
+};
+
+chrome.storage.local.get(["appUrl", "appToken", "recording"], (r) => {
   if (r.appUrl) $("app-url").value = r.appUrl;
   if (r.appToken) $("app-token").value = r.appToken;
+  setRecUI(!!r.recording);
 });
+renderRecipes();
 refresh();

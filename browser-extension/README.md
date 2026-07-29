@@ -53,7 +53,14 @@ upload and maps it to your user.
 - `background.js` — stores the last extract, download capture, CSV/JSON parsing
 - `popup.html` / `popup.js` — the UI, preview, and "Send"
 
+## Automate — record & replay (v0.2, experimental)
+In the popup → **🎬 Automate**: click **Record steps**, do your navigation once
+(clicks + field entries; passwords are never recorded), then **Stop & save** and
+name it. Later, **Run** it — the extension replays the steps (surviving page
+navigations) and auto-extracts the resulting table. Selectors are best-effort;
+if a step can't be found the run stops with a message. **Needs real-browser
+testing** — report any step that misfires.
+
 ## Roadmap
-- v0.2: record the navigation steps and replay them (automation)
 - v0.3: AI turns plain-English steps into actions; self-healing selectors
 - v0.4: scheduled unattended runs (server-side worker for public/API sources)
