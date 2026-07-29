@@ -474,22 +474,63 @@
       <div id="ws-savedconn" class="ws-panel hidden"><div id="cn-list"></div></div>
 
       <div id="ws-uiextract" class="ws-panel hidden">
-        <div class="text-xs text-gray-500 mb-3">Pull data straight from a web app's screen when you can't reach its backend &mdash; using a lightweight <b>browser extension</b> that runs in your own logged-in session (SSO/MFA and every multi-step navigation just work). You do your normal steps, click the extension to grab the final table or exported file, and it lands here as a source. Nothing runs on the server.</div>
-        <div class="card rounded-xl p-4 mb-4 max-w-3xl">
-          <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">1 &middot; Install &amp; pair the extension</div>
-          <ol class="text-sm text-gray-600 list-decimal list-inside space-y-1 mb-3">
-            <li>Load the <code>browser-extension</code> folder in Chrome/Edge (<code>chrome://extensions</code> &rarr; Developer mode &rarr; Load unpacked).</li>
-            <li>Open the extension &rarr; <b>Connection settings</b> &rarr; set this app's URL and paste the pairing token below.</li>
-          </ol>
+        <div class="text-xs text-gray-500 mb-3">Pull data straight from a web app's screen when you can't reach its backend &mdash; give the page &amp; login, describe the rest in plain English, and a lightweight <b>browser extension</b> (running in your own logged-in session, so SSO/MFA and every multi-step navigation just work) does it and lands the result here as a source. Nothing runs on the server.</div>
+        <details id="uix-new-details" class="mb-4" open>
+          <summary class="cursor-pointer btn rounded-lg px-3 py-1.5 text-sm font-medium inline-block" style="list-style:none">&#10011; New extraction</summary>
+          <div class="card rounded-xl p-4 mt-3 max-w-3xl grid grid-cols-2 gap-3 text-sm">
+            <div><label class="text-xs text-gray-400">Name</label>
+              <input id="uix-name" class="inp w-full mt-1" placeholder="e.g. Compliance portal — daily trades"></div>
+            <div><label class="text-xs text-gray-400">Start URL (the page to open)</label>
+              <input id="uix-url" class="inp w-full mt-1" placeholder="https://portal.internal/reports"></div>
+            <div class="col-span-2">
+              <label class="text-xs text-gray-400 block mb-1">Where does this run?</label>
+              <label class="mr-4"><input type="radio" name="uix-runtime" value="self" class="accent-sky-500 mr-1" checked onchange="uixSync()">I'll sign in myself (this device)</label>
+              <label><input type="radio" name="uix-runtime" value="server" class="accent-sky-500 mr-1" onchange="uixSync()">Run automatically on the server</label>
+              <p id="uix-runtime-note" class="text-[11px] text-gray-500 mt-1"></p>
+            </div>
+            <div><label class="text-xs text-gray-400">Login type</label>
+              <select id="uix-logintype" class="inp w-full mt-1" onchange="uixSync()">
+                <option value="form">Form login (username / password)</option>
+                <option value="windows">Windows / NTLM</option>
+                <option value="sso">SSO / SAML</option>
+                <option value="none">No login</option>
+              </select></div>
+            <div><label class="text-xs text-gray-400">Extract</label>
+              <select id="uix-mode" class="inp w-full mt-1">
+                <option value="auto">Auto-detect</option>
+                <option value="download">Download a file</option>
+                <option value="table">Extract a table from the page</option>
+              </select></div>
+            <div id="uix-cred-user" class="hidden"><label class="text-xs text-gray-400">Username</label>
+              <input id="uix-user" class="inp w-full mt-1" autocomplete="off" placeholder="service account / user"></div>
+            <div id="uix-cred-pass" class="hidden"><label class="text-xs text-gray-400">Password</label>
+              <input id="uix-pass" type="password" class="inp w-full mt-1" autocomplete="new-password" placeholder="stored encrypted"></div>
+            <div class="col-span-2"><label class="text-xs text-gray-400">Steps (plain English)</label>
+              <textarea id="uix-steps" rows="3" class="inp w-full mt-1" placeholder="Go to Reports &rarr; Trades.&#10;Set the date range to yesterday.&#10;Click Export, choose CSV, and download it."></textarea></div>
+            <div class="col-span-2 flex items-center gap-2">
+              <button onclick="saveUiExtractor()" class="btn rounded-lg px-3 py-1.5 text-sm font-medium">&#128190; Save extraction</button>
+              <span id="uix-status" class="text-xs text-gray-500"></span>
+            </div>
+          </div>
+        </details>
+        <div class="text-xs font-semibold text-gray-400 mb-2">Your saved extractions</div>
+        <div id="uix-list" class="mb-5"></div>
+
+        <div class="card rounded-xl p-4 mb-4 max-w-3xl" style="border-top:3.5px solid #0ea5e9">
+          <div class="flex items-center gap-3 mb-2">
+            <div class="settings-icon" style="background:linear-gradient(135deg,#0ea5e9,#38bdf8)">&#128279;</div>
+            <h3 class="settings-h">Connect the Web Extract browser extension</h3>
+          </div>
+          <p class="text-xs text-gray-500 mb-2">Load the <code>browser-extension</code> folder in Chrome/Edge (Developer mode &rarr; Load unpacked), then paste this token into the extension's <b>Connection settings</b>. It runs your saved steps in your own session and sends the result back here.</p>
           <label class="text-xs text-gray-400">Your pairing token</label>
           <div class="flex items-center gap-2 mt-1">
             <input id="uix-token" readonly class="inp flex-1 text-xs" style="font-family:monospace" value="…">
-            <button onclick="copyUixToken()" class="btn-ghost rounded-lg px-3 py-1.5 text-sm">Copy</button>
+            <button onclick="copyUixToken()" class="btn-ghost rounded-lg px-3 py-1 text-sm">Copy</button>
           </div>
           <p class="text-[11px] text-gray-500 mt-1">Keep this private &mdash; it authorises the extension to send data to your account.</p>
         </div>
-        <div class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">2 &middot; Received data</div>
-        <div id="uix-list"></div>
+        <div class="text-xs font-semibold text-gray-400 mb-2">&#128229; Received data</div>
+        <div id="uix-received"></div>
       </div>
 
       <div id="ws-jobs" class="ws-panel hidden">
@@ -3542,36 +3583,75 @@ function wsTab(name, jobId){
 }
 
 // ---------- UI Extraction (Workspace) ----------
-// Data arrives from the Web Extract browser extension via the ingest API. This
-// page shows the pairing token and the datasets the extension has sent in.
+// Saved "extractions" (name/URL/steps) are defined here (per-browser); the Web
+// Extract extension runs them in your session and posts results back via the
+// ingest API, which appear under "Received data".
+const UIX_KEY='uiExtractors';
+function uixGet(){ try{ return JSON.parse(localStorage.getItem(UIX_KEY)||'[]'); }catch(e){ return []; } }
+function uixSet(a){ localStorage.setItem(UIX_KEY, JSON.stringify(a)); }
+function uixRuntime(){ return document.querySelector('input[name="uix-runtime"]:checked')?.value || 'self'; }
+function uixSync(){
+  const rt=uixRuntime(), lt=document.getElementById('uix-logintype')?.value||'form';
+  const showCreds = rt==='server' && lt!=='none';
+  document.getElementById('uix-cred-user')?.classList.toggle('hidden', !showCreds);
+  document.getElementById('uix-cred-pass')?.classList.toggle('hidden', !(showCreds && lt==='form'));
+  const note=document.getElementById('uix-runtime-note');
+  if(note) note.innerHTML = rt==='self'
+    ? "You sign in yourself in your own browser &mdash; nothing is stored, and MFA/SSO works. Uses your own permitted access."
+    : "The login is stored <b>encrypted</b> so scheduled runs can sign in unattended. MFA-protected logins should use &ldquo;sign in myself&rdquo;.";
+}
+function saveUiExtractor(){
+  const g=id=>document.getElementById(id)?.value?.trim()||'';
+  const name=g('uix-name'), url=g('uix-url'), steps=g('uix-steps');
+  const status=document.getElementById('uix-status');
+  if(!name||!url||!steps){ status.textContent='Name, URL and steps are required.'; return; }
+  if(!/^https?:\/\//i.test(url)){ status.textContent='URL should start with http:// or https://'; return; }
+  const list=uixGet();
+  list.unshift({ id:Date.now(), name, url, runtime:uixRuntime(),
+    loginType:document.getElementById('uix-logintype').value,
+    mode:document.getElementById('uix-mode').value, username:g('uix-user'), steps });
+  uixSet(list); status.textContent='';
+  ['uix-name','uix-url','uix-user','uix-pass','uix-steps'].forEach(i=>{const el=document.getElementById(i); if(el) el.value='';});
+  toast('Extraction saved. Run it from the Web Extract extension (paired below).');
+  loadUiExtractors();
+}
+function delUiExtractor(id){ if(!confirm('Delete this extraction?')) return; uixSet(uixGet().filter(x=>x.id!==id)); loadUiExtractors(); }
+function loadUiExtractors(){
+  const box=document.getElementById('uix-list'); if(!box) return;
+  const list=uixGet();
+  const rtBadge=r=>r==='server'
+    ? '<span class="badge ml-1" style="background:rgba(2,132,199,.12);color:#0369a1">&#128100; server</span>'
+    : '<span class="badge ml-1" style="background:rgba(16,185,129,.12);color:#059669">&#128421;&#65039; this device</span>';
+  box.innerHTML = list.length ? list.map(x=>row(`<span><b>${esc(x.name)}</b>
+    <span class="text-gray-500 ml-1" title="${esc(x.url)}">&#128279; ${esc((x.url||'').replace(/^https?:\/\//,'').slice(0,42))}</span>
+    ${rtBadge(x.runtime)}
+    <span class="badge ml-1" style="background:rgba(148,163,184,.15);color:#64748b">${esc(x.mode)}</span></span>
+    <span class="flex gap-2"><button onclick="delUiExtractor(${x.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join('')
+    : '<div class="text-gray-500 text-sm">No extractions yet &mdash; describe one above.</div>';
+}
 async function loadUiExtractPage(){
+  uixSync(); loadUiExtractors();
   try{ const d=await fetch('/api/ws/ui-extract/token').then(r=>r.ok?r.json():null);
     const el=document.getElementById('uix-token'); if(el && d && d.token) el.value=d.token;
   }catch(e){}
-  loadUiExtractors();
+  loadUiReceived();
 }
 function copyUixToken(){
-  const el=document.getElementById('uix-token'); if(!el) return;
-  el.select();
+  const el=document.getElementById('uix-token'); if(!el) return; el.select();
   (navigator.clipboard ? navigator.clipboard.writeText(el.value) : Promise.reject())
     .then(()=>toast('Token copied.'), ()=>toast('Select the token and copy it manually.'));
 }
-async function loadUiExtractors(){
-  const box=document.getElementById('uix-list'); if(!box) return;
+async function loadUiReceived(){
+  const box=document.getElementById('uix-received'); if(!box) return;
   let rows=[]; try{ rows=await fetch('/api/ws/ui-extract/received').then(r=>r.json()); }catch(e){}
   box.innerHTML = Array.isArray(rows) && rows.length ? rows.map(x=>row(`<span><b>${esc(x.name)}</b>
     <span class="text-gray-500 ml-1">${x.rows_count} rows × ${x.cols_count} cols</span>
-    ${x.source_url?`<span class="text-gray-400 ml-1" title="${esc(x.source_url)}">&#128279; ${esc(x.source_url.replace(/^https?:\/\//,'').slice(0,36))}</span>`:''}
     <span class="text-gray-400 ml-1 text-xs">${esc((x.created_at||'').replace('T',' ').slice(0,16))}</span></span>
     <span class="flex gap-2"><a href="/api/ws/ui-extract/${x.id}/download" class="btn-emerald btn rounded px-2 py-0.5 text-xs">CSV</a>
     <button onclick="delReceived(${x.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join('')
-    : '<div class="text-gray-500 text-sm">Nothing received yet. In your source app, navigate to the data, click the <b>Web Extract</b> extension, grab the table, and hit <b>Send to AI DataValidator</b>.</div>';
+    : '<div class="text-gray-500 text-sm">Nothing received yet. Use the <b>Web Extract</b> extension to grab a table and hit <b>Send to AI DataValidator</b>.</div>';
 }
-async function delReceived(id){
-  if(!confirm('Delete this received dataset?')) return;
-  try{ await fetch('/api/ws/ui-extract/'+id, {method:'DELETE'}); }catch(e){}
-  loadUiExtractors();
-}
+async function delReceived(id){ if(!confirm('Delete this received dataset?')) return; try{ await fetch('/api/ws/ui-extract/'+id, {method:'DELETE'}); }catch(e){} loadUiReceived(); }
 
 // ---------- Dataset Memory manager (Workspace → Memory) ----------
 // Full CRUD over per-dataset saved rules, including the AI-learned steps
