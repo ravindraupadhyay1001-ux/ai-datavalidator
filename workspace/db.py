@@ -327,6 +327,25 @@ _DDL = [
         created_at TEXT
     )""",
     "CREATE INDEX IF NOT EXISTS idx_uiextract_user ON ws_ui_extracts(username, id)",
+    # Live "Test run" queue for UI Extraction. The app enqueues a run (the user's
+    # saved steps); the browser extension claims it by pairing token, replays it in
+    # the user's own session, and posts the extracted table back. Rows are short-
+    # lived preview state -- pruned to the newest few per user.
+    """CREATE TABLE IF NOT EXISTS ws_ui_extract_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        name TEXT,
+        start_url TEXT,
+        steps_json TEXT,
+        status TEXT,
+        result_json TEXT,
+        message TEXT,
+        created_at TEXT,
+        updated_at TEXT
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_uiextractrun_user ON ws_ui_extract_runs(username, id)",
+    # Plain-English steps for a run (AI turns these into actions at replay time).
+    "ALTER TABLE ws_ui_extract_runs ADD COLUMN steps_text TEXT",
 ]
 
 
@@ -611,6 +630,150 @@ def delete_ui_extract(extract_id, username):
     cur = conn.cursor()
     cur.execute(f"DELETE FROM ws_ui_extracts WHERE id={_ph()} AND username={_ph()}", (extract_id, username))
     conn.commit()
+
+
+def get_ui_extract_for_connector(username, extract_id=None, source_url=None):
+    """Serve a captured extraction to the UI-Extract connector. Prefers a pinned
+    `extract_id`; else the newest capture for this user (optionally matching
+    `source_url`). Returns (name, csv_data) or (None, None). Owner-scoped."""
+    cur = _conn().cursor()
+    if extract_id:
+        cur.execute(
+            f"SELECT name, csv_data FROM ws_ui_extracts WHERE id={_ph()} AND username={_ph()}",
+            (extract_id, username),
+        )
+        rows = _rows(cur)
+        return (rows[0]["name"], rows[0]["csv_data"]) if rows else (None, None)
+    if source_url:
+        cur.execute(
+            f"SELECT name, csv_data FROM ws_ui_extracts WHERE username={_ph()} AND source_url={_ph()} "
+            f"ORDER BY id DESC LIMIT 1",
+            (username, source_url),
+        )
+        rows = _rows(cur)
+        if rows:
+            return (rows[0]["name"], rows[0]["csv_data"])
+    cur.execute(
+        f"SELECT name, csv_data FROM ws_ui_extracts WHERE username={_ph()} ORDER BY id DESC LIMIT 1",
+        (username,),
+    )
+    rows = _rows(cur)
+    return (rows[0]["name"], rows[0]["csv_data"]) if rows else (None, None)
+
+
+def update_ui_extract_csv(extract_id, username, csv_data, cols_count):
+    """Replace a received dataset's CSV (used after an AI column tidy/map).
+    Owner-scoped; returns rows updated."""
+    conn = _conn()
+    cur = conn.cursor()
+    cur.execute(
+        f"UPDATE ws_ui_extracts SET csv_data={_ph()}, cols_count={_ph()} "
+        f"WHERE id={_ph()} AND username={_ph()}",
+        (csv_data, cols_count, extract_id, username),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+# ---- UI Extraction: live "Test run" queue -----------------------------------
+# The app enqueues a run for a user; the extension (paired by token) claims the
+# oldest pending run for that user, replays the steps in the user's own browser
+# session, and posts the result back. The app polls get_extract_run() to show a
+# live preview and gate "Save" on a run that actually produced data.
+
+def create_extract_run(username, name, start_url, steps, steps_text="", keep=8):
+    """Queue a Test run. `steps` is a recorded/structured step list (or []);
+    `steps_text` is the user's plain-English steps (the AI planner turns these
+    into actions at replay time). Returns the run id; prunes to the newest `keep`."""
+    conn = _conn()
+    cur = conn.cursor()
+    cur.execute(
+        f"INSERT INTO ws_ui_extract_runs (username, name, start_url, steps_json, steps_text, status, created_at, updated_at) "
+        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},'pending',{_ph()},{_ph()})",
+        (username, name or "Test run", start_url or "", _b64(steps or []), steps_text or "", _now(), _now()),
+    )
+    conn.commit()
+    run_id = cur.lastrowid
+    cur.execute(
+        f"DELETE FROM ws_ui_extract_runs WHERE username={_ph()} AND id NOT IN ("
+        f"  SELECT id FROM ws_ui_extract_runs WHERE username={_ph()} ORDER BY id DESC LIMIT {int(keep)})",
+        (username, username),
+    )
+    conn.commit()
+    return run_id
+
+
+def claim_next_run(username):
+    """Return the oldest pending run for this user and mark it 'running', so the
+    extension picks up each job once. Returns a dict (with decoded steps) or None."""
+    conn = _conn()
+    cur = conn.cursor()
+    cur.execute(
+        f"SELECT id, name, start_url, steps_json, steps_text FROM ws_ui_extract_runs "
+        f"WHERE username={_ph()} AND status='pending' ORDER BY id ASC",
+        (username,),
+    )
+    rows = _rows(cur)
+    if not rows:
+        return None
+    r = rows[0]
+    cur.execute(
+        f"UPDATE ws_ui_extract_runs SET status='running', updated_at={_ph()} WHERE id={_ph()}",
+        (_now(), r["id"]),
+    )
+    conn.commit()
+    return {
+        "id": r["id"],
+        "name": r.get("name"),
+        "start_url": r.get("start_url"),
+        "steps": _unb64(r.get("steps_json")) or [],
+        "steps_text": r.get("steps_text") or "",
+    }
+
+
+def complete_extract_run(run_id, username, status, columns=None, rows=None, message=""):
+    """Record a run's result (status 'done' or 'error'). Owner-scoped."""
+    conn = _conn()
+    cur = conn.cursor()
+    result = None
+    if columns is not None or rows is not None:
+        result = _b64({"columns": columns or [], "rows": rows or []})
+    cur.execute(
+        f"UPDATE ws_ui_extract_runs SET status={_ph()}, result_json={_ph()}, message={_ph()}, updated_at={_ph()} "
+        f"WHERE id={_ph()} AND username={_ph()}",
+        (status, result, message or "", _now(), run_id, username),
+    )
+    conn.commit()
+    return cur.rowcount
+
+
+def get_extract_run(run_id, username):
+    """Status + preview for a run the app is polling. Owner-scoped; None if absent."""
+    cur = _conn().cursor()
+    cur.execute(
+        f"SELECT id, name, start_url, status, result_json, message, created_at, updated_at "
+        f"FROM ws_ui_extract_runs WHERE id={_ph()} AND username={_ph()}",
+        (run_id, username),
+    )
+    rows = _rows(cur)
+    if not rows:
+        return None
+    r = rows[0]
+    result = _unb64(r.get("result_json")) or {}
+    cols = result.get("columns") or []
+    data = result.get("rows") or []
+    return {
+        "id": r["id"],
+        "name": r.get("name"),
+        "start_url": r.get("start_url"),
+        "status": r.get("status"),
+        "message": r.get("message") or "",
+        "columns": cols,
+        "rows": data,
+        "rows_count": len(data),
+        "cols_count": len(cols),
+        "updated_at": r.get("updated_at"),
+    }
 
 
 def list_users():
