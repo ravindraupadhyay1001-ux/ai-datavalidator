@@ -12510,6 +12510,79 @@ async def get_recon_baseline_endpoint(fingerprint: str, request: Request):
         return JSONResponse(None)
 
 
+# ---------- UI Extraction (browser extension) ----------
+@app.get("/api/ws/ui-extract/token")
+async def ui_extract_token(request: Request):
+    """Per-user pairing token the browser extension pastes into its settings."""
+    if not _WS_ENABLED:
+        raise HTTPException(400, "Workspace/login must be enabled to pair the extension.")
+    username = _ws_resolve_username(request)
+    if not username:
+        raise HTTPException(401, "Please sign in.")
+    return JSONResponse({"token": _ws_db.get_or_create_ext_token(username)})
+
+
+@app.post("/api/ws/ui-extract/ingest")
+async def ui_extract_ingest(request: Request):
+    """Receive an extracted table from the browser extension. Auth is the pairing
+    token (header X-Extract-Token) -- the extension runs cross-origin, not in the
+    app session. Stores the table as CSV under the token's owner."""
+    if not _WS_ENABLED:
+        return JSONResponse({"error": "Workspace not enabled."}, status_code=400)
+    token = request.headers.get("X-Extract-Token", "")
+    username = _ws_db.resolve_ext_token(token)
+    if not username:
+        return JSONResponse({"error": "Invalid or missing pairing token."}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Bad JSON body."}, status_code=400)
+    columns = body.get("columns") or []
+    rows = body.get("rows") or []
+    if not columns or not isinstance(rows, list):
+        return JSONResponse({"error": "Expected 'columns' and 'rows'."}, status_code=400)
+    columns = [str(c) for c in columns][:500]
+    rows = rows[:200000]  # hard cap so a runaway page can't flood the DB
+    import io as _io, csv as _csv
+    buf = _io.StringIO()
+    w = _csv.writer(buf)
+    w.writerow(columns)
+    for r in rows:
+        w.writerow([("" if v is None else str(v)) for v in (r or [])][:len(columns)])
+    csv_data = buf.getvalue()
+    eid = _ws_db.save_ui_extract(username, body.get("name") or "Web extract",
+                                 body.get("source_url") or "", len(rows), len(columns), csv_data)
+    return JSONResponse({"ok": True, "id": eid, "rows": len(rows), "cols": len(columns)})
+
+
+@app.get("/api/ws/ui-extract/received")
+async def ui_extract_received(request: Request):
+    """List datasets the extension has sent in, for the current user."""
+    if not _WS_ENABLED:
+        return JSONResponse([])
+    username = _ws_resolve_username(request) or "default"
+    return JSONResponse(_sanitize_json(_ws_db.list_ui_extracts(username)))
+
+
+@app.get("/api/ws/ui-extract/{extract_id}/download")
+async def ui_extract_download(extract_id: int, request: Request):
+    from fastapi.responses import Response as _Resp
+    username = _ws_resolve_username(request) or "default"
+    name, csv_data = _ws_db.get_ui_extract_csv(extract_id, username)
+    if csv_data is None:
+        raise HTTPException(404, "Not found.")
+    safe = "".join(c for c in (name or "extract") if c.isalnum() or c in " -_")[:40].strip() or "extract"
+    return _Resp(content=csv_data, media_type="text/csv",
+                 headers={"Content-Disposition": f'attachment; filename="{safe}.csv"'})
+
+
+@app.delete("/api/ws/ui-extract/{extract_id}")
+async def ui_extract_delete(extract_id: int, request: Request):
+    username = _ws_resolve_username(request) or "default"
+    _ws_db.delete_ui_extract(extract_id, username)
+    return JSONResponse({"ok": True})
+
+
 @app.get("/api/analytics/runs")
 async def analytics_runs(request: Request):
     """Run-metric history for the current user, for the History & Analytics page.

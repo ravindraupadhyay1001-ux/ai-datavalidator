@@ -15,6 +15,7 @@ config_json / rules_json / sources are stored as base64-encoded JSON
 import base64
 import json
 import os
+import secrets
 import threading
 from datetime import datetime, timezone, timedelta
 
@@ -311,6 +312,21 @@ _DDL = [
     )""",
     "CREATE INDEX IF NOT EXISTS idx_runmetrics_lookup ON ws_run_metrics(username, module, schema_fingerprint, run_at)",
     "CREATE INDEX IF NOT EXISTS idx_runmetrics_user ON ws_run_metrics(username, run_at)",
+    # Per-user pairing token for the Web Extract browser extension.
+    "ALTER TABLE ws_users ADD COLUMN ext_token TEXT",
+    # Datasets pushed in by the browser extension (Workspace > UI Extraction).
+    # Stores the extracted table as CSV text; pruned to the newest 25 per user.
+    """CREATE TABLE IF NOT EXISTS ws_ui_extracts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        name TEXT,
+        source_url TEXT,
+        rows_count INTEGER,
+        cols_count INTEGER,
+        csv_data TEXT,
+        created_at TEXT
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_uiextract_user ON ws_ui_extracts(username, id)",
 ]
 
 
@@ -525,6 +541,76 @@ def get_run_metrics(username, module=None, schema_fingerprint=None, limit=200):
         d["metrics"] = _unb64(d.pop("metrics_json", None)) or {}
         out.append(d)
     return out
+
+
+def get_or_create_ext_token(username):
+    """Per-user pairing token for the Web Extract extension. Generated on demand."""
+    conn = _conn()
+    cur = conn.cursor()
+    cur.execute(f"SELECT ext_token FROM ws_users WHERE username={_ph()}", (username,))
+    rows = _rows(cur)
+    if rows and rows[0].get("ext_token"):
+        return rows[0]["ext_token"]
+    token = secrets.token_urlsafe(24)
+    cur.execute(f"UPDATE ws_users SET ext_token={_ph()} WHERE username={_ph()}", (token, username))
+    conn.commit()
+    return token
+
+
+def resolve_ext_token(token):
+    """Return the username owning this extension token, or None."""
+    if not token:
+        return None
+    cur = _conn().cursor()
+    cur.execute(f"SELECT username FROM ws_users WHERE ext_token={_ph()}", (token,))
+    rows = _rows(cur)
+    return rows[0]["username"] if rows else None
+
+
+def save_ui_extract(username, name, source_url, rows_count, cols_count, csv_data, keep=25):
+    """Persist a dataset pushed in by the browser extension; prune to newest `keep`."""
+    conn = _conn()
+    cur = conn.cursor()
+    cur.execute(
+        f"INSERT INTO ws_ui_extracts (username, name, source_url, rows_count, cols_count, csv_data, created_at) "
+        f"VALUES ({_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()},{_ph()})",
+        (username, name or "Web extract", source_url or "", rows_count, cols_count, csv_data, _now()),
+    )
+    conn.commit()
+    cur.execute(
+        f"DELETE FROM ws_ui_extracts WHERE username={_ph()} AND id NOT IN ("
+        f"  SELECT id FROM ws_ui_extracts WHERE username={_ph()} ORDER BY id DESC LIMIT {int(keep)})",
+        (username, username),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def list_ui_extracts(username):
+    cur = _conn().cursor()
+    cur.execute(
+        f"SELECT id, name, source_url, rows_count, cols_count, created_at "
+        f"FROM ws_ui_extracts WHERE username={_ph()} ORDER BY id DESC LIMIT 100",
+        (username,),
+    )
+    return [dict(r) for r in _rows(cur)]
+
+
+def get_ui_extract_csv(extract_id, username):
+    cur = _conn().cursor()
+    cur.execute(
+        f"SELECT name, csv_data FROM ws_ui_extracts WHERE id={_ph()} AND username={_ph()}",
+        (extract_id, username),
+    )
+    rows = _rows(cur)
+    return (rows[0]["name"], rows[0]["csv_data"]) if rows else (None, None)
+
+
+def delete_ui_extract(extract_id, username):
+    conn = _conn()
+    cur = conn.cursor()
+    cur.execute(f"DELETE FROM ws_ui_extracts WHERE id={_ph()} AND username={_ph()}", (extract_id, username))
+    conn.commit()
 
 
 def list_users():
