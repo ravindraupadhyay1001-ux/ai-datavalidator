@@ -4515,7 +4515,7 @@ async function loadUsers(){
       <th class="text-left">Tokens (mo.)</th><th class="text-left">Cap (mo.)</th><th class="text-left">Dataset Memory</th><th class="text-left">Access until</th><th class="text-left">Status</th><th></th>
     </tr></thead><tbody>`+
     users.map(u=>`<tr class="border-t border-[var(--line)]">
-      <td class="p-1">${esc(u.display_name||u.username)}</td>
+      <td class="p-1"><div>${esc(u.display_name||u.username)}</div>${u.email?`<div class="text-xs text-gray-500">${esc(u.email)}</div>`:''}</td>
       <td><select class="inp text-xs" onchange="setUserRole('${esc(u.username)}',this.value)">
         ${Object.keys(ROLE_LABELS).map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${ROLE_LABELS[r]}</option>`).join('')}
       </select></td>
