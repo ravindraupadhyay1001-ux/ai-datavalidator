@@ -16,7 +16,22 @@ function setLast(payload) {
 // -- messages from content script / popup --
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (!msg) return;
-  if (msg.type === "aidv-extract") { setLast(msg.payload); sendResponse && sendResponse({ ok: true }); return; }
+  if (msg.type === "aidv-extract") {
+    setLast(msg.payload);
+    // If this extraction was triggered by an app "Test run", post it straight back.
+    chrome.storage.local.get(["activeRun"], (r) => {
+      if (r.activeRun) {
+        const p = msg.payload || {};
+        postRunResult(r.activeRun.runId, {
+          status: "done", columns: p.columns || [], rows: p.rows || [],
+          message: p.mode === "download-note" ? (p.note || "") : "",
+        });
+        chrome.storage.local.remove("activeRun");
+      }
+    });
+    sendResponse && sendResponse({ ok: true });
+    return;
+  }
   if (msg.cmd === "armDownload") { armed = true; sendResponse && sendResponse({ ok: true }); return; }
   if (msg.cmd === "disarmDownload") { armed = false; sendResponse && sendResponse({ ok: true }); return; }
   // Append a recorded step to the in-progress recipe.
@@ -92,3 +107,116 @@ chrome.downloads.onCreated.addListener(async (item) => {
 });
 
 chrome.runtime.onInstalled.addListener(() => chrome.action.setBadgeText({ text: "" }));
+
+// ---- Live "Test run" loop --------------------------------------------------
+// Poll the app for runs the user queued (Workspace > UI Extraction > Test run).
+// When one arrives, replay its steps in the ACTIVE tab (the page the user is
+// already logged into) — or, with no steps, just grab the table on that page —
+// then post the result back. Nothing here reaches out to the source site on its
+// own; it only acts on the tab the user has open.
+const POLL_MS = 3000;
+const RUN_TIMEOUT_MS = 90000;
+
+function apiBase(u) { return (u || "").replace(/\/+$/, ""); }
+
+async function postRunResult(runId, payload) {
+  const { appUrl, appToken } = await chrome.storage.local.get(["appUrl", "appToken"]);
+  if (!appUrl || !appToken) return;
+  try {
+    await fetch(apiBase(appUrl) + "/api/ws/ui-extract/run-result", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Extract-Token": appToken },
+      body: JSON.stringify({ run_id: runId, ...payload }),
+    });
+  } catch (e) { /* the app's own poll will time out and tell the user */ }
+}
+
+async function startRun(run) {
+  await chrome.storage.local.set({ activeRun: { runId: run.id, started: Date.now() } });
+  const [t] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!t || !/^https?:/i.test(t.url || "")) {
+    await postRunResult(run.id, { status: "error", message: "Open your source web page in the active tab, then run Test again." });
+    await chrome.storage.local.remove("activeRun");
+    return;
+  }
+  const steps = run.steps || [];
+  const stepsText = (run.steps_text || "").trim();
+  if (steps.length) {
+    // Recorded/structured steps -> replay directly.
+    await chrome.storage.local.set({ replay: { steps, i: 0 } });
+    if (run.start_url && run.start_url !== t.url) chrome.tabs.update(t.id, { url: run.start_url });
+    else chrome.tabs.reload(t.id); // reload so the content script picks up the replay state
+  } else if (stepsText) {
+    // Plain-English steps -> snapshot the page, let the app's AI plan actions,
+    // then run them. Planning happens on each run against the live DOM, so
+    // selectors self-heal when the page changes.
+    planAndRun(run, t, stepsText);
+  } else {
+    // No steps at all -> grab the table on the page the user is on.
+    chrome.tabs.sendMessage(t.id, { cmd: "extractAuto" }, () => {
+      if (chrome.runtime.lastError) {
+        postRunResult(run.id, { status: "error", message: "Couldn't read that tab. Open a normal web page showing the data, then Test again." });
+        chrome.storage.local.remove("activeRun");
+      }
+    });
+  }
+}
+
+async function planAndRun(run, tab, stepsText) {
+  const { appUrl, appToken } = await chrome.storage.local.get(["appUrl", "appToken"]);
+  chrome.tabs.sendMessage(tab.id, { cmd: "snapshot" }, async (resp) => {
+    if (chrome.runtime.lastError || !resp || !Array.isArray(resp.dom)) {
+      await postRunResult(run.id, { status: "error", message: "Couldn't read the page. Open the data page in the active tab and try again." });
+      await chrome.storage.local.remove("activeRun");
+      return;
+    }
+    let actions;
+    try {
+      const res = await fetch(apiBase(appUrl) + "/api/ws/ui-extract/plan-steps", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Extract-Token": appToken },
+        body: JSON.stringify({ steps_text: stepsText, dom: resp.dom }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || j.error) {
+        await postRunResult(run.id, { status: "error", message: j.error || ("Planner failed (HTTP " + res.status + ").") });
+        await chrome.storage.local.remove("activeRun");
+        return;
+      }
+      actions = j.actions || [];
+    } catch (e) {
+      await postRunResult(run.id, { status: "error", message: "Couldn't reach the app to plan the steps." });
+      await chrome.storage.local.remove("activeRun");
+      return;
+    }
+    if (!actions.length) {
+      await postRunResult(run.id, { status: "error", message: "Couldn't map your steps to anything on this page. Open the data page and simplify the steps." });
+      await chrome.storage.local.remove("activeRun");
+      return;
+    }
+    chrome.tabs.sendMessage(tab.id, { cmd: "runActions", actions }, () => { /* result arrives via aidv-extract */ });
+  });
+}
+
+async function pollRuns() {
+  const { appUrl, appToken, activeRun } = await chrome.storage.local.get(["appUrl", "appToken", "activeRun"]);
+  if (!appUrl || !appToken) return;
+  if (activeRun) {
+    // Watchdog: a claimed run that never produced a result -> report the failure.
+    if (Date.now() - activeRun.started > RUN_TIMEOUT_MS) {
+      await postRunResult(activeRun.runId, { status: "error", message: "No table was captured in time. Open the data page and try again." });
+      await chrome.storage.local.remove("activeRun");
+    }
+    return; // one run at a time
+  }
+  try {
+    const res = await fetch(apiBase(appUrl) + "/api/ws/ui-extract/next-run", { headers: { "X-Extract-Token": appToken } });
+    if (!res.ok) return;
+    const run = (await res.json()).run;
+    if (run && run.id) startRun(run);
+  } catch (e) { /* offline / app not reachable — keep polling */ }
+}
+
+setInterval(pollRuns, POLL_MS);
+chrome.alarms.create("aidv-poll", { periodInMinutes: 0.5 }); // wakes the worker when idle
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === "aidv-poll") pollRuns(); });

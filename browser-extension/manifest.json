@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "AI DataValidator — Web Extract",
-  "version": "0.1.0",
+  "version": "0.4.0",
   "description": "Extract a table from any web app (or capture its exported CSV/JSON) and send it straight to AI DataValidator — no backend access, uses your own logged-in session.",
-  "permissions": ["activeTab", "scripting", "downloads", "storage", "tabs"],
+  "permissions": ["activeTab", "scripting", "downloads", "storage", "tabs", "alarms"],
   "host_permissions": ["<all_urls>"],
   "action": {
     "default_title": "AI DataValidator — Web Extract",

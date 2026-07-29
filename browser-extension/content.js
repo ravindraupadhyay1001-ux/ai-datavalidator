@@ -44,6 +44,48 @@
     return new Promise((res, rej) => { const st = Date.now(); (function poll() { let e; try { e = document.querySelector(s); } catch (_) {} if (e) return res(e); if (Date.now() - st > t) return rej("not found: " + s); setTimeout(poll, 150); })(); });
   }
 
+  // ---------- AI planning: snapshot the page's interactive elements ----------
+  // The app's planner maps plain-English steps to these by 'ref'. We keep the
+  // ref -> selector map LOCAL (never sent) and deliberately omit field VALUES so
+  // no typed data (BFSI!) leaves the page -- only labels/roles the model needs.
+  let _refMap = {};
+  function _vis(el) { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
+  function snapshotInteractive() {
+    _refMap = {};
+    const els = Array.from(document.querySelectorAll(
+      "a,button,input,select,textarea,[role=button],[role=link],[role=menuitem],[role=tab],[onclick]"));
+    const out = [];
+    let i = 0;
+    for (const el of els) {
+      if (el.disabled || !_vis(el)) continue;
+      const tag = el.tagName.toLowerCase();
+      const type = (el.getAttribute("type") || "").toLowerCase();
+      if (type === "password") continue; // never expose secret fields
+      const selector = sel(el);
+      if (!selector) continue;
+      const ref = "e" + (i++);
+      _refMap[ref] = selector;
+      const isField = tag === "input" || tag === "select" || tag === "textarea";
+      out.push({
+        ref, tag, type,
+        role: el.getAttribute("role") || "",
+        text: isField ? "" : (el.innerText || "").replace(/\s+/g, " ").trim().slice(0, 80),
+        name: el.getAttribute("name") || el.getAttribute("aria-label") || el.id || "",
+        placeholder: el.getAttribute("placeholder") || "",
+      });
+      if (out.length >= 400) break;
+    }
+    return out;
+  }
+  function actionsToSteps(actions) {
+    return (actions || []).map((a) => {
+      if (a.type === "wait") return { type: "wait" };
+      const selector = _refMap[a.ref];
+      if (!selector) return null;
+      return a.type === "set" ? { type: "set", selector, value: a.value || "" } : { type: "click", selector };
+    }).filter(Boolean);
+  }
+
   // ---------- table serialize (from v0.1) ----------
   function serializeTable(table) {
     const norm = (el) => (el ? el.innerText.replace(/\s+/g, " ").trim() : "");
@@ -95,9 +137,12 @@
     for (let i = state.i; i < state.steps.length; i++) {
       const s = state.steps[i];
       try {
-        const el = await waitFor(s.selector);
-        if (s.type === "set") { el.focus(); el.value = s.value; el.dispatchEvent(new Event("input", { bubbles: true })); el.dispatchEvent(new Event("change", { bubbles: true })); }
-        else { el.scrollIntoView({ block: "center" }); el.click(); }
+        if (s.type === "wait") { await new Promise(r => setTimeout(r, 1200)); }
+        else {
+          const el = await waitFor(s.selector);
+          if (s.type === "set") { el.focus(); el.value = s.value; el.dispatchEvent(new Event("input", { bubbles: true })); el.dispatchEvent(new Event("change", { bubbles: true })); }
+          else { el.scrollIntoView({ block: "center" }); el.click(); }
+        }
       } catch (err) { bannerTemp("&#9888;&#65039; Step " + (i + 1) + " failed: " + err); chrome.storage.local.set({ replay: null }); return; }
       await chrome.storage.local.set({ replay: { steps: state.steps, i: i + 1 } });
       await new Promise(r => setTimeout(r, 600));  // let the page react / maybe navigate
@@ -120,6 +165,13 @@
     else if (msg.cmd === "extractAuto") { extractAuto(); sendResponse({ ok: true }); }
     else if (msg.cmd === "startRecord") { startRecordListeners(); sendResponse({ ok: true }); }
     else if (msg.cmd === "stopRecord") { stopRecordListeners(); sendResponse({ ok: true }); }
+    else if (msg.cmd === "snapshot") { sendResponse({ dom: snapshotInteractive() }); }
+    else if (msg.cmd === "runActions") {
+      const steps = actionsToSteps(msg.actions);
+      if (!steps.length) { sendResponse({ ok: false, error: "No runnable actions." }); return true; }
+      chrome.storage.local.set({ replay: { steps, i: 0 } }, () => runReplay({ steps, i: 0 }));
+      sendResponse({ ok: true });
+    }
     return true;
   });
 })();

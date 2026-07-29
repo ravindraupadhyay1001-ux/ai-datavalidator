@@ -225,6 +225,7 @@ class BaseConnector(ABC):
             "redshift": RedshiftConnector, "teradata": TeradataConnector,
             "bigquery": BigQueryConnector,
             "mongodb": MongoDBConnector, "mongo": MongoDBConnector,
+            "ui_extract": UIExtractConnector, "web_extract": UIExtractConnector,
         }
         if st not in registry:
             raise ValueError(f"Unknown source type '{source_type}'.")
@@ -324,6 +325,40 @@ class S3Connector(BaseConnector):
         s3 = self._client()
         s3.head_bucket(Bucket=self.config["bucket"])
         return True
+
+
+class UIExtractConnector(BaseConnector):
+    """Serves the latest table captured from a web UI by the Web Extract browser
+    extension (Workspace > UI Extraction). The extension does the *acquisition*
+    in the user's own logged-in session (SSO/MFA handled by the human); this
+    connector just returns the most recent captured snapshot as a DataFrame, so
+    Jobs and validation can consume a screen-scraped source exactly like a
+    database or file connector. Nothing is fetched from the target site here --
+    a run reads whatever the extension last delivered.
+
+    config: {username, start_url (optional match), extract_id (optional pin)}
+    """
+    def _lookup(self):
+        from workspace import db as _db
+        username = self.config.get("username")
+        if not username:
+            raise ValueError("This UI Extraction source is missing its owner.")
+        return _db.get_ui_extract_for_connector(
+            username, self.config.get("extract_id"),
+            self.config.get("start_url") or self.config.get("source_url"))
+
+    def fetch(self) -> pd.DataFrame:
+        import io
+        _name, csv_data = self._lookup()
+        if not csv_data:
+            raise ValueError(
+                "No captured data yet for this UI Extraction source. Run it from "
+                "the Web Extract extension (Workspace > UI Extraction) first.")
+        return pd.read_csv(io.StringIO(csv_data), dtype=str, keep_default_na=False)
+
+    def test_connection(self) -> bool:
+        _name, csv_data = self._lookup()
+        return bool(csv_data)
 
 
 class AzureBlobConnector(BaseConnector):

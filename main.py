@@ -12583,6 +12583,343 @@ async def ui_extract_delete(extract_id: int, request: Request):
     return JSONResponse({"ok": True})
 
 
+def _read_extract_grid(extract_id, username):
+    """Return (name, columns, sample_rows) for a received dataset, or (None,...)."""
+    import io as _io, csv as _csv
+    name, csv_data = _ws_db.get_ui_extract_csv(extract_id, username)
+    if csv_data is None:
+        return None, None, None
+    reader = _csv.reader(_io.StringIO(csv_data))
+    rows = list(reader)
+    if not rows:
+        return name, [], []
+    return name, rows[0], rows[1:4]  # header + up to 3 sample rows
+
+
+@app.post("/api/ws/ui-extract/{extract_id}/map-columns")
+async def ui_extract_map_columns(extract_id: int, request: Request):
+    """AI column tidy/map (Phase 3). Proposes canonical column names for a
+    received dataset -- and, if the caller passes `targets` (a known schema's
+    column names), maps the extracted columns onto those. Junk columns are
+    flagged to drop. Returns a proposal the user reviews before applying, so the
+    deterministic apply step (below) does the actual rename. Nothing is changed
+    here."""
+    if not _WS_ENABLED:
+        return JSONResponse({"error": "Workspace not enabled."}, status_code=400)
+    username = _ws_resolve_username(request)
+    if not username:
+        return JSONResponse({"error": "Please sign in."}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    targets = [str(t).strip() for t in (body.get("targets") or []) if str(t).strip()][:200]
+    name, columns, samples = _read_extract_grid(extract_id, username)
+    if columns is None:
+        return JSONResponse({"error": "Not found."}, status_code=404)
+    if not columns:
+        return JSONResponse({"columns": [], "mapping": [], "note": "This dataset has no columns."})
+
+    import json as _json
+    system = (
+        "You standardise the column headers of an extracted data table for a BFSI "
+        "data-validation platform. You NEVER change data values, only propose header "
+        "names. Output STRICT JSON, no prose."
+    )
+    target_block = (
+        "\n\nTARGET SCHEMA (map each extracted column onto the closest of these names "
+        "where a good match exists; leave 'to' as a cleaned version otherwise):\n"
+        + _json.dumps(targets)
+    ) if targets else ""
+    user = (
+        "EXTRACTED COLUMNS (in order):\n" + _json.dumps(columns) +
+        "\n\nSAMPLE ROWS (for context, do not alter):\n" + _json.dumps(samples or []) +
+        target_block +
+        "\n\nReturn JSON:\n"
+        '{"mapping":[{"from":"<exact extracted column>","to":"<canonical/snake_case name>",'
+        '"drop":false,"why":"<short reason>"}],"note":"<one short line, else empty>"}\n'
+        "Rules: include EVERY extracted column exactly once in 'mapping', preserving order; "
+        "set drop=true for empty/index/artefact columns (e.g. blank headers, row numbers, "
+        "UI checkboxes); use clear snake_case for 'to'; never invent columns not in the list."
+    )
+    try:
+        raw = _ask_llm(
+            [{"role": "user", "content": [{"text": user}]}],
+            system=system, _module="ui_extract_map", _call_type="map_columns",
+            _username=username,
+        )
+    except Exception as e:
+        return JSONResponse({"error": _llm_error_message(e)}, status_code=502)
+
+    plan = None
+    try:
+        plan = _json.loads(raw)
+    except Exception:
+        import re as _re
+        m = _re.search(r"\{.*\}", raw, _re.DOTALL)
+        if m:
+            try:
+                plan = _json.loads(m.group(0))
+            except Exception:
+                plan = None
+    if not isinstance(plan, dict) or not isinstance(plan.get("mapping"), list):
+        return JSONResponse({"error": "The mapper did not return a usable proposal."}, status_code=502)
+
+    # Keep only entries whose 'from' is a real extracted column; ensure coverage.
+    col_set = set(columns)
+    seen = set()
+    mapping = []
+    for m2 in plan["mapping"]:
+        if not isinstance(m2, dict):
+            continue
+        frm = str(m2.get("from"))
+        if frm not in col_set or frm in seen:
+            continue
+        seen.add(frm)
+        to = str(m2.get("to") or frm).strip() or frm
+        mapping.append({"from": frm, "to": to, "drop": bool(m2.get("drop")), "why": (m2.get("why") or "")[:120]})
+    # Any column the model skipped -> keep as-is (never silently lose a column).
+    for c in columns:
+        if c not in seen:
+            mapping.append({"from": c, "to": c, "drop": False, "why": "kept as-is"})
+    return JSONResponse({"columns": columns, "mapping": mapping, "note": (plan.get("note") or "")[:200]})
+
+
+@app.post("/api/ws/ui-extract/{extract_id}/apply-mapping")
+async def ui_extract_apply_mapping(extract_id: int, request: Request):
+    """Deterministically apply a reviewed column mapping: rename kept columns and
+    drop flagged ones, rewriting the stored CSV. Data values are untouched."""
+    if not _WS_ENABLED:
+        return JSONResponse({"error": "Workspace not enabled."}, status_code=400)
+    username = _ws_resolve_username(request)
+    if not username:
+        return JSONResponse({"error": "Please sign in."}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    mapping = body.get("mapping") or []
+    if not isinstance(mapping, list) or not mapping:
+        return JSONResponse({"error": "Expected a 'mapping'."}, status_code=400)
+
+    import io as _io, csv as _csv
+    _name, csv_data = _ws_db.get_ui_extract_csv(extract_id, username)
+    if csv_data is None:
+        return JSONResponse({"error": "Not found."}, status_code=404)
+    rows = list(_csv.reader(_io.StringIO(csv_data)))
+    if not rows:
+        return JSONResponse({"error": "Empty dataset."}, status_code=400)
+    header = rows[0]
+    # Build per-source-index plan from the mapping, matched by original name.
+    plan_by_name = {str(m.get("from")): m for m in mapping if isinstance(m, dict)}
+    keep_idx, new_header = [], []
+    for i, col in enumerate(header):
+        m = plan_by_name.get(col)
+        if m and m.get("drop"):
+            continue
+        keep_idx.append(i)
+        new_header.append(str(m.get("to")).strip() if (m and str(m.get("to") or "").strip()) else col)
+    if not keep_idx:
+        return JSONResponse({"error": "That mapping would drop every column."}, status_code=400)
+
+    buf = _io.StringIO()
+    w = _csv.writer(buf)
+    w.writerow(new_header)
+    for r in rows[1:]:
+        w.writerow([r[i] if i < len(r) else "" for i in keep_idx])
+    new_csv = buf.getvalue()
+    _ws_db.update_ui_extract_csv(extract_id, username, new_csv, len(new_header))
+    return JSONResponse({"ok": True, "columns": new_header})
+
+
+# ---------- UI Extraction: live "Test run" loop ----------
+# The app enqueues a run (POST run-now); the extension long-polls next-run with
+# the pairing token, replays the steps in the user's own session, and posts the
+# extracted table back (run-result). The app polls run/{id} to show a live
+# preview and unlock Save. This is the only BFSI-safe shape: nothing runs on the
+# server, the run executes inside the user's already-authenticated browser.
+
+@app.post("/api/ws/ui-extract/run-now")
+async def ui_extract_run_now(request: Request):
+    """Queue a Test run for the current user. Body: {name, start_url, steps}."""
+    if not _WS_ENABLED:
+        return JSONResponse({"error": "Workspace not enabled."}, status_code=400)
+    username = _ws_resolve_username(request)
+    if not username:
+        return JSONResponse({"error": "Please sign in."}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Bad JSON body."}, status_code=400)
+    steps = body.get("steps")
+    if not isinstance(steps, list):
+        steps = []
+    steps_text = (body.get("steps_text") or "").strip()[:4000]
+    run_id = _ws_db.create_extract_run(
+        username, body.get("name") or "Test run", body.get("start_url") or "",
+        steps[:200], steps_text=steps_text)
+    return JSONResponse({"run_id": run_id})
+
+
+@app.get("/api/ws/ui-extract/next-run")
+async def ui_extract_next_run(request: Request):
+    """The extension polls this with its pairing token to claim the next queued
+    run. Returns {"run": {...}} or {"run": null}."""
+    if not _WS_ENABLED:
+        return JSONResponse({"run": None})
+    username = _ws_db.resolve_ext_token(request.headers.get("X-Extract-Token", ""))
+    if not username:
+        return JSONResponse({"error": "Invalid or missing pairing token."}, status_code=401)
+    return JSONResponse(_sanitize_json({"run": _ws_db.claim_next_run(username)}))
+
+
+@app.post("/api/ws/ui-extract/run-result")
+async def ui_extract_run_result(request: Request):
+    """The extension posts a run's outcome here (token-auth). Body:
+    {run_id, status: 'done'|'error', columns, rows, message}."""
+    if not _WS_ENABLED:
+        return JSONResponse({"error": "Workspace not enabled."}, status_code=400)
+    username = _ws_db.resolve_ext_token(request.headers.get("X-Extract-Token", ""))
+    if not username:
+        return JSONResponse({"error": "Invalid or missing pairing token."}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Bad JSON body."}, status_code=400)
+    run_id = body.get("run_id")
+    if run_id is None:
+        return JSONResponse({"error": "Missing run_id."}, status_code=400)
+    status = "error" if body.get("status") == "error" else "done"
+    columns = [str(c) for c in (body.get("columns") or [])][:500]
+    rows = (body.get("rows") or [])[:200000]
+    updated = _ws_db.complete_extract_run(
+        run_id, username, status, columns=columns, rows=rows, message=body.get("message") or "")
+    if not updated:
+        return JSONResponse({"error": "Unknown run_id for this account."}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/ws/ui-extract/plan-steps")
+async def ui_extract_plan_steps(request: Request):
+    """AI planner (Phase 2). The extension sends the user's plain-English steps
+    plus a snapshot of the page's interactive elements; the LLM maps each step to
+    a concrete action targeting one element by its snapshot ref. Re-planning
+    against the live DOM each run is what makes selectors self-healing. Token-auth
+    (called by the extension), so it never runs unless the user queued it.
+    Body: {steps_text, dom:[{ref,tag,role,text,name,type,placeholder}]}.
+    Returns: {actions:[{type:'click'|'set'|'wait', ref, value, why}], note}."""
+    if not _WS_ENABLED:
+        return JSONResponse({"error": "Workspace not enabled."}, status_code=400)
+    username = _ws_db.resolve_ext_token(request.headers.get("X-Extract-Token", ""))
+    if not username:
+        return JSONResponse({"error": "Invalid or missing pairing token."}, status_code=401)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Bad JSON body."}, status_code=400)
+    steps_text = (body.get("steps_text") or "").strip()
+    dom = body.get("dom") or []
+    if not steps_text:
+        return JSONResponse({"actions": [], "note": "No steps to plan."})
+    if not isinstance(dom, list) or not dom:
+        return JSONResponse({"error": "Expected a non-empty 'dom' snapshot."}, status_code=400)
+
+    # Compact the snapshot so the prompt stays small (BFSI grids can have 1000s
+    # of nodes -- the extension already filters to interactive elements, we cap
+    # again defensively and keep only the fields the model needs to disambiguate).
+    compact = []
+    for e in dom[:400]:
+        if not isinstance(e, dict):
+            continue
+        compact.append({
+            "ref": e.get("ref"),
+            "tag": (e.get("tag") or "")[:16],
+            "role": (e.get("role") or "")[:24],
+            "text": (e.get("text") or "")[:80],
+            "name": (e.get("name") or "")[:60],
+            "type": (e.get("type") or "")[:20],
+            "placeholder": (e.get("placeholder") or "")[:60],
+        })
+
+    import json as _json
+    system = (
+        "You convert a QA engineer's plain-English web steps into concrete UI "
+        "actions against a given list of on-page elements. You ONLY target elements "
+        "that appear in the provided snapshot, addressing each by its exact 'ref'. "
+        "Output STRICT JSON, no prose."
+    )
+    user = (
+        "STEPS (plain English), one instruction per line:\n" + steps_text +
+        "\n\nON-PAGE ELEMENTS (JSON array; target elements by 'ref'):\n" +
+        _json.dumps(compact) +
+        "\n\nReturn JSON of this exact shape:\n"
+        '{"actions":[{"type":"click|set|wait","ref":"<ref from the snapshot, omit for wait>",'
+        '"value":"<text to type, for set only>","why":"<the step this satisfies>"}],'
+        '"note":"<one short line if a step could not be mapped, else empty>"}\n'
+        "Rules: preserve the step order; use 'set' to type into an input/select and "
+        "'click' for buttons/links/menus; use 'wait' (no ref) only when a step says to "
+        "wait for something to load; never invent a ref that is not in the snapshot; if "
+        "a step maps to no element, skip it and mention it in 'note'."
+    )
+    try:
+        raw = _ask_llm(
+            [{"role": "user", "content": [{"text": user}]}],
+            system=system, _module="ui_extract_plan", _call_type="plan_steps",
+            _username=username,
+        )
+    except Exception as e:
+        return JSONResponse({"error": _llm_error_message(e)}, status_code=502)
+
+    # Tolerant parse: models sometimes wrap JSON in prose or a ```json fence.
+    plan = None
+    try:
+        plan = _json.loads(raw)
+    except Exception:
+        import re as _re
+        m = _re.search(r"\{.*\}", raw, _re.DOTALL)
+        if m:
+            try:
+                plan = _json.loads(m.group(0))
+            except Exception:
+                plan = None
+    if not isinstance(plan, dict) or not isinstance(plan.get("actions"), list):
+        return JSONResponse({"error": "The planner did not return usable actions."}, status_code=502)
+
+    valid_refs = {str(e.get("ref")) for e in compact if e.get("ref") is not None}
+    actions = []
+    for a in plan["actions"][:200]:
+        if not isinstance(a, dict):
+            continue
+        typ = a.get("type")
+        if typ not in ("click", "set", "wait"):
+            continue
+        if typ == "wait":
+            actions.append({"type": "wait", "why": (a.get("why") or "")[:120]})
+            continue
+        ref = str(a.get("ref"))
+        if ref not in valid_refs:  # never let the model target a made-up element
+            continue
+        act = {"type": typ, "ref": ref, "why": (a.get("why") or "")[:120]}
+        if typ == "set":
+            act["value"] = "" if a.get("value") is None else str(a.get("value"))[:500]
+        actions.append(act)
+    return JSONResponse({"actions": actions, "note": (plan.get("note") or "")[:200]})
+
+
+@app.get("/api/ws/ui-extract/run/{run_id}")
+async def ui_extract_run_status(run_id: int, request: Request):
+    """The app polls this to render the live preview and gate Save."""
+    if not _WS_ENABLED:
+        return JSONResponse({"error": "Workspace not enabled."}, status_code=400)
+    username = _ws_resolve_username(request)
+    if not username:
+        return JSONResponse({"error": "Please sign in."}, status_code=401)
+    run = _ws_db.get_extract_run(run_id, username)
+    if not run:
+        return JSONResponse({"error": "Not found."}, status_code=404)
+    return JSONResponse(_sanitize_json(run))
+
+
 @app.get("/api/analytics/runs")
 async def analytics_runs(request: Request):
     """Run-metric history for the current user, for the History & Analytics page.
@@ -19882,7 +20219,7 @@ async def ws_save_connection(request: Request):
 
       "refinitiv","murex","calypso","kafka","salesforce",
 
-      "redshift","teradata","bigquery","mongodb",
+      "redshift","teradata","bigquery","mongodb","ui_extract",
 
     }
 
@@ -19893,6 +20230,11 @@ async def ws_save_connection(request: Request):
     if not isinstance(config, dict):
 
         raise HTTPException(400, "config must be a JSON object.")
+
+    if source_type == "ui_extract":
+        # The connector reads captured data scoped to its owner -- pin it to the
+        # signed-in user server-side so it can't be pointed at another account.
+        config["username"] = username
 
     if conn_id:
         # Editing an existing connection: GET /api/ws/connections/{id} never

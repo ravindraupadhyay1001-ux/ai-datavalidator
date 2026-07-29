@@ -61,6 +61,38 @@ navigations) and auto-extracts the resulting table. Selectors are best-effort;
 if a step can't be found the run stops with a message. **Needs real-browser
 testing** — report any step that misfires.
 
+## Live "Test run" from the app (v0.3)
+The app can now drive a run for you. In **Workspace → UI Extraction** you write a
+session (name + start URL, optional steps) and click **▶ Test run**. Behind the
+scenes:
+1. The app queues the run for your account.
+2. This extension (paired by token) polls and claims it, then acts on your
+   **active tab** — replays the steps if there are any, otherwise just grabs the
+   table on the page you already have open (log in / navigate there first).
+3. The extracted table is posted straight back and the preview appears in the
+   app's card; **Save** unlocks once a run returns data.
+
+Nothing reaches out to the source site on its own — it only acts on the tab you
+have open, in your own authenticated session. Keep the extension paired (⚙
+Connection settings) and the source tab active while a test runs.
+
+**Needs real-browser testing** — the polling + replay run in a live MV3 worker;
+report any run that misfires.
+
+## AI: plain-English steps → actions (v0.4)
+Write the steps in plain English (no recording needed) and the app's AI turns
+them into clicks/entries on the fly:
+1. On a Test run with plain-English steps, this extension snapshots the page's
+   interactive elements — labels/roles only, **never field values**, so no typed
+   data leaves the page.
+2. The app's LLM maps each step to one element and returns ordered actions.
+3. The extension runs them, then grabs the resulting table.
+
+Because the page is re-snapshotted and re-planned on every run, selectors
+**self-heal** when the vendor UI shifts. Best for interactions on a single page
+(filters, tabs, expanding a grid); full multi-page navigation is still better
+handled by a recorded flow. **Needs real-browser testing.**
+
 ## Roadmap
-- v0.3: AI turns plain-English steps into actions; self-healing selectors
-- v0.4: scheduled unattended runs (server-side worker for public/API sources)
+- v0.5: multi-page re-planning; scheduled unattended runs (server worker for public/API sources)
+- Auto-map extracted columns into the AI DataValidator schema (in-app)
