@@ -3603,18 +3603,21 @@ function saveUiExtractor(){
   if(!url){ status.textContent='Start URL is required.'; return; }
   if(!/^https?:\/\//i.test(url)){ status.textContent='URL should start with http:// or https://'; return; }
   if(!name){ try{ name=new URL(url).hostname.replace(/^www\./,''); }catch(e){ name='Web extract'; } }
-  const list=uixGet();
-  list.unshift({ id:Date.now(), name, url, runtime:'self', steps });
+  // Editing updates the existing session in place; otherwise add a new one.
+  const rec={ id:_uixEditId||Date.now(), name, url, runtime:'self', steps };
+  const list=uixGet().filter(x=>x.id!==rec.id);
+  list.unshift(rec);
   uixSet(list); status.textContent='';
+  const wasEdit=!!_uixEditId; _uixEditId=null;
   ['uix-name','uix-url','uix-steps'].forEach(i=>{const el=document.getElementById(i); if(el) el.value='';});
   uixStep(3);
-  toast('Session saved. It now runs on demand and lands as a source.');
+  toast(wasEdit ? 'Session updated.' : 'Session saved. It now runs on demand and lands as a source.');
   loadUiExtractors();
   // Reset the card back to a fresh "Describe" state for the next one.
   setTimeout(()=>{ uixResetCard(); }, 1200);
 }
 // ---- Describe -> Test -> Save loop ----
-let _uixPoll=null, _uixTestedOk=false;
+let _uixPoll=null, _uixTestedOk=false, _uixEditId=null;
 function uixStep(n){
   document.querySelectorAll('#uix-stepper .uix-stp').forEach(e=>{
     const s=+e.dataset.s;
@@ -3690,9 +3693,31 @@ function loadUiExtractors(){
   box.innerHTML = list.length ? list.map(x=>row(`<span><b>${esc(x.name)}</b>
     <span class="text-gray-500 ml-1" title="${esc(x.url)}">&#128279; ${esc((x.url||'').replace(/^https?:\/\//,'').slice(0,48))}</span>
     ${x.steps?'<span class="badge ml-1" style="background:rgba(56,189,248,.12);color:#38bdf8">steps</span>':''}</span>
-    <span class="flex gap-2"><button onclick="saveSessionAsConnector(${x.id})" class="btn-ghost rounded px-2 py-0.5 text-xs" title="Use as a Saved Connector — serves the latest captured table to Jobs and validation">&#8599; Use as connector</button>
+    <span class="flex gap-2"><button onclick="testSession(${x.id})" class="btn rounded px-2 py-0.5 text-xs font-medium" title="Re-run this session now">&#9654; Test</button>
+    <button onclick="editSession(${x.id})" class="btn-ghost rounded px-2 py-0.5 text-xs" title="Load into the editor to change and re-save">Edit</button>
+    <button onclick="saveSessionAsConnector(${x.id})" class="btn-ghost rounded px-2 py-0.5 text-xs" title="Use as a Saved Connector — serves the latest captured table to Jobs and validation">&#8599; Connector</button>
     <button onclick="delUiExtractor(${x.id})" class="rounded px-2 py-0.5 text-xs" style="background:#7f1d1d">Delete</button></span>`)).join('')
     : '<div class="text-gray-500 text-sm">No sessions yet &mdash; describe one above.</div>';
+}
+function uixLoadSession(id){
+  const s=uixGet().find(x=>x.id===id); if(!s) return null;
+  const d=document.getElementById('uix-new-details'); if(d) d.open=true;
+  uixResetCard();
+  document.getElementById('uix-name').value=s.name||'';
+  document.getElementById('uix-url').value=s.url||'';
+  document.getElementById('uix-steps').value=s.steps||'';
+  document.getElementById('uix-new-details').scrollIntoView({behavior:'smooth',block:'start'});
+  return s;
+}
+function editSession(id){
+  if(!uixLoadSession(id)) return;
+  _uixEditId=id;
+  document.getElementById('uix-status').textContent='Editing — change the fields and Save to update this session.';
+}
+function testSession(id){
+  if(!uixLoadSession(id)) return;
+  _uixEditId=null;
+  testUiExtractor();
 }
 async function saveSessionAsConnector(id){
   const s=uixGet().find(x=>x.id===id); if(!s) return;
