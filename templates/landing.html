@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg"/>
+<link rel="apple-touch-icon" href="/favicon.svg"/>
+<title>AI DataValidator — AI Data Validation, Reconciliation &amp; Data Quality</title>
+<meta name="description" content="AI DataValidator (AI Data Validator) is an AI-powered platform for data validation, reconciliation and data quality. Compare files and datasets, flag every mismatch, and score data quality automatically. Book a demo or start free."/>
+<meta name="keywords" content="AI DataValidator, AI Data Validator, data validation, data reconciliation, data quality, file comparison, dataset comparison, reconciliation tool"/>
+<meta name="robots" content="index, follow"/>
+<meta name="google-site-verification" content="4Vogy61JxLOttuxXgDwb74fm3fRtPfflnB-3F_qDVbg"/>
+<link rel="canonical" href="https://www.ai-datavalidator.com/"/>
+<meta property="og:type" content="website"/>
+<meta property="og:site_name" content="AI DataValidator"/>
+<meta property="og:title" content="AI DataValidator — AI Data Validation, Reconciliation &amp; Data Quality"/>
+<meta property="og:description" content="Compare files and datasets, flag every mismatch, and score data quality automatically with AI DataValidator."/>
+<meta property="og:url" content="https://www.ai-datavalidator.com/"/>
+<meta name="twitter:card" content="summary"/>
+<meta name="twitter:title" content="AI DataValidator — AI Data Validation &amp; Reconciliation"/>
+<meta name="twitter:description" content="Compare files and datasets, flag every mismatch, and score data quality automatically."/>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"Organization","name":"AI DataValidator","alternateName":"AI Data Validator","url":"https://www.ai-datavalidator.com/","description":"AI-powered data validation, reconciliation and data quality.","sameAs":["https://www.linkedin.com/company/135197453","https://www.youtube.com/@ai-datavalidator"]}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --ink:#0c1220; --ink-2:#334155; --muted:#64748b;
+  --paper:#f5f8fd; --card:#ffffff; --line:rgba(12,18,32,.10);
+  --blue:#2563eb; --blue-700:#1d4ed8; --violet:#7c3aed;
+  --mint:#0ea472; --mint-bg:rgba(16,185,129,.12);
+  --rose:#e11d48; --rose-bg:rgba(244,63,94,.10);
+  --shadow:0 24px 60px -22px rgba(15,23,42,.28), 0 4px 14px rgba(15,23,42,.06);
+  --sans:"Inter","Segoe UI",sans-serif;
+  --display:"Space Grotesk","Inter",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,monospace;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);color:var(--ink);background:var(--paper);line-height:1.6;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+img{max-width:100%}
+.wrap{width:100%;max-width:1140px;margin:0 auto;padding:0 24px}
+
+/* ---------- eyebrow / shared ---------- */
+.eyebrow{font-family:var(--mono);font-size:.72rem;font-weight:600;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--blue)}
+.section-eyebrow{font-family:var(--mono);font-size:.7rem;font-weight:600;letter-spacing:.22em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:.9rem}
+h2.h{font-family:var(--display);font-weight:600;font-size:clamp(1.7rem,3.4vw,2.5rem);
+  letter-spacing:-.02em;line-height:1.1}
+.lead{color:var(--ink-2);font-size:1.05rem;max-width:56ch}
+
+/* ---------- nav ---------- */
+.nav{position:sticky;top:0;z-index:50;backdrop-filter:saturate(1.4) blur(10px);
+  background:rgba(245,248,253,.82);border-bottom:1px solid var(--line)}
+.nav-in{display:flex;align-items:center;gap:1.5rem;height:66px}
+.brand{display:flex;align-items:center;gap:.6rem;font-family:var(--display);font-weight:700;
+  font-size:1.02rem;letter-spacing:.01em}
+.brand-mark{width:34px;height:34px;border-radius:9px;background:#fff;border:2.5px solid var(--blue);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.nav-links{display:flex;gap:1.6rem;margin-left:auto;align-items:center}
+.nav-links a{color:var(--ink-2);font-size:.92rem;font-weight:500}
+.nav-links a:hover{color:var(--ink)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.5rem;font-weight:600;
+  font-size:.92rem;border-radius:10px;padding:.62rem 1.1rem;cursor:pointer;border:1.5px solid transparent;
+  transition:transform .12s,box-shadow .2s,background .2s,border-color .2s;white-space:nowrap}
+.btn-primary{background:linear-gradient(92deg,var(--blue),var(--violet));color:#fff;
+  box-shadow:0 6px 18px -6px rgba(37,99,235,.6)}
+.btn-primary:hover{transform:translateY(-1.5px);box-shadow:0 12px 26px -8px rgba(37,99,235,.7)}
+.btn-ghost{border-color:var(--line);color:var(--ink);background:#fff}
+.btn-ghost:hover{border-color:var(--blue);color:var(--blue)}
+.nav .btn-ghost{padding:.5rem .95rem}
+
+/* ---------- hero ---------- */
+.hero{position:relative;padding:clamp(3rem,7vw,6rem) 0 clamp(3rem,6vw,5rem)}
+.hero::before{content:"";position:absolute;inset:0;z-index:-1;
+  background:
+    radial-gradient(720px 420px at 88% -10%,rgba(37,99,235,.12),transparent 60%),
+    radial-gradient(680px 420px at -6% 110%,rgba(124,58,237,.10),transparent 55%),
+    linear-gradient(rgba(12,18,32,.035) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(12,18,32,.035) 1px,transparent 1px);
+  background-size:auto,auto,34px 34px,34px 34px;
+  -webkit-mask-image:linear-gradient(180deg,#000 62%,transparent);
+  mask-image:linear-gradient(180deg,#000 62%,transparent)}
+.hero-grid{display:grid;grid-template-columns:1.02fr .98fr;gap:clamp(2rem,4vw,3.5rem);align-items:center}
+.hero h1{font-family:var(--display);font-weight:700;font-size:clamp(2.3rem,5.2vw,3.9rem);
+  line-height:1.02;letter-spacing:-.03em;margin:1rem 0 1.1rem}
+.hero h1 .amp{background:linear-gradient(92deg,var(--blue),var(--violet));-webkit-background-clip:text;
+  background-clip:text;color:transparent}
+.hero .lead{font-size:1.12rem}
+.cta-row{display:flex;gap:.8rem;margin-top:1.8rem;flex-wrap:wrap}
+.cta-row .btn{padding:.8rem 1.4rem;font-size:1rem}
+.microcopy{font-family:var(--mono);font-size:.74rem;color:var(--muted);margin-top:1rem;letter-spacing:.02em}
+
+/* AI accents */
+.ai-badge{display:inline-flex;align-items:center;gap:.45rem;font-family:var(--mono);font-size:.68rem;
+  font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--violet);
+  background:linear-gradient(92deg,rgba(37,99,235,.10),rgba(124,58,237,.13));
+  border:1px solid rgba(124,58,237,.28);padding:.36rem .72rem;border-radius:999px}
+.ai-badge .spark{width:13px;height:13px;display:inline-block}
+.ai-insight{display:flex;gap:.6rem;align-items:flex-start;padding:.72rem 1.1rem;
+  background:linear-gradient(92deg,rgba(37,99,235,.07),rgba(124,58,237,.09));
+  border-top:1px solid var(--line);font-family:var(--sans);font-size:.8rem;color:var(--ink-2);line-height:1.45}
+.ai-insight .ai-tag{font-family:var(--mono);font-weight:700;color:var(--violet);font-size:.66rem;
+  letter-spacing:.1em;flex-shrink:0;display:inline-flex;align-items:center;gap:.3rem;padding-top:.06rem}
+.ai-insight b{color:var(--ink);font-weight:600}
+.ai-insight .spark{width:12px;height:12px}
+
+/* ---------- signature: reconciliation panel ---------- */
+.recon{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);
+  overflow:hidden;font-family:var(--mono)}
+.recon-head{display:flex;align-items:center;gap:.55rem;padding:.85rem 1.1rem;
+  border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fff,#f8fafd)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--mint);box-shadow:0 0 0 0 rgba(16,185,129,.5);
+  animation:pulse 2.4s ease-out infinite}
+.recon-title{font-weight:600;font-size:.74rem;letter-spacing:.2em;text-transform:uppercase;color:var(--ink)}
+.recon-meta{margin-left:auto;font-size:.72rem;color:var(--muted)}
+.recon-body{position:relative}
+.scan{position:absolute;left:0;right:0;top:0;height:64px;pointer-events:none;
+  background:linear-gradient(180deg,rgba(37,99,235,.10),transparent);animation:scan 4.5s ease-in-out infinite}
+.rrow{display:grid;grid-template-columns:1fr 1fr auto;align-items:center;gap:.5rem;
+  padding:.62rem 1.1rem;border-bottom:1px solid rgba(12,18,32,.05);font-size:.82rem}
+.rrow .b{color:var(--ink-2)}
+.rrow.head{background:#fbfcfe;color:var(--muted);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase}
+.tag{justify-self:end;display:inline-flex;align-items:center;gap:.35rem;font-size:.68rem;font-weight:600;
+  padding:.16rem .5rem;border-radius:999px}
+.tag.ok{color:var(--mint);background:var(--mint-bg)}
+.tag.bad{color:var(--rose);background:var(--rose-bg)}
+.rrow.break{background:var(--rose-bg)}
+.rrow.break .b.diff{color:var(--rose);font-weight:600}
+.recon-foot{display:flex;align-items:center;gap:1rem;padding:1rem 1.1rem;background:#fbfcfe}
+.ring{--v:98.6;position:relative;width:58px;height:58px;border-radius:50%;flex-shrink:0;display:grid;place-items:center;
+  background:conic-gradient(var(--mint) calc(var(--v)*1%),rgba(12,18,32,.08) 0)}
+.ring::before{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:44px;height:44px;border-radius:50%;background:#fff}
+.ring span{position:relative;font-weight:700;font-size:.78rem;color:var(--ink)}
+.foot-txt{font-family:var(--sans);font-size:.82rem;color:var(--ink-2);line-height:1.35}
+.foot-txt b{color:var(--ink)}
+.tally{margin-left:auto;text-align:right;font-size:.74rem;line-height:1.5}
+.tally .ok{color:var(--mint);font-weight:600}
+.tally .bad{color:var(--rose);font-weight:600}
+
+/* ---------- logos / validates strip ---------- */
+.strip{border-top:1px solid var(--line);border-bottom:1px solid var(--line);background:#fff}
+.strip-in{display:flex;flex-wrap:wrap;align-items:center;gap:.7rem 1.6rem;padding:1rem 0;
+  font-family:var(--mono);font-size:.78rem;color:var(--muted)}
+.strip-in b{color:var(--ink-2);font-weight:600;letter-spacing:.08em;text-transform:uppercase;font-size:.68rem}
+.chip{padding:.3rem .7rem;border:1px solid var(--line);border-radius:999px;background:#fbfcfe}
+
+/* ---------- sections ---------- */
+.section{padding:clamp(3.5rem,7vw,5.5rem) 0}
+.section-head{max-width:60ch;margin-bottom:2.4rem}
+.section-head .lead{margin-top:.8rem}
+
+.features{display:grid;grid-template-columns:repeat(3,1fr);gap:1.1rem}
+.feature{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.5rem 1.4rem;
+  transition:transform .14s,box-shadow .2s,border-color .2s}
+.feature:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:rgba(37,99,235,.35)}
+.f-ico{width:42px;height:42px;border-radius:11px;display:grid;place-items:center;margin-bottom:1rem;
+  background:linear-gradient(160deg,rgba(37,99,235,.12),rgba(124,58,237,.12));font-size:1.2rem}
+.feature h3{font-family:var(--display);font-weight:600;font-size:1.12rem;margin-bottom:.4rem;letter-spacing:-.01em}
+.feature p{color:var(--ink-2);font-size:.94rem}
+
+/* ---------- how it works ---------- */
+.how{background:linear-gradient(180deg,#fff,#f7f9fd);border-top:1px solid var(--line);
+  border-bottom:1px solid var(--line)}
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1.6rem;counter-reset:step}
+.step{position:relative;padding-top:1.4rem;border-top:2px solid var(--line)}
+.step::before{counter-increment:step;content:counter(step,decimal-leading-zero);
+  font-family:var(--mono);font-weight:600;font-size:.8rem;color:var(--blue);
+  position:absolute;top:-.05rem;left:0;background:var(--paper);padding-right:.6rem;transform:translateY(-58%)}
+.step h3{font-family:var(--display);font-weight:600;font-size:1.15rem;margin:.2rem 0 .45rem}
+.step p{color:var(--ink-2);font-size:.95rem}
+
+/* ---------- use cases ---------- */
+.uses{display:grid;grid-template-columns:repeat(2,1fr);gap:.9rem}
+.use{display:flex;gap:.9rem;align-items:flex-start;padding:1.15rem 1.2rem;border:1px solid var(--line);
+  border-radius:12px;background:#fff}
+.use .mk{color:var(--mint);font-family:var(--mono);font-weight:700;flex-shrink:0;margin-top:.05rem}
+.use b{display:block;font-family:var(--display);font-weight:600;margin-bottom:.15rem}
+.use p{color:var(--ink-2);font-size:.92rem;line-height:1.5}
+
+/* ---------- cta band ---------- */
+.band{background:linear-gradient(100deg,#111a2e,#182a54 55%,#2a1c56);color:#fff;border-radius:20px;
+  padding:clamp(2.2rem,5vw,3.4rem);text-align:center;position:relative;overflow:hidden}
+.band::after{content:"";position:absolute;inset:0;opacity:.5;
+  background:radial-gradient(500px 240px at 80% -20%,rgba(37,99,235,.5),transparent 60%),
+            radial-gradient(460px 240px at 10% 130%,rgba(124,58,237,.45),transparent 55%)}
+.band>*{position:relative}
+.band h2{font-family:var(--display);font-weight:700;font-size:clamp(1.7rem,3.6vw,2.5rem);letter-spacing:-.02em}
+.band p{color:rgba(255,255,255,.8);margin:.7rem auto 0;max-width:48ch}
+.band .cta-row{justify-content:center}
+.band .btn-ghost{background:transparent;border-color:rgba(255,255,255,.35);color:#fff}
+.band .btn-ghost:hover{border-color:#fff;color:#fff;background:rgba(255,255,255,.08)}
+
+/* ---------- footer ---------- */
+.footer{background:var(--ink);color:#cbd5e1;padding:3rem 0 2rem;font-size:.9rem}
+.footer-top{display:flex;flex-wrap:wrap;gap:2rem;justify-content:space-between;align-items:flex-start;
+  padding-bottom:2rem;border-bottom:1px solid rgba(255,255,255,.1)}
+.footer .brand{color:#fff}
+.footer .brand-mark{background:transparent;border-color:#3b82f6}
+.f-tag{color:#94a3b8;margin-top:.7rem;max-width:34ch;font-size:.88rem}
+.f-cols{display:flex;gap:3rem;flex-wrap:wrap}
+.f-col h4{color:#fff;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;
+  font-family:var(--mono);margin-bottom:.8rem}
+.f-col a,.f-col span{display:block;color:#94a3b8;margin-bottom:.5rem}
+.f-col a:hover{color:#fff}
+.footer-bot{display:flex;flex-wrap:wrap;gap:.6rem;justify-content:space-between;
+  padding-top:1.5rem;color:#64748b;font-size:.82rem}
+
+/* ---------- animations ---------- */
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(16,185,129,.5)}70%{box-shadow:0 0 0 7px rgba(16,185,129,0)}
+  100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}}
+@keyframes scan{0%,100%{transform:translateY(-64px);opacity:0}
+  45%{opacity:1}55%{opacity:1}70%{transform:translateY(320px);opacity:0}}
+.reveal{opacity:0;transform:translateY(14px);animation:reveal .7s cubic-bezier(.2,.7,.2,1) forwards}
+.reveal.d1{animation-delay:.08s}.reveal.d2{animation-delay:.16s}.reveal.d3{animation-delay:.24s}
+@keyframes reveal{to{opacity:1;transform:none}}
+
+/* ---------- responsive ---------- */
+@media (max-width:860px){
+  .hero-grid{grid-template-columns:1fr}
+  .features{grid-template-columns:1fr 1fr}
+  .steps{grid-template-columns:1fr;gap:2rem}
+  .uses{grid-template-columns:1fr}
+  .nav-links a.navlink{display:none}
+}
+@media (max-width:560px){
+  .features{grid-template-columns:1fr}
+  .nav-links{gap:.6rem}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;scroll-behavior:auto!important}
+  .reveal{opacity:1;transform:none}
+}
+:focus-visible{outline:2.5px solid var(--blue);outline-offset:2px;border-radius:6px}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="/" aria-label="AI DataValidator home">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <line x1="12" y1="2.6" x2="12" y2="5.2" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round"/>
+          <circle cx="12" cy="2" r="1.15" fill="#2563eb"/>
+          <rect x="4.5" y="5.6" width="15" height="12.4" rx="4" stroke="#2563eb" stroke-width="2"/>
+          <circle cx="9.3" cy="11.6" r="1.35" fill="#2563eb"/><circle cx="14.7" cy="11.6" r="1.35" fill="#2563eb"/>
+          <path d="M9.2 15.1h5.6" stroke="#2563eb" stroke-width="1.6" stroke-linecap="round"/>
+        </svg>
+      </span>
+      AI DataValidator
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a class="navlink" href="#features">Features</a>
+      <a class="navlink" href="#how">How it works</a>
+      <a class="navlink" href="#contact">Contact</a>
+      <a class="btn btn-ghost" href="/login">Sign in</a>
+      <a class="btn btn-primary" href="/register">Get started</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- HERO -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div>
+        <span class="ai-badge reveal"><svg class="spark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l1.7 5.3 5.3 1.7-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z"/></svg>AI copilot built in</span>
+        <span class="eyebrow reveal d1" style="display:block;margin-top:.85rem">Data validation · Reconciliation · Data quality</span>
+        <h1 class="reveal d1">Reconcile anything.<br><span class="amp">Miss nothing.</span></h1>
+        <p class="lead reveal d2">AI DataValidator compares your files and datasets, flags every mismatch,
+          and scores data quality — automatically. Set it up in minutes, and never hand-check a spreadsheet again.</p>
+        <div class="cta-row reveal d3">
+          <a class="btn btn-primary" href="/register">Start free</a>
+          <a class="btn btn-ghost" href="mailto:ai-datavalidator@outlook.com?subject=AI%20DataValidator%20demo">Book a demo</a>
+        </div>
+        <p class="microcopy reveal d3">No setup call required · CSV, Excel, databases &amp; APIs</p>
+      </div>
+
+      <!-- signature: reconciliation panel -->
+      <div class="recon reveal d2" role="img"
+           aria-label="A reconciliation between two sources: three rows matched, one row flagged as a break where an amount differs. Data quality score 98.6 percent, grade A.">
+        <div class="recon-head">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="recon-title">Reconciliation</span>
+          <span class="recon-meta">2 sources · key: invoice_id</span>
+        </div>
+        <div class="recon-body">
+          <span class="scan" aria-hidden="true"></span>
+          <div class="rrow head"><span>Source A</span><span>Source B</span><span>Status</span></div>
+          <div class="rrow"><span class="b">INV-1042 · 84,120</span><span class="b">INV-1042 · 84,120</span><span class="tag ok">✓ matched</span></div>
+          <div class="rrow"><span class="b">INV-1043 · 12,900</span><span class="b">INV-1043 · 12,900</span><span class="tag ok">✓ matched</span></div>
+          <div class="rrow break"><span class="b">INV-1044 · <span class="diff">9,540</span></span><span class="b">INV-1044 · <span class="diff">9,450</span></span><span class="tag bad">✕ break</span></div>
+          <div class="rrow"><span class="b">INV-1045 · 61,000</span><span class="b">INV-1045 · 61,000</span><span class="tag ok">✓ matched</span></div>
+        </div>
+        <div class="ai-insight">
+          <span class="ai-tag"><svg class="spark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l1.7 5.3 5.3 1.7-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z"/></svg>AI</span>
+          <span>INV-1044 looks like a <b>digit transposition</b> (9,540 ↔ 9,450) — likely a keying error, not a real break. Want a rule to auto-flag these?</span>
+        </div>
+        <div class="recon-foot">
+          <div class="ring" aria-hidden="true"><span>98.6%</span></div>
+          <div class="foot-txt">Data quality<br><b>Grade A</b></div>
+          <div class="tally"><span class="ok">128 matched</span><br><span class="bad">1 break found</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- validates strip -->
+  <div class="strip">
+    <div class="wrap strip-in">
+      <b>Validates</b>
+      <span class="chip">Reconciliation breaks</span>
+      <span class="chip">Completeness</span>
+      <span class="chip">Uniqueness &amp; duplicates</span>
+      <span class="chip">Format &amp; validity</span>
+      <span class="chip">Anomalies</span>
+      <span class="chip">Schema drift</span>
+    </div>
+  </div>
+
+  <!-- FEATURES -->
+  <section class="section" id="features">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="section-eyebrow">What it does</p>
+        <h2 class="h">One platform for every data check</h2>
+        <p class="lead">From reconciling two files to governing a whole catalog — the same engine does the
+          counting, and AI proposes the rules. You confirm; it computes.</p>
+      </div>
+      <div class="features">
+        <article class="feature">
+          <div class="f-ico" aria-hidden="true">🔀</div>
+          <h3>Reconciliation</h3>
+          <p>Match records across two or more sources and see every break the moment it appears — keys inferred automatically.</p>
+        </article>
+        <article class="feature">
+          <div class="f-ico" aria-hidden="true">✅</div>
+          <h3>Data Quality</h3>
+          <p>Score completeness, uniqueness, and validity, with anomaly detection and a grade you can track over time.</p>
+        </article>
+        <article class="feature">
+          <div class="f-ico" aria-hidden="true">🔎</div>
+          <h3>Data Profile</h3>
+          <p>Understand any file's structure, distributions, and problem columns at a glance before you trust it.</p>
+        </article>
+        <article class="feature">
+          <div class="f-ico" aria-hidden="true">🔒</div>
+          <h3>Governance</h3>
+          <p>Record ownership, sensitivity, and business domain for every dataset you connect, in one place.</p>
+        </article>
+        <article class="feature">
+          <div class="f-ico" aria-hidden="true">📎</div>
+          <h3>Parse</h3>
+          <p>Turn messy, inconsistent files into clean structured tables that are ready to validate.</p>
+        </article>
+        <article class="feature">
+          <div class="f-ico" aria-hidden="true">🔗</div>
+          <h3>Cross Reference</h3>
+          <p>Reconcile three or more sources in a single pass — not just a pair — when one comparison isn't enough.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="how">
+    <div class="wrap section" id="how" style="padding-top:clamp(3.5rem,7vw,5.5rem);padding-bottom:clamp(3.5rem,7vw,5.5rem)">
+      <div class="section-head">
+        <p class="section-eyebrow">How it works</p>
+        <h2 class="h">From raw files to a trusted result in three steps</h2>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <h3>Connect or upload</h3>
+          <p>Drop in files or pick a saved connector — a database, an API, a spreadsheet. No pipeline to build.</p>
+        </div>
+        <div class="step">
+          <h3>Set rules, or let AI suggest them</h3>
+          <p>Keys and checks are inferred for you. Adjust anything, or ask the AI copilot to draft the rules.</p>
+        </div>
+        <div class="step">
+          <h3>Get results and reports</h3>
+          <p>See matches, breaks, and a quality score — on demand or on a schedule, delivered to your inbox.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- USE CASES -->
+  <section class="section">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="section-eyebrow">Where teams use it</p>
+        <h2 class="h">Built for the checks you can't get wrong</h2>
+      </div>
+      <div class="uses">
+        <div class="use"><span class="mk">↦</span><div><b>Financial reconciliation</b><p>Tie out ledgers, statements, and settlement files — surface every unmatched amount before close.</p></div></div>
+        <div class="use"><span class="mk">↦</span><div><b>Data migration &amp; cutover</b><p>Prove the target matches the source, row for row, before you switch systems off.</p></div></div>
+        <div class="use"><span class="mk">↦</span><div><b>Pipeline &amp; ETL testing</b><p>Validate every load against expectations and catch schema drift the day it happens.</p></div></div>
+        <div class="use"><span class="mk">↦</span><div><b>Regulatory &amp; audit reporting</b><p>Score data quality on a schedule and keep an evidence trail of every run.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA BAND -->
+  <section class="section" style="padding-top:0" id="contact">
+    <div class="wrap">
+      <div class="band">
+        <h2>Stop shipping bad data.</h2>
+        <p>Start validating in minutes — or book a walkthrough and we'll set up your first reconciliation with you.</p>
+        <div class="cta-row">
+          <a class="btn btn-primary" href="/register">Start free</a>
+          <a class="btn btn-ghost" href="mailto:ai-datavalidator@outlook.com?subject=AI%20DataValidator%20demo">Book a demo</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="footer-top">
+      <div>
+        <a class="brand" href="/">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <line x1="12" y1="2.6" x2="12" y2="5.2" stroke="#3b82f6" stroke-width="1.8" stroke-linecap="round"/>
+              <circle cx="12" cy="2" r="1.15" fill="#3b82f6"/>
+              <rect x="4.5" y="5.6" width="15" height="12.4" rx="4" stroke="#3b82f6" stroke-width="2"/>
+              <circle cx="9.3" cy="11.6" r="1.35" fill="#3b82f6"/><circle cx="14.7" cy="11.6" r="1.35" fill="#3b82f6"/>
+              <path d="M9.2 15.1h5.6" stroke="#3b82f6" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+          </span>
+          AI DataValidator
+        </a>
+        <p class="f-tag">AI-powered data validation, reconciliation and data quality.</p>
+      </div>
+      <div class="f-cols">
+        <div class="f-col">
+          <h4>Product</h4>
+          <a href="#features">Features</a>
+          <a href="#how">How it works</a>
+          <a href="/login">Sign in</a>
+          <a href="/register">Create account</a>
+        </div>
+        <div class="f-col">
+          <h4>Contact</h4>
+          <a href="mailto:ai-datavalidator@outlook.com">ai-datavalidator@outlook.com</a>
+          <a href="tel:+917975751190">+91 79757 51190</a>
+          <a href="https://www.linkedin.com/company/135197453" target="_blank" rel="noopener">LinkedIn</a>
+          <a href="https://www.youtube.com/@ai-datavalidator" target="_blank" rel="noopener">YouTube</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bot">
+      <span>© 2026 AI DataValidator · AI Data Validator</span>
+      <span>Your data is processed securely.</span>
+    </div>
+  </div>
+</footer>
+
+</body>
+</html>

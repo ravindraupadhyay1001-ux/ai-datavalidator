@@ -12897,17 +12897,16 @@ async def index(request: Request):
         if LOCAL_AUTH_ENABLED:
             token = request.cookies.get("dv_local_session", "")
             if not token or not verify_session(token):
-                from fastapi.responses import RedirectResponse
-
-
-                return RedirectResponse(url="/login", status_code=302)
+                # Logged-out visitors (and search-engine crawlers) get the public
+                # marketing landing page, not a redirect to /login -- this is the
+                # only crawlable, content-rich page for SEO.
+                return templates.TemplateResponse(request=request, name="landing.html")
         else:
             from workspace.sso import LDAP_ENABLED as _LDAP_ENABLED, verify_sso_token as _verify_sso
             if _LDAP_ENABLED:
                 token = request.cookies.get("dv_session", "")
                 if not token or not _verify_sso(token):
-                    from fastapi.responses import RedirectResponse
-                    return RedirectResponse(url="/login", status_code=302)
+                    return templates.TemplateResponse(request=request, name="landing.html")
     except Exception:
         pass
     resp = templates.TemplateResponse(request=request, name="index.html")
