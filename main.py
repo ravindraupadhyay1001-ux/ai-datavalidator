@@ -12916,6 +12916,40 @@ async def index(request: Request):
     return resp
 
 
+def _public_base_url(request: Request) -> str:
+    """Absolute origin of the deployed site, honouring the platform proxy
+    (Railway/most PaaS terminate TLS and forward X-Forwarded-Proto/Host)."""
+    proto = (request.headers.get("x-forwarded-proto", "").split(",")[0].strip()
+             or request.url.scheme)
+    host = (request.headers.get("x-forwarded-host")
+            or request.headers.get("host")
+            or request.url.netloc).split(",")[0].strip()
+    return f"{proto}://{host}"
+
+
+@app.get("/robots.txt")
+async def robots_txt(request: Request):
+    """Allow crawling and point search engines at the sitemap."""
+    from fastapi.responses import PlainTextResponse
+    base = _public_base_url(request)
+    return PlainTextResponse(f"User-agent: *\nAllow: /\nSitemap: {base}/sitemap.xml\n")
+
+
+@app.get("/sitemap.xml")
+async def sitemap_xml(request: Request):
+    """Minimal sitemap of the publicly reachable pages."""
+    from fastapi.responses import Response
+    base = _public_base_url(request)
+    xml = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        f'  <url><loc>{base}/</loc></url>\n'
+        f'  <url><loc>{base}/login</loc></url>\n'
+        '</urlset>\n'
+    )
+    return Response(content=xml, media_type="application/xml")
+
+
 @app.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, error: str = "", registered: str = "", reset: str = ""):
     """Serve the login page. Redirect to app if already logged in."""
