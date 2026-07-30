@@ -79,6 +79,12 @@
       background:#fff; font-size:12px; font-weight:600; color:var(--txt-secondary);
       transition:border-color .15s, color .15s, background .15s; }
     .logout-btn:hover{ border-color:#ef4444; color:#ef4444; background:rgba(239,68,68,.07); }
+    /* Floating User Guide button, pinned to the top-right of the viewport */
+    .help-fab{ position:fixed; top:14px; right:18px; z-index:40; display:flex; align-items:center; gap:7px;
+      padding:8px 14px; border-radius:9999px; border:1.5px solid var(--line); background:#fff;
+      font-size:13px; font-weight:600; color:var(--txt-secondary); box-shadow:0 4px 14px -4px rgba(15,23,42,.2);
+      transition:border-color .15s, color .15s, background .15s, transform .12s; cursor:pointer; }
+    .help-fab:hover{ border-color:var(--primary); color:var(--primary); background:var(--primary-dim); transform:translateY(-1px); }
     .inp{ background:#fff; border:1.5px solid var(--line); border-radius:9px; padding:7px 11px; color:var(--txt-primary); transition:border-color .15s, box-shadow .15s; }
     .inp:focus{ outline:none; border-color:var(--primary); box-shadow:0 0 0 3.5px var(--primary-dim); }
     .logo-mark{ width:42px; height:42px; border-radius:12px; display:flex; align-items:center; justify-content:center;
@@ -162,6 +168,7 @@
   </style>
 </head>
 <body class="min-h-screen">
+<button onclick="openHelpModal()" class="help-fab" title="Open the User Guide & Contact"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>User Guide &amp; Contact</button>
 <div class="flex h-screen">
   <!-- Sidebar -->
   <aside class="w-60 flex flex-col border-r border-[var(--line)]" style="background:linear-gradient(180deg,#ffffff,#f3f6fb); box-shadow:4px 0 24px -12px rgba(15,23,42,.15);">
@@ -192,7 +199,6 @@
       <button data-tab="analytics" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#128200; History &amp; Analytics</button>
       <button data-tab="workspace" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#9889; Workspace</button>
       <button data-tab="settings" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#9881;&#65039; Settings</button>
-      <button onclick="openHelpModal()" class="tab-btn text-left px-3.5 py-2.5 rounded-lg">&#128218; User Guide</button>
     </nav>
     <div class="mt-auto" id="licbar" style="display:none"></div>
   </aside>
