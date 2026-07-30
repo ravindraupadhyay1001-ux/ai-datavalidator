@@ -4511,7 +4511,7 @@ async function loadUsers(){
   catch(e){ box.innerHTML='<span class="text-gray-500">Admin access required to view users, or workspace not enabled.</span>'; return; }
   if(!users.length){ box.innerHTML='<span class="text-gray-500">No users yet.</span>'; return; }
   box.innerHTML=`<div style="overflow-x:auto"><table class="w-full"><thead class="text-gray-400 text-xs"><tr>
-      <th class="text-left p-1">User</th><th class="text-left">Role</th><th class="text-left">Last active</th><th class="text-left">Login IP</th>
+      <th class="text-left p-1">User</th><th class="text-left">Role</th><th class="text-left">Last active</th>
       <th class="text-left">Tokens (mo.)</th><th class="text-left">Cap (mo.)</th><th class="text-left">Dataset Memory</th><th class="text-left">Access until</th><th class="text-left">Status</th><th></th>
     </tr></thead><tbody>`+
     users.map(u=>`<tr class="border-t border-[var(--line)]">
@@ -4520,7 +4520,6 @@ async function loadUsers(){
         ${Object.keys(ROLE_LABELS).map(r=>`<option value="${r}" ${r===u.role?'selected':''}>${ROLE_LABELS[r]}</option>`).join('')}
       </select></td>
       <td class="text-xs text-gray-500">${esc(timeAgo(u.last_active))}</td>
-      <td class="text-xs text-gray-500 whitespace-nowrap" style="font-family:monospace">${esc(u.last_ip||'—')}</td>
       <td class="text-xs ${u.token_cap && (u.tokens_this_month||0)>=u.token_cap ? 'text-red-500 font-semibold':''}">${(u.tokens_this_month||0).toLocaleString()}</td>
       <td class="whitespace-nowrap">${u.role==='admin'
         ? '<span class="text-xs text-gray-500">unlimited</span>'
