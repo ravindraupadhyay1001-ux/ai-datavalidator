@@ -13383,8 +13383,10 @@ _ORG_JSONLD = '<script type="application/ld+json">' + json.dumps({
 # no favicon otherwise shows.
 _FAVICON_SVG = (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">'
-    '<rect width="32" height="32" rx="7" fill="#2563eb"/>'
-    '<g transform="translate(4 4)" fill="none" stroke="#ffffff" stroke-width="2" '
+    # White rounded tile + blue border -- identical to .auth-logo-mark on login.
+    '<rect x="1.5" y="1.5" width="29" height="29" rx="9" fill="#ffffff" stroke="#2563eb" stroke-width="3"/>'
+    # Same robot mark as the login logo, in the same blue (#2563eb).
+    '<g transform="translate(5 5) scale(0.9)" fill="none" stroke="#2563eb" stroke-width="2" '
     'stroke-linecap="round" stroke-linejoin="round">'
     '<line x1="12" y1="2.6" x2="12" y2="5.2"/>'
     '<rect x="4.5" y="5.6" width="15" height="12.4" rx="4"/>'
@@ -13392,10 +13394,10 @@ _FAVICON_SVG = (
     '<line x1="4.5" y1="10.5" x2="2.6" y2="10.5"/>'
     '<line x1="19.5" y1="10.5" x2="21.4" y2="10.5"/>'
     '</g>'
-    '<g transform="translate(4 4)" fill="#ffffff">'
+    '<g transform="translate(5 5) scale(0.9)" fill="#2563eb">'
     '<circle cx="12" cy="2" r="1.15"/>'
-    '<circle cx="9.3" cy="11.6" r="1.7"/>'
-    '<circle cx="14.7" cy="11.6" r="1.7"/>'
+    '<circle cx="9.3" cy="11.6" r="1.35"/>'
+    '<circle cx="14.7" cy="11.6" r="1.35"/>'
     '</g>'
     '</svg>'
 )
