@@ -348,6 +348,20 @@ def init_db():
     conn.commit()
 
 
+def _fire_welcome_email(username, display_name, email, role):
+    """Best-effort welcome email for a brand-new account. Skips admins (that's
+    us, not a customer) and anyone without an email on file. Delegates the
+    actual send -- and its threading/gating -- to workspace.scheduler, imported
+    lazily to avoid a circular import (scheduler imports this module)."""
+    if role == "admin" or not (email or "").strip():
+        return
+    try:
+        from workspace.scheduler import send_welcome_email
+        send_welcome_email(username, display_name, email)
+    except Exception:
+        pass
+
+
 def ensure_user(username, display_name=None, email=None):
     conn = _conn()
     cur = conn.cursor()
@@ -368,6 +382,7 @@ def ensure_user(username, display_name=None, email=None):
             (username, display_name or username, email or "", role, _now(), expiry),
         )
         conn.commit()
+        _fire_welcome_email(username, display_name or username, email, role)
     elif username.lower() in _FORCED_ADMINS:
         cur.execute(
             f"UPDATE ws_users SET role='admin' WHERE username={_ph()} AND role!='admin'",
@@ -806,6 +821,7 @@ def create_local_user(username, password_hash, full_name="", email=""):
         (username, full_name or username, email or "", role, _now(), password_hash, expiry),
     )
     conn.commit()
+    _fire_welcome_email(username, full_name or username, email, role)
 
 
 def set_user_password_hash(username, password_hash):

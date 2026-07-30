@@ -56,14 +56,50 @@ def send_expiry_reminders():
     for u in users:
         exp = u.get("access_expiry")
         try:
-            days = (date.fromisoformat(str(exp)[:10]) - date.today()).days
+            exp_date = date.fromisoformat(str(exp)[:10])
+            days = (exp_date - date.today()).days
         except Exception:
             continue
+        name = u.get("display_name") or u.get("username")
+        to = (u.get("email") or "").strip()
+
+        # Post-trial follow-up: exactly one day after access ended (days == -1),
+        # send a single "how was your week" check-in to the user (not the admin).
+        # Keyed to -1 so it fires once, the day after expiry, and never repeats.
+        if days == -1:
+            if to:
+                ended = f"{exp_date:%B} {exp_date.day}"  # e.g. "July 29"
+                html = (
+                    f"<p>Hi {name},</p>"
+                    f"<p>Thanks for trying <b>AI DataValidator</b> this past week! Your free "
+                    f"access wrapped up on <b>{ended}</b>, so I wanted to check in before "
+                    f"deciding next steps.</p>"
+                    f"<p>A few quick things I'd love to hear:</p>"
+                    f"<ul>"
+                    f"<li>What were you using it for? (comparing files, validating datasets, "
+                    f"catching mismatches…)</li>"
+                    f"<li>What worked well — and what got in your way?</li>"
+                    f"<li>Did it save you time versus how you were doing this before?</li>"
+                    f"</ul>"
+                    f"<p>If it was useful, I'd be happy to set up a short demo to show a few "
+                    f"things you may not have hit in the trial, and talk through options to keep "
+                    f"your access going. Just reply with a couple of times that suit you and I'll "
+                    f"send an invite.</p>"
+                    f"<p>And if it wasn't quite the right fit — no problem at all, I'd genuinely "
+                    f"value a line or two on why, so we can keep improving.</p>"
+                    f"<p>Thanks again for giving it a spin!</p>"
+                    f"<p>Best,<br>Ravindra<br>AI DataValidator</p>"
+                )
+                try:
+                    _deliver_email(to, from_email,
+                                   "How was your week with AI DataValidator? \U0001F44B", html)
+                except Exception:
+                    pass
+            continue
+
         if days not in (3, 1, 0):
             continue
         when = "today" if days == 0 else (f"in {days} day" + ("" if days == 1 else "s"))
-        name = u.get("display_name") or u.get("username")
-        to = (u.get("email") or "").strip()
         if to:
             html = (f"<p>Hi {name},</p><p>Your access to <b>AI DataValidator</b> "
                     f"expires <b>{when}</b> (on {exp}). To keep using it, please contact your "
@@ -80,6 +116,49 @@ def send_expiry_reminders():
                                f"[Admin] {u.get('username')} access expires {when}", html_a)
             except Exception:
                 pass
+
+
+def send_welcome_email(username, display_name=None, email=None):
+    """Fire-and-forget welcome email to a brand-new user on first login /
+    registration. Best-effort and non-blocking: runs in a daemon thread so it
+    never adds latency to the login request, and silently no-ops if there's no
+    recipient or no email transport configured (mirrors send_expiry_reminders).
+
+    Set WELCOME_EMAIL_ENABLED=false to switch this off without a code change."""
+    to = (email or "").strip()
+    if not to:
+        return
+    if os.getenv("WELCOME_EMAIL_ENABLED", "true").strip().lower() in ("0", "false", "no", "off"):
+        return
+    from_email = os.getenv("EMAIL_FROM", "")
+    # Need either the Brevo HTTP API or an SMTP/Outlook transport; if nothing is
+    # configured, skip quietly rather than raising on the login path.
+    if not from_email and not os.getenv("BREVO_API_KEY") and platform.system() != "Windows":
+        return
+    name = display_name or username
+    subject = "Welcome to AI DataValidator"
+    html = (
+        f"<p>Dear {name},</p>"
+        f"<p>Thank you for signing up for <b>AI DataValidator</b>. I noticed you recently "
+        f"logged in for the first time, and I wanted to personally welcome you.</p>"
+        f"<p>To help you get the most out of the platform from the outset, a <b>user guide</b> "
+        f"is available within the application, covering the core capabilities — file comparison, "
+        f"validation rules, and mismatch detection.</p>"
+        f"<p>If anything is unclear, or the tool isn't quite meeting your needs, I would be glad "
+        f"to arrange a brief <b>15-minute demo</b>. Simply reply with a few times that suit your "
+        f"schedule and I will send a calendar invitation.</p>"
+        f"<p>Thank you again for your interest in AI DataValidator. I look forward to supporting you.</p>"
+        f"<p>Kind regards,<br>Ravindra<br>AI DataValidator</p>"
+    )
+
+    def _run():
+        try:
+            _deliver_email(to, from_email, subject, html)
+        except Exception as e:
+            print(f"[welcome-email] failed for {username}: {e}")
+
+    import threading
+    threading.Thread(target=_run, daemon=True, name=f"welcome-{username}").start()
 
 
 def stop_scheduler():
