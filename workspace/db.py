@@ -263,6 +263,8 @@ _DDL = [
     # show when they were last seen in the admin panel.
     "ALTER TABLE ws_users ADD COLUMN is_blocked INTEGER DEFAULT 0",
     "ALTER TABLE ws_users ADD COLUMN last_active TEXT",
+    # Client IP seen at the user's most recent activity (from X-Forwarded-For).
+    "ALTER TABLE ws_users ADD COLUMN last_ip TEXT",
     """CREATE TABLE IF NOT EXISTS ws_token_usage (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT NOT NULL,
@@ -616,7 +618,7 @@ def delete_ui_extract(extract_id, username):
 def list_users():
     cur = _conn().cursor()
     cur.execute(
-        "SELECT username, display_name, email, role, created_at, last_active, "
+        "SELECT username, display_name, email, role, created_at, last_active, last_ip, "
         "access_expiry, token_cap, COALESCE(is_blocked, 0) AS is_blocked "
         "FROM ws_users ORDER BY created_at ASC"
     )
@@ -704,10 +706,15 @@ def get_user_by_username_or_email(identifier):
     return rows[0] if rows else None
 
 
-def touch_last_active(username):
+def touch_last_active(username, ip=None):
     conn = _conn()
-    conn.cursor().execute(
-        f"UPDATE ws_users SET last_active={_ph()} WHERE username={_ph()}", (_now(), username))
+    if ip:
+        conn.cursor().execute(
+            f"UPDATE ws_users SET last_active={_ph()}, last_ip={_ph()} WHERE username={_ph()}",
+            (_now(), ip, username))
+    else:
+        conn.cursor().execute(
+            f"UPDATE ws_users SET last_active={_ph()} WHERE username={_ph()}", (_now(), username))
     conn.commit()
 
 

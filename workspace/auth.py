@@ -26,6 +26,22 @@ except Exception:
     _OS_USER = ""
 
 
+def _client_ip(request: Request) -> str:
+    """Real client IP, accounting for the platform proxy. Railway/most PaaS set
+    X-Forwarded-For (client is the first hop); fall back to X-Real-IP, then the
+    socket peer. Trimmed defensively."""
+    xff = request.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()[:64]
+    xr = request.headers.get("x-real-ip", "")
+    if xr:
+        return xr.strip()[:64]
+    try:
+        return (request.client.host or "")[:64]
+    except Exception:
+        return ""
+
+
 class WorkspaceAuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if not request.url.path.startswith(_API_PREFIX):
@@ -44,7 +60,7 @@ class WorkspaceAuthMiddleware(BaseHTTPMiddleware):
                 {"detail": "Your account has been blocked. Contact your administrator."},
                 status_code=403,
             )
-        touch_last_active(username)
+        touch_last_active(username, _client_ip(request))
         role = get_user_role(username)
         # Three access tiers: admin (everything), analyst (Workspace + run
         # modules), readonly (run modules only -- no Workspace access at all,
