@@ -12888,6 +12888,17 @@ async def dq_suggest(files: list[UploadFile] = File(...)):
         return JSONResponse({"suggestions": [], "error": str(exc)})
 
 
+def _landing_response(request: Request):
+    """Public marketing landing page. Sent with a revalidate header so edits
+    and deploys show up on the next load instead of being served from a stale
+    browser/edge cache (the page carried no Cache-Control before, which made
+    changes appear not to reflect)."""
+    resp = templates.TemplateResponse(request=request, name="landing.html")
+    resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+    resp.headers["Pragma"] = "no-cache"
+    return resp
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     # If local auth or LDAP-only login is enabled, redirect to login unless a
@@ -12900,13 +12911,13 @@ async def index(request: Request):
                 # Logged-out visitors (and search-engine crawlers) get the public
                 # marketing landing page, not a redirect to /login -- this is the
                 # only crawlable, content-rich page for SEO.
-                return templates.TemplateResponse(request=request, name="landing.html")
+                return _landing_response(request)
         else:
             from workspace.sso import LDAP_ENABLED as _LDAP_ENABLED, verify_sso_token as _verify_sso
             if _LDAP_ENABLED:
                 token = request.cookies.get("dv_session", "")
                 if not token or not _verify_sso(token):
-                    return templates.TemplateResponse(request=request, name="landing.html")
+                    return _landing_response(request)
     except Exception:
         pass
     resp = templates.TemplateResponse(request=request, name="index.html")
