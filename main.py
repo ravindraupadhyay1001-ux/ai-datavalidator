@@ -13272,7 +13272,7 @@ def _render_login_page(
 </form>
 <div class="auth-switch">Already have an account? <a href="/login">Sign in</a></div>"""
         title = "Create Account"
-        subtitle = "AI Agent -- Data Validation"
+        subtitle = "AI-powered data validation &amp; reconciliation"
     else:
         form_html = f"""<form method="post" action="/login" autocomplete="off">
 {err_html}
@@ -13290,14 +13290,24 @@ def _render_login_page(
 <div class="auth-switch"><a href="/forgot-password">Forgot username or password?</a></div>
 <div class="auth-switch">Need an account? <a href="/register">Create one</a></div>"""
         title = "Sign In"
-        subtitle = "AI Agent -- Data Validation"
+        subtitle = "AI-powered data validation &amp; reconciliation"
 
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>{title} -- AI Agent Data Validation</title>
+<title>AI DataValidator &mdash; {title} &middot; Data Validation &amp; Reconciliation</title>
+<meta name="description" content="AI DataValidator &mdash; AI-powered data validation, reconciliation and data quality. Compare files and datasets, catch mismatches, and validate records automatically. Sign in or book a demo."/>
+<meta name="robots" content="index, follow"/>
+<meta name="google-site-verification" content="4Vogy61JxLOttuxXgDwb74fm3fRtPfflnB-3F_qDVbg"/>
+<link rel="canonical" href="https://web-production-aa779.up.railway.app/login"/>
+<meta property="og:type" content="website"/>
+<meta property="og:site_name" content="AI DataValidator"/>
+<meta property="og:title" content="AI DataValidator &mdash; AI-Powered Data Validation &amp; Reconciliation"/>
+<meta property="og:description" content="Compare files and datasets, catch mismatches, and validate data quality automatically with AI DataValidator."/>
+<meta property="og:url" content="https://web-production-aa779.up.railway.app/login"/>
+<meta name="twitter:card" content="summary"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet"/>
 <style>{_AUTH_PAGE_STYLE}</style>
@@ -13317,7 +13327,7 @@ def _render_login_page(
         <line x1="19.5" y1="10.5" x2="21.4" y2="10.5" stroke="#2563eb" stroke-width="1.8" stroke-linecap="round"/>
       </svg></div>
       <div class="auth-logo-text">
-        <h1>AI Agent</h1>
+        <h1>AI DataValidator</h1>
         <p>Data Validation</p>
       </div>
     </div>
