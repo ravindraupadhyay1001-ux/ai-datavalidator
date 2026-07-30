@@ -230,8 +230,22 @@ h2.h{font-family:var(--display);font-weight:600;font-size:clamp(1.7rem,3.4vw,2.5
   .nav-links a.navlink{display:none}
 }
 @media (max-width:560px){
+  .wrap{padding:0 16px}
   .features{grid-template-columns:1fr}
-  .nav-links{gap:.6rem}
+  .nav-in{gap:.5rem;height:60px}
+  .brand{font-size:.88rem;gap:.45rem}
+  .brand-mark{width:29px;height:29px}
+  .nav-links{gap:.35rem}
+  .nav .btn{padding:.48rem .72rem;font-size:.82rem}
+  .nav .btn-ghost{border:none;background:transparent;padding:.48rem .3rem}
+  .recon{font-size:.94em}
+  .rrow{padding:.55rem .7rem;font-size:.72rem;gap:.4rem}
+  .rrow.head{font-size:.6rem}
+  .tag{font-size:.6rem;padding:.14rem .42rem}
+  .recon-head,.recon-foot,.ai-insight{padding-left:.75rem;padding-right:.75rem}
+  .ai-insight{font-size:.76rem}
+  .recon-foot{flex-wrap:wrap}
+  .ring{width:52px;height:52px}
 }
 @media (prefers-reduced-motion:reduce){
   *{animation:none!important;scroll-behavior:auto!important}
