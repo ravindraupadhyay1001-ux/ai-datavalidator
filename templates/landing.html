@@ -184,6 +184,22 @@ h2.h{font-family:var(--display);font-weight:600;font-size:clamp(1.7rem,3.4vw,2.5
 .use b{display:block;font-family:var(--display);font-weight:600;margin-bottom:.15rem}
 .use p{color:var(--ink-2);font-size:.92rem;line-height:1.5}
 
+/* comparison table */
+.cmp-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.cmp{width:100%;min-width:560px;border-collapse:separate;border-spacing:0;font-size:.95rem}
+table.cmp th,table.cmp td{padding:.85rem 1.1rem;text-align:left;vertical-align:middle}
+table.cmp thead th{font-family:var(--display);font-weight:600;color:var(--ink-2);font-size:1rem}
+table.cmp thead th span{display:block;font-family:var(--mono);font-size:.68rem;font-weight:500;color:var(--muted);margin-top:.2rem;letter-spacing:.04em}
+table.cmp td.dim{font-family:var(--mono);font-size:.8rem;color:var(--muted);white-space:nowrap}
+table.cmp td.a{color:var(--ink-2)}
+table.cmp td.b{color:var(--ink);font-weight:500}
+table.cmp tbody tr td{border-top:1px solid rgba(12,18,32,.07)}
+table.cmp .mk-x{color:var(--rose);font-weight:700;margin-right:.55rem}
+table.cmp .mk-ok{color:var(--mint);font-weight:700;margin-right:.55rem}
+table.cmp .hl{background:rgba(37,99,235,.06);border-left:1.5px solid rgba(37,99,235,.28);border-right:1.5px solid rgba(37,99,235,.28)}
+table.cmp thead th.hl{color:var(--blue);border-top:1.5px solid rgba(37,99,235,.28);border-top-left-radius:12px;border-top-right-radius:12px}
+table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28);border-bottom-left-radius:12px;border-bottom-right-radius:12px}
+
 /* ---------- cta band ---------- */
 .band{background:linear-gradient(100deg,#111a2e,#182a54 55%,#2a1c56);color:#fff;border-radius:20px;
   padding:clamp(2.2rem,5vw,3.4rem);text-align:center;position:relative;overflow:hidden}
@@ -420,6 +436,39 @@ h2.h{font-family:var(--display);font-weight:600;font-size:clamp(1.7rem,3.4vw,2.5
         <div class="use"><span class="mk">↦</span><div><b>Pipeline &amp; ETL testing</b><p>Validate every load against expectations and catch schema drift the day it happens.</p></div></div>
         <div class="use"><span class="mk">↦</span><div><b>Regulatory &amp; audit reporting</b><p>Score data quality on a schedule and keep an evidence trail of every run.</p></div></div>
       </div>
+    </div>
+  </section>
+
+  <!-- WHY NOT CHATGPT / COMPARISON -->
+  <section class="section" id="compare">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="section-eyebrow">The honest comparison</p>
+        <h2 class="h">&ldquo;Just use Copilot for that&rdquo;?</h2>
+        <p class="lead">A chatbot can summarize a small file. But for data you have to defend to a CFO
+          or an auditor, three things quietly break — correctness, security, and repeatability.</p>
+      </div>
+      <div class="cmp-wrap">
+        <table class="cmp">
+          <thead>
+            <tr>
+              <th></th>
+              <th>Web LLM<span>Copilot / ChatGPT</span></th>
+              <th class="hl">AI DataValidator</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="dim">Correctness</td><td class="a"><span class="mk-x">&#10005;</span>Can miscount or hallucinate</td><td class="b hl"><span class="mk-ok">&#10003;</span>Deterministic engine — exact</td></tr>
+            <tr><td class="dim">Data size</td><td class="a"><span class="mk-x">&#10005;</span>One pasted file, size-limited</td><td class="b hl"><span class="mk-ok">&#10003;</span>Files, databases &amp; APIs at scale</td></tr>
+            <tr><td class="dim">Security</td><td class="a"><span class="mk-x">&#10005;</span>Sensitive data leaves your walls</td><td class="b hl"><span class="mk-ok">&#10003;</span>Runs in your environment</td></tr>
+            <tr><td class="dim">Repeatability</td><td class="a"><span class="mk-x">&#10005;</span>A different answer each time</td><td class="b hl"><span class="mk-ok">&#10003;</span>Same rules, every run, scheduled</td></tr>
+            <tr><td class="dim">Audit trail</td><td class="a"><span class="mk-x">&#10005;</span>None</td><td class="b hl"><span class="mk-ok">&#10003;</span>Every run logged with evidence</td></tr>
+            <tr><td class="dim">Rules</td><td class="a"><span class="mk-x">&#10005;</span>Re-typed in each prompt</td><td class="b hl"><span class="mk-ok">&#10003;</span>Saved, versioned, reusable</td></tr>
+            <tr><td class="dim">Integration</td><td class="a"><span class="mk-x">&#10005;</span>Can&#39;t reach your systems</td><td class="b hl"><span class="mk-ok">&#10003;</span>Connectors, scheduling, reports</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="microcopy" style="margin-top:1.2rem">AI proposes the rules. A real engine proves the numbers.</p>
     </div>
   </section>
 
