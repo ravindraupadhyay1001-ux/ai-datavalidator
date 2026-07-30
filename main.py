@@ -13298,7 +13298,7 @@ def _render_login_page(
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>AI DataValidator &mdash; {title} &middot; Data Validation &amp; Reconciliation</title>
-<meta name="description" content="AI DataValidator &mdash; AI-powered data validation, reconciliation and data quality. Compare files and datasets, catch mismatches, and validate records automatically. Sign in or book a demo."/>
+<meta name="description" content="AI DataValidator (AI Data Validator) &mdash; AI-powered data validation, reconciliation and data quality. Compare files and datasets, catch mismatches, and validate records automatically. Sign in or book a demo."/>
 <meta name="robots" content="index, follow"/>
 <meta name="google-site-verification" content="4Vogy61JxLOttuxXgDwb74fm3fRtPfflnB-3F_qDVbg"/>
 <link rel="canonical" href="https://web-production-aa779.up.railway.app/login"/>
@@ -13308,6 +13308,7 @@ def _render_login_page(
 <meta property="og:description" content="Compare files and datasets, catch mismatches, and validate data quality automatically with AI DataValidator."/>
 <meta property="og:url" content="https://web-production-aa779.up.railway.app/login"/>
 <meta name="twitter:card" content="summary"/>
+{_ORG_JSONLD}
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@600;700;800&display=swap" rel="stylesheet"/>
 <style>{_AUTH_PAGE_STYLE}</style>
@@ -13339,6 +13340,25 @@ def _render_login_page(
 </div>
 </body>
 </html>"""
+
+
+# Structured data (schema.org Organization) for the public login page. Tells
+# Google the LinkedIn/YouTube profiles are the same brand as this site (sameAs)
+# and records the spaced "AI Data Validator" spelling as an alternate name.
+# Built with json.dumps so the JSON braces never clash with the f-string that
+# embeds it via {_ORG_JSONLD}.
+_ORG_JSONLD = '<script type="application/ld+json">' + json.dumps({
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "AI DataValidator",
+    "alternateName": "AI Data Validator",
+    "url": "https://web-production-aa779.up.railway.app/",
+    "description": "AI-powered data validation, reconciliation and data quality.",
+    "sameAs": [
+        "https://www.linkedin.com/company/135197453",
+        "https://www.youtube.com/@ai-datavalidator",
+    ],
+}, separators=(",", ":")) + "</script>"
 
 
 _AUTH_PAGE_STYLE = """
