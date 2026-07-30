@@ -13301,12 +13301,12 @@ def _render_login_page(
 <meta name="description" content="AI DataValidator (AI Data Validator) &mdash; AI-powered data validation, reconciliation and data quality. Compare files and datasets, catch mismatches, and validate records automatically. Sign in or book a demo."/>
 <meta name="robots" content="index, follow"/>
 <meta name="google-site-verification" content="4Vogy61JxLOttuxXgDwb74fm3fRtPfflnB-3F_qDVbg"/>
-<link rel="canonical" href="https://web-production-aa779.up.railway.app/login"/>
+<link rel="canonical" href="https://www.ai-datavalidator.com/login"/>
 <meta property="og:type" content="website"/>
 <meta property="og:site_name" content="AI DataValidator"/>
 <meta property="og:title" content="AI DataValidator &mdash; AI-Powered Data Validation &amp; Reconciliation"/>
 <meta property="og:description" content="Compare files and datasets, catch mismatches, and validate data quality automatically with AI DataValidator."/>
-<meta property="og:url" content="https://web-production-aa779.up.railway.app/login"/>
+<meta property="og:url" content="https://www.ai-datavalidator.com/login"/>
 <meta name="twitter:card" content="summary"/>
 {_ORG_JSONLD}
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
@@ -13352,7 +13352,7 @@ _ORG_JSONLD = '<script type="application/ld+json">' + json.dumps({
     "@type": "Organization",
     "name": "AI DataValidator",
     "alternateName": "AI Data Validator",
-    "url": "https://web-production-aa779.up.railway.app/",
+    "url": "https://www.ai-datavalidator.com/",
     "description": "AI-powered data validation, reconciliation and data quality.",
     "sameAs": [
         "https://www.linkedin.com/company/135197453",
