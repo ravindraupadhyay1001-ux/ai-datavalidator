@@ -242,6 +242,26 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
 .faq summary:hover{color:var(--blue)}
 .faq-a{padding:1rem 1.3rem 1.25rem;color:var(--ink-2);font-size:.95rem;line-height:1.6}
 
+/* Ask-AI chat on the FAQ */
+.ask{max-width:760px;margin:1.4rem auto 0;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.ask-head{display:flex;align-items:center;gap:.55rem;padding:.9rem 1.2rem;border-bottom:1px solid var(--line);background:linear-gradient(92deg,rgba(37,99,235,.05),rgba(124,58,237,.07))}
+.ask-head .spark{width:16px;height:16px;color:var(--violet);flex-shrink:0}
+.ask-head b{font-family:var(--display);font-weight:600;font-size:.98rem}
+.ask-log{padding:1.1rem 1.2rem;display:flex;flex-direction:column;gap:.7rem;max-height:340px;overflow-y:auto;font-size:.92rem}
+.ask-log:empty{display:none}
+.ask-msg{max-width:86%;padding:.6rem .85rem;border-radius:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.ask-msg.u{align-self:flex-end;background:linear-gradient(92deg,var(--blue),var(--violet));color:#fff;border-bottom-right-radius:4px}
+.ask-msg.a{align-self:flex-start;background:var(--paper);border:1px solid var(--line);color:var(--ink);border-bottom-left-radius:4px}
+.ask-msg.pending{color:var(--muted);font-style:italic}
+.ask-suggest{display:flex;flex-wrap:wrap;gap:.5rem;padding:0 1.2rem 1rem}
+.ask-chip{font-size:.8rem;color:var(--blue);background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.22);border-radius:999px;padding:.35rem .8rem;cursor:pointer;font-family:var(--sans)}
+.ask-chip:hover{background:rgba(37,99,235,.14)}
+.ask-bar{display:flex;gap:.6rem;padding:.9rem 1.2rem;border-top:1px solid var(--line)}
+.ask-bar input{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:10px;padding:.65rem .9rem;font-size:.92rem;font-family:var(--sans);color:var(--ink);background:#fff}
+.ask-bar input:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+.ask-bar button{flex-shrink:0;border:none;border-radius:10px;padding:.65rem 1.15rem;font-weight:600;font-size:.92rem;color:#fff;background:linear-gradient(92deg,var(--blue),var(--violet));cursor:pointer}
+.ask-bar button:disabled{opacity:.55;cursor:default}
+
 /* ---------- cta band ---------- */
 .band{background:linear-gradient(100deg,#111a2e,#182a54 55%,#2a1c56);color:#fff;border-radius:20px;
   padding:clamp(2.2rem,5vw,3.4rem);text-align:center;position:relative;overflow:hidden}
@@ -332,6 +352,7 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
     <nav class="nav-links" aria-label="Primary">
       <a class="navlink" href="#features">Features</a>
       <a class="navlink" href="#how">How it works</a>
+      <a class="navlink" href="#faq">Q&amp;A</a>
       <a class="navlink" href="#contact">Contact</a>
       <a class="btn btn-ghost" href="/login">Sign in</a>
       <a class="btn btn-primary" href="/register">Get started</a>
@@ -557,6 +578,7 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
       <div class="section-head">
         <p class="section-eyebrow">Questions</p>
         <h2 class="h">Answers before you ask</h2>
+        <p class="lead">Browse the common ones — or ask our AI assistant anything about the product.</p>
       </div>
       <div class="faq">
         <details><summary>Is my data safe?</summary><div class="faq-a">Yes. AI DataValidator runs in your own environment with per-user isolation, your data is never used to train any model, and every run is logged so you keep a full audit trail.</div></details>
@@ -565,6 +587,19 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
         <details><summary>How is this different from ChatGPT or Copilot?</summary><div class="faq-a">A chatbot approximates and can quietly miscount or drop rows. AI DataValidator uses AI only to propose rules and explain breaks — a deterministic engine computes every number, so results are exact and reproducible.</div></details>
         <details><summary>What happens after the 7-day free trial?</summary><div class="faq-a">Your trial access pauses, but your saved connections and rules stay intact — nothing is deleted. Just reach out to keep going.</div></details>
         <details><summary>How long does it take to get a result?</summary><div class="faq-a">Minutes. Upload two files or connect a source and you'll see matched rows, breaks, and a data-quality score right away.</div></details>
+      </div>
+      <div class="ask">
+        <div class="ask-head"><svg class="spark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l1.7 5.3 5.3 1.7-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z"/></svg><b>Still have a question? Ask our AI</b></div>
+        <div id="ask-log" class="ask-log" aria-live="polite"></div>
+        <div class="ask-suggest" id="ask-suggest">
+          <button type="button" class="ask-chip" onclick="askExample(this)">Is my data secure?</button>
+          <button type="button" class="ask-chip" onclick="askExample(this)">What can it connect to?</button>
+          <button type="button" class="ask-chip" onclick="askExample(this)">How is it different from ChatGPT?</button>
+        </div>
+        <div class="ask-bar">
+          <input id="ask-in" type="text" autocomplete="off" maxlength="500" placeholder="Ask anything about AI DataValidator…" onkeydown="if(event.key==='Enter'){event.preventDefault();askSend();}">
+          <button type="button" id="ask-btn" onclick="askSend()">Ask</button>
+        </div>
       </div>
     </div>
   </section>
@@ -625,6 +660,60 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
     </div>
   </div>
 </footer>
+
+<script>
+(function(){
+  var history = [];
+  var SYS = "You are a helpful assistant on the AI DataValidator marketing website. "
+    + "Answer questions from prospective customers about what the product does (data validation, "
+    + "reconciliation, data quality, file and dataset comparison), how it works, security, connectors "
+    + "and the free 7-day trial. Be concise and friendly, and where relevant invite them to start the "
+    + "free trial or book a demo. Do not invent pricing, specific customers, or features you are unsure about.";
+  function add(cls, text){
+    var log = document.getElementById('ask-log');
+    var d = document.createElement('div');
+    d.className = 'ask-msg ' + cls;
+    d.textContent = text;
+    log.appendChild(d);
+    log.scrollTop = log.scrollHeight;
+    return d;
+  }
+  window.askExample = function(el){
+    document.getElementById('ask-in').value = el.textContent;
+    window.askSend();
+  };
+  window.askSend = async function(){
+    var inp = document.getElementById('ask-in');
+    var q = (inp.value || '').trim();
+    if(!q) return;
+    var btn = document.getElementById('ask-btn');
+    var sg = document.getElementById('ask-suggest');
+    if(sg) sg.style.display = 'none';
+    add('u', q);
+    inp.value = '';
+    btn.disabled = true;
+    var pending = add('a pending', 'Thinking…');
+    try{
+      var r = await fetch('/help-chat', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ question: q, history: history, system: SYS })
+      });
+      var d = await r.json();
+      var reply = (d && (d.reply || d.error)) || 'Sorry, something went wrong.';
+      pending.remove();
+      add('a', reply);
+      history.push({role:'user', text:q});
+      history.push({role:'assistant', text:reply});
+      if(history.length > 12) history = history.slice(-12);
+    }catch(e){
+      pending.remove();
+      add('a', 'Sorry, I could not reach the assistant. Please email ai-datavalidator@outlook.com.');
+    }
+    btn.disabled = false;
+  };
+})();
+</script>
 
 </body>
 </html>

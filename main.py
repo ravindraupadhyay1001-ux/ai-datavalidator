@@ -17061,14 +17061,41 @@ async def rerun_governance(session_id: str, request: Request):
         })
 
 
+# Lightweight per-IP throttle for the public AI assistant. /help-chat is now
+# reachable from the marketing landing page (not just the logged-in User Guide),
+# so anonymous traffic could otherwise run up LLM cost. In-memory, best-effort.
+_HELP_CHAT_HITS: dict = {}
+_HELP_CHAT_MAX = 15
+_HELP_CHAT_WINDOW = 60.0
+
+
+def _help_chat_rate_limited(ip: str) -> bool:
+    import time
+    now = time.time()
+    key = ip or ""
+    hits = [t for t in _HELP_CHAT_HITS.get(key, []) if now - t < _HELP_CHAT_WINDOW]
+    if len(hits) >= _HELP_CHAT_MAX:
+        _HELP_CHAT_HITS[key] = hits
+        return True
+    hits.append(now)
+    _HELP_CHAT_HITS[key] = hits
+    return False
+
+
 @app.post("/help-chat")
 async def help_chat(request: Request):
-    """Stateless AI assistant for the User Guide modal -- no session required."""
+    """Stateless AI assistant for the User Guide modal and the public landing
+    page -- no session required. Per-IP rate limited to curb anonymous abuse."""
+    ip = (request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+          or (request.client.host if request.client else "") or "")
+    if _help_chat_rate_limited(ip):
+        return JSONResponse(
+            {"reply": "You're asking a lot quickly — please wait a moment and try again."},
+            status_code=429,
+        )
     body     = await request.json()
-    question = body.get("question", "").strip()
+    question = body.get("question", "").strip()[:600]
     history  = body.get("history", [])
-
-
     system   = body.get("system", "You are a helpful assistant for the AI Agent -- Data Validation.")
     if not question:
         return JSONResponse({"error": "Empty question"}, status_code=400)
