@@ -109,6 +109,15 @@ h2.h{font-family:var(--display);font-weight:600;font-size:clamp(1.7rem,3.4vw,2.5
   letter-spacing:.1em;flex-shrink:0;display:inline-flex;align-items:center;gap:.3rem;padding-top:.06rem}
 .ai-insight b{color:var(--ink);font-weight:600}
 .ai-insight .spark{width:12px;height:12px}
+.trial-flag{display:inline-flex;align-items:center;gap:.55rem;margin-top:1.5rem;
+  font-family:var(--mono);font-size:.82rem;font-weight:600;letter-spacing:.02em;color:#08543f;
+  background:rgba(16,185,129,.14);border:1.5px solid rgba(16,185,129,.45);padding:.55rem .95rem;
+  border-radius:999px;transform-origin:left center;
+  animation:flagpop .55s .55s both, flagpulse 2.6s 1.2s ease-in-out infinite}
+.trial-flag .fdot{width:9px;height:9px;border-radius:50%;background:#0ea472;flex-shrink:0}
+.trial-flag b{color:#0ea472;font-weight:700}
+@keyframes flagpop{from{opacity:0;transform:scale(.82)}60%{transform:scale(1.05)}to{opacity:1;transform:scale(1)}}
+@keyframes flagpulse{0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,.4)}50%{box-shadow:0 0 0 9px rgba(16,185,129,0)}}
 
 /* ---------- signature: reconciliation panel ---------- */
 .recon{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);
@@ -310,7 +319,8 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
           <a class="btn btn-primary" href="/register">Start free</a>
           <a class="btn btn-ghost" href="mailto:ai-datavalidator@outlook.com?subject=AI%20DataValidator%20demo">Book a demo</a>
         </div>
-        <p class="microcopy reveal d3">Free 7-day trial · no setup call required · CSV, Excel, databases &amp; APIs</p>
+        <div class="trial-flag" role="note"><span class="fdot" aria-hidden="true"></span><b>7 days free</b>&nbsp;— full access, no obligation</div>
+        <p class="microcopy reveal d3">No setup call required · CSV, Excel, databases &amp; APIs</p>
       </div>
 
       <!-- signature: reconciliation panel -->
