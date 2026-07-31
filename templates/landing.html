@@ -181,13 +181,19 @@ h2.h{font-family:var(--display);font-weight:600;font-size:clamp(1.7rem,3.4vw,2.5
 /* ---------- how it works ---------- */
 .how{background:linear-gradient(180deg,#fff,#f7f9fd);border-top:1px solid var(--line);
   border-bottom:1px solid var(--line)}
-.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1.6rem;counter-reset:step}
-.step{position:relative;padding-top:1.4rem;border-top:2px solid var(--line)}
-.step::before{counter-increment:step;content:counter(step,decimal-leading-zero);
-  font-family:var(--mono);font-weight:600;font-size:.8rem;color:var(--blue);
-  position:absolute;top:-.05rem;left:0;background:var(--paper);padding-right:.6rem;transform:translateY(-58%)}
-.step h3{font-family:var(--display);font-weight:600;font-size:1.15rem;margin:.2rem 0 .45rem}
-.step p{color:var(--ink-2);font-size:.95rem}
+.flow{display:flex;align-items:stretch;gap:0;flex-wrap:nowrap}
+.fstep{flex:1;min-width:0;position:relative;background:var(--card);border:1px solid var(--line);
+  border-radius:16px;padding:1.6rem 1.4rem;
+  opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .6s cubic-bezier(.2,.7,.2,1)}
+.fstep.in{opacity:1;transform:none}
+.fnum{position:absolute;top:1.15rem;right:1.3rem;font-family:var(--mono);font-size:.78rem;font-weight:700;color:var(--blue);opacity:.55}
+.ficon{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;margin-bottom:1.05rem;color:var(--blue);
+  background:linear-gradient(160deg,rgba(37,99,235,.13),rgba(124,58,237,.13))}
+.fstep h3{font-family:var(--display);font-weight:600;font-size:1.12rem;letter-spacing:-.01em;margin-bottom:.45rem}
+.fstep p{color:var(--ink-2);font-size:.94rem;line-height:1.5}
+.farrow{flex:0 0 42px;display:flex;align-items:center;justify-content:center;color:var(--blue);
+  opacity:0;transition:opacity .5s ease .2s}
+.farrow.in{opacity:.75}
 
 /* ---------- use cases ---------- */
 .uses{display:grid;grid-template-columns:repeat(2,1fr);gap:.9rem}
@@ -303,7 +309,8 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
 @media (max-width:860px){
   .hero-grid{grid-template-columns:1fr}
   .features{grid-template-columns:1fr 1fr}
-  .steps{grid-template-columns:1fr;gap:2rem}
+  .flow{flex-direction:column}
+  .farrow{flex-basis:auto;padding:.5rem 0;transform:rotate(90deg)}
   .uses{grid-template-columns:1fr}
   .split{grid-template-columns:1fr}
   .nav-links a.navlink{display:none}
@@ -329,6 +336,7 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
 @media (prefers-reduced-motion:reduce){
   *{animation:none!important;scroll-behavior:auto!important}
   .reveal{opacity:1;transform:none}
+  .fstep,.farrow{opacity:1!important;transform:none!important;transition:none!important}
 }
 :focus-visible{outline:2.5px solid var(--blue);outline-offset:2px;border-radius:6px}
 </style>
@@ -472,16 +480,24 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
         <p class="section-eyebrow">How it works</p>
         <h2 class="h">From raw files to a trusted result in three steps</h2>
       </div>
-      <div class="steps">
-        <div class="step">
+      <div class="flow" id="flow">
+        <div class="fstep">
+          <span class="fnum">01</span>
+          <div class="ficon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 9l5-5 5 5"/><path d="M12 4v12"/></svg></div>
           <h3>Connect or upload</h3>
           <p>Drop in files or pick a saved connector — a database, an API, a spreadsheet. No pipeline to build.</p>
         </div>
-        <div class="step">
+        <div class="farrow"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></div>
+        <div class="fstep">
+          <span class="fnum">02</span>
+          <div class="ficon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 3l2.2 6.3L21 11l-5.8 1.7L13 19l-2.2-6.3L5 11l5.8-1.7z"/><path d="M5 4v3M3.5 5.5h3"/><path d="M18.5 15v3M17 16.5h3"/></svg></div>
           <h3>Set rules, or let AI suggest them</h3>
           <p>Keys and checks are inferred for you. Adjust anything, or ask the AI copilot to draft the rules.</p>
         </div>
-        <div class="step">
+        <div class="farrow"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg></div>
+        <div class="fstep">
+          <span class="fnum">03</span>
+          <div class="ficon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15v3"/><path d="M12 11v7"/><path d="M17 7v11"/></svg></div>
           <h3>Get results and reports</h3>
           <p>See matches, breaks, and a quality score — on demand or on a schedule, delivered to your inbox.</p>
         </div>
@@ -666,6 +682,24 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
     }
     btn.disabled = false;
   };
+})();
+
+(function(){
+  var flow = document.getElementById('flow');
+  if(!flow) return;
+  var items = flow.children;
+  function reveal(){
+    for(var i=0;i<items.length;i++){
+      items[i].style.transitionDelay = (i * 0.09) + 's';
+      items[i].classList.add('in');
+    }
+  }
+  if(!('IntersectionObserver' in window)){ reveal(); return; }
+  var obs = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){ if(e.isIntersecting){ reveal(); obs.disconnect(); } });
+  }, { threshold: 0.2 });
+  obs.observe(flow);
+  setTimeout(function(){ if(flow.firstElementChild && !flow.firstElementChild.classList.contains('in')) reveal(); }, 1600);
 })();
 </script>
 
