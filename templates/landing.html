@@ -194,6 +194,15 @@ h2.h{font-family:var(--display);font-weight:600;font-size:clamp(1.7rem,3.4vw,2.5
 .farrow{flex:0 0 42px;display:flex;align-items:center;justify-content:center;color:var(--blue);
   opacity:0;transition:opacity .5s ease .2s}
 .farrow.in{opacity:.75}
+/* looping connect -> rules -> results flow (starts after reveal via .in) */
+.fstep.in .ficon{animation:stepglow 3s ease-in-out infinite}
+.flow > .fstep:nth-child(3) .ficon{animation-delay:1s}
+.flow > .fstep:nth-child(5) .ficon{animation-delay:2s}
+.farrow.in svg{animation:arrowflow 3s ease-in-out infinite}
+.flow > .farrow:nth-child(4) svg{animation-delay:1s}
+@keyframes stepglow{0%,52%,100%{box-shadow:0 0 0 0 rgba(37,99,235,0);transform:translateY(0)}
+  18%{box-shadow:0 0 0 7px rgba(37,99,235,.16);transform:translateY(-3px)}}
+@keyframes arrowflow{0%,55%,100%{transform:translateX(0);opacity:.5}25%{transform:translateX(4px);opacity:1}}
 
 /* ---------- use cases ---------- */
 .uses{display:grid;grid-template-columns:repeat(2,1fr);gap:.9rem}
