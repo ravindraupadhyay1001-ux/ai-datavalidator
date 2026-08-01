@@ -92,16 +92,6 @@ h2.h{font-family:var(--display);font-weight:600;font-size:clamp(1.7rem,3.4vw,2.5
 .hero h1 .amp{background:linear-gradient(92deg,var(--blue),var(--violet));-webkit-background-clip:text;
   background-clip:text;color:transparent}
 .hero .lead{font-size:1.12rem}
-/* hero stat card */
-.hstat{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:1.8rem 1.7rem}
-.hstat .hs-eyebrow{font-family:var(--mono);font-size:.7rem;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--violet)}
-.hstat .hs-num{font-family:var(--display);font-size:clamp(1.05rem,1.9vw,1.3rem);font-weight:600;color:var(--ink-2);margin-top:.7rem}
-.hstat .hs-line{font-family:var(--display);font-size:clamp(1.9rem,3.6vw,2.7rem);font-weight:700;color:var(--blue);letter-spacing:-.02em;line-height:1.03;margin:.1rem 0 1.25rem}
-.hstat ul{list-style:none;display:flex;flex-direction:column;gap:.6rem}
-.hstat li{display:flex;gap:.55rem;align-items:flex-start;font-size:.94rem;color:var(--ink);line-height:1.4}
-.hstat li .ck{color:var(--mint);font-weight:700;flex-shrink:0}
-.hstat .hs-foot{margin-top:1.3rem;padding-top:1rem;border-top:1px solid var(--line);font-family:var(--display);font-weight:600;font-size:1rem;color:var(--ink)}
-.hstat .hs-foot .b{color:var(--blue)}
 .cta-row{display:flex;gap:.8rem;margin-top:1.8rem;flex-wrap:wrap}
 .cta-row .btn{padding:.8rem 1.4rem;font-size:1rem}
 .microcopy{font-family:var(--mono);font-size:.74rem;color:var(--muted);margin-top:1rem;letter-spacing:.02em}
@@ -396,9 +386,6 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
         <span class="ai-badge reveal"><svg class="spark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l1.7 5.3 5.3 1.7-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z"/></svg>AI copilot built in</span>
         <span class="eyebrow reveal d1" style="display:block;margin-top:.85rem">Data validation · Reconciliation · Data quality</span>
         <h1 class="reveal d1">Validate anything.<br><span class="amp">Miss nothing.</span></h1>
-        <p class="lead reveal d2">AI DataValidator matches your data across files, databases and APIs, flags every
-          mismatch, and scores data quality — automatically. The AI drafts the rules, a deterministic engine
-          proves the numbers, and it runs on your schedule.</p>
         <div class="cta-row reveal d3">
           <a class="btn btn-primary" href="/register">Start free</a>
           <a class="btn btn-ghost" href="mailto:ai-datavalidator@outlook.com?subject=AI%20DataValidator%20demo">Book a demo</a>
@@ -407,18 +394,31 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
         <p class="microcopy reveal d3">Connect CSV, Excel, databases &amp; APIs — no code required</p>
       </div>
 
-      <!-- hero stat card -->
-      <div class="hstat reveal d2">
-        <div class="hs-eyebrow">Reconciliation</div>
-        <div class="hs-num">500,000 rows &#215; 200 columns</div>
-        <div class="hs-line">reconciled in minutes.</div>
-        <ul>
-          <li><span class="ck">&#10003;</span>Auto-detects the key — even composite keys</li>
-          <li><span class="ck">&#10003;</span>Any format, any source: files, DB, API, SharePoint, FTP</li>
-          <li><span class="ck">&#10003;</span>Every break &amp; exception, flagged automatically</li>
-          <li><span class="ck">&#10003;</span>Not right? Fix it in plain English, then save &amp; schedule</li>
-        </ul>
-        <div class="hs-foot">No code. No automation engineer. <span class="b">No ticket.</span></div>
+      <!-- signature: reconciliation panel -->
+      <div class="recon reveal d2" role="img"
+           aria-label="A reconciliation between two sources: three rows matched, one row flagged as a break where an amount differs. Data quality score 98.6 percent, grade A.">
+        <div class="recon-head">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="recon-title">Reconciliation</span>
+          <span class="recon-meta">2 sources · key: invoice_id</span>
+        </div>
+        <div class="recon-body">
+          <span class="scan" aria-hidden="true"></span>
+          <div class="rrow head"><span>Source A</span><span>Source B</span><span>Status</span></div>
+          <div class="rrow"><span class="b">INV-1042 · 84,120</span><span class="b">INV-1042 · 84,120</span><span class="tag ok">✓ matched</span></div>
+          <div class="rrow"><span class="b">INV-1043 · 12,900</span><span class="b">INV-1043 · 12,900</span><span class="tag ok">✓ matched</span></div>
+          <div class="rrow break"><span class="b">INV-1044 · <span class="diff">9,540</span></span><span class="b">INV-1044 · <span class="diff">9,450</span></span><span class="tag bad">✕ break</span></div>
+          <div class="rrow"><span class="b">INV-1045 · 61,000</span><span class="b">INV-1045 · 61,000</span><span class="tag ok">✓ matched</span></div>
+        </div>
+        <div class="ai-insight">
+          <span class="ai-tag"><svg class="spark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l1.7 5.3 5.3 1.7-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z"/></svg>AI</span>
+          <span>INV-1044 looks like a <b>digit transposition</b> (9,540 ↔ 9,450) — likely a keying error, not a real break. Want a rule to auto-flag these?</span>
+        </div>
+        <div class="recon-foot">
+          <div class="ring" aria-hidden="true"><span>98.6%</span></div>
+          <div class="foot-txt">Data quality<br><b>Grade A</b></div>
+          <div class="tally"><span class="ok">128 matched</span><br><span class="bad">1 break found</span></div>
+        </div>
       </div>
     </div>
   </section>
