@@ -117,6 +117,14 @@ h2.h{font-family:var(--display);font-weight:600;font-size:clamp(1.7rem,3.4vw,2.5
 .price li{display:flex;gap:.5rem;align-items:flex-start;font-size:.92rem;color:var(--ink-2);line-height:1.4}
 .price li .ck{color:var(--mint);font-weight:700;flex-shrink:0}
 .price .btn{width:100%;justify-content:center}
+/* founder story */
+.founder{max-width:680px;margin:0 auto}
+.founder p{color:var(--ink-2);font-size:1.05rem;line-height:1.7;margin-bottom:1rem}
+.founder p:last-of-type{color:var(--ink)}
+.founder .who{display:flex;align-items:center;gap:.85rem;margin-top:1.6rem;padding-top:1.3rem;border-top:1px solid var(--line)}
+.founder .av{width:46px;height:46px;border-radius:50%;background:linear-gradient(160deg,var(--blue),var(--violet));color:#fff;display:grid;place-items:center;font-weight:700;font-family:var(--display);flex-shrink:0}
+.founder .who b{font-family:var(--display);font-weight:600;color:var(--ink);display:block}
+.founder .who span{font-size:.84rem;color:var(--muted)}
 /* hero stat card */
 .hstat{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:1.8rem 1.7rem}
 .hstat .hs-eyebrow{font-family:var(--mono);font-size:.7rem;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--violet)}
@@ -605,6 +613,29 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
         </table>
       </div>
       <p class="microcopy" style="margin-top:1.2rem">AI proposes the rules. A real engine proves the numbers.</p>
+    </div>
+  </section>
+
+  <!-- FROM THE FOUNDER -->
+  <section class="section" id="founder">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="section-eyebrow">From the founder</p>
+        <h2 class="h">I spent years doing this by hand</h2>
+      </div>
+      <div class="founder">
+        <p>For years I worked across data operations, business analysis, data quality, mapping validation,
+          integration testing, and automation. The same task followed me everywhere: someone needed data
+          checked — a load verified, two systems reconciled, a mapping confirmed — and it landed on me.</p>
+        <p>So I did it by hand. Spreadsheets, scripts, evenings spent tying out numbers — then doing it all
+          again the next day. Automating any of it meant a ticket, an engineer, and a wait.</p>
+        <p>I built AI DataValidator to be the tool I always wished I had: one place to validate anything —
+          no code, no dependency — and automate the checks that repeat.</p>
+        <div class="who">
+          <div class="av" aria-hidden="true">R</div>
+          <div><b>Ravindra</b><span>Founder · Data Ops · BA · Data Quality · Mapping Validation · Integration Testing · Automation</span></div>
+        </div>
+      </div>
     </div>
   </section>
 
