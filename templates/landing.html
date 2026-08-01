@@ -92,6 +92,8 @@ h2.h{font-family:var(--display);font-weight:600;font-size:clamp(1.7rem,3.4vw,2.5
 .hero h1 .amp{background:linear-gradient(92deg,var(--blue),var(--violet));-webkit-background-clip:text;
   background-clip:text;color:transparent}
 .hero .lead{font-size:1.12rem}
+/* centered reconciliation demo */
+.recon-wrap{max-width:540px;margin:0 auto}
 /* hero stat card */
 .hstat{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:1.8rem 1.7rem}
 .hstat .hs-eyebrow{font-family:var(--mono);font-size:.7rem;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--violet)}
@@ -504,6 +506,44 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
           <div class="ficon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 15v3"/><path d="M12 11v7"/><path d="M17 7v11"/></svg></div>
           <h3>Get results and reports</h3>
           <p>See matches, breaks, and a quality score — on demand or on a schedule, delivered to your inbox.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEE IT IN ACTION -->
+  <section class="section" id="demo">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="section-eyebrow">See it in action</p>
+        <h2 class="h">A reconciliation, live</h2>
+        <p class="lead">Two sources matched on an auto-detected key. Every break flagged — and the AI explains what it's looking at.</p>
+      </div>
+      <div class="recon-wrap">
+        <div class="recon" role="img"
+             aria-label="A reconciliation between two sources: three rows matched, one row flagged as a break where an amount differs. Data quality score 98.6 percent, grade A.">
+          <div class="recon-head">
+            <span class="dot" aria-hidden="true"></span>
+            <span class="recon-title">Reconciliation</span>
+            <span class="recon-meta">2 sources · key: invoice_id</span>
+          </div>
+          <div class="recon-body">
+            <span class="scan" aria-hidden="true"></span>
+            <div class="rrow head"><span>Source A</span><span>Source B</span><span>Status</span></div>
+            <div class="rrow"><span class="b">INV-1042 · 84,120</span><span class="b">INV-1042 · 84,120</span><span class="tag ok">✓ matched</span></div>
+            <div class="rrow"><span class="b">INV-1043 · 12,900</span><span class="b">INV-1043 · 12,900</span><span class="tag ok">✓ matched</span></div>
+            <div class="rrow break"><span class="b">INV-1044 · <span class="diff">9,540</span></span><span class="b">INV-1044 · <span class="diff">9,450</span></span><span class="tag bad">✕ break</span></div>
+            <div class="rrow"><span class="b">INV-1045 · 61,000</span><span class="b">INV-1045 · 61,000</span><span class="tag ok">✓ matched</span></div>
+          </div>
+          <div class="ai-insight">
+            <span class="ai-tag"><svg class="spark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l1.7 5.3 5.3 1.7-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7z"/></svg>AI</span>
+            <span>INV-1044 looks like a <b>digit transposition</b> (9,540 ↔ 9,450) — likely a keying error, not a real break. Want a rule to auto-flag these?</span>
+          </div>
+          <div class="recon-foot">
+            <div class="ring" aria-hidden="true"><span>98.6%</span></div>
+            <div class="foot-txt">Data quality<br><b>Grade A</b></div>
+            <div class="tally"><span class="ok">128 matched</span><br><span class="bad">1 break found</span></div>
+          </div>
         </div>
       </div>
     </div>
