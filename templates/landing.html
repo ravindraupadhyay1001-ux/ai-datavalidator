@@ -94,6 +94,16 @@ h2.h{font-family:var(--display);font-weight:600;font-size:clamp(1.7rem,3.4vw,2.5
 .hero .lead{font-size:1.12rem}
 /* centered reconciliation demo */
 .recon-wrap{max-width:540px;margin:0 auto}
+.demo-video{max-width:780px;margin:0 auto 2.2rem;border-radius:14px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow)}
+.demo-video .ratio{position:relative;padding-bottom:56.25%;height:0}
+.demo-video iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+/* testimonials (real quotes only) */
+.quotes{display:grid;grid-template-columns:repeat(3,1fr);gap:1.1rem}
+.quote{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:1.5rem 1.4rem;display:flex;flex-direction:column;gap:1rem}
+.quote blockquote{font-family:var(--display);font-size:1.02rem;line-height:1.5;color:var(--ink)}
+.quote figcaption{display:flex;flex-direction:column;gap:.1rem;font-size:.9rem}
+.quote figcaption b{color:var(--ink);font-weight:600}
+.quote figcaption span{color:var(--muted)}
 /* hero stat card */
 .hstat{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:1.8rem 1.7rem}
 .hstat .hs-eyebrow{font-family:var(--mono);font-size:.7rem;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--violet)}
@@ -335,6 +345,7 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
   .uses{grid-template-columns:1fr}
   .split{grid-template-columns:1fr}
   .faq{grid-template-columns:1fr}
+  .quotes{grid-template-columns:1fr}
   .nav-links a.navlink{display:none}
 }
 @media (max-width:560px){
@@ -516,8 +527,15 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
     <div class="wrap">
       <div class="section-head">
         <p class="section-eyebrow">See it in action</p>
-        <h2 class="h">A reconciliation, live</h2>
-        <p class="lead">Two sources matched on an auto-detected key. Every break flagged — and the AI explains what it's looking at.</p>
+        <h2 class="h">Watch a reconciliation, live</h2>
+        <p class="lead">A short walkthrough — connect two sources, run the check, and see the breaks. Below it, what a result looks like.</p>
+      </div>
+      <div class="demo-video">
+        <div class="ratio">
+          <iframe src="https://www.youtube-nocookie.com/embed/4047GAGiyjc" title="AI DataValidator reconciliation walkthrough"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            referrerpolicy="strict-origin-when-cross-origin" loading="lazy" allowfullscreen></iframe>
+        </div>
       </div>
       <div class="recon-wrap">
         <div class="recon" role="img"
@@ -601,6 +619,33 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
       <p class="microcopy" style="margin-top:1.2rem">AI proposes the rules. A real engine proves the numbers.</p>
     </div>
   </section>
+
+  <!-- TESTIMONIALS — real quotes only. Uncomment this whole block and fill in each
+       quote/name/role with a genuine one when you have it (see the "How to get proof"
+       plan). Add or remove <figure class="quote"> cards as needed. Do NOT ship placeholder text.
+  <section class="section" id="proof">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="section-eyebrow">What users say</p>
+        <h2 class="h">Trusted by the people who check the data</h2>
+      </div>
+      <div class="quotes">
+        <figure class="quote">
+          <blockquote>"REAL QUOTE HERE."</blockquote>
+          <figcaption><b>Full Name</b><span>Role, Company</span></figcaption>
+        </figure>
+        <figure class="quote">
+          <blockquote>"REAL QUOTE HERE."</blockquote>
+          <figcaption><b>Full Name</b><span>Role, Company</span></figcaption>
+        </figure>
+        <figure class="quote">
+          <blockquote>"REAL QUOTE HERE."</blockquote>
+          <figcaption><b>Full Name</b><span>Role, Company</span></figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+  -->
 
   <!-- FAQ -->
   <section class="section" id="faq">
