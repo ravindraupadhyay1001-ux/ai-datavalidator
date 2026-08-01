@@ -104,6 +104,19 @@ h2.h{font-family:var(--display);font-weight:600;font-size:clamp(1.7rem,3.4vw,2.5
 .quote figcaption{display:flex;flex-direction:column;gap:.1rem;font-size:.9rem}
 .quote figcaption b{color:var(--ink);font-weight:600}
 .quote figcaption span{color:var(--muted)}
+/* pricing */
+.pricing{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem;align-items:stretch}
+.price{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:1.8rem 1.6rem;display:flex;flex-direction:column}
+.price.feat{border:2px solid var(--blue);position:relative}
+.price .p-badge{position:absolute;top:-.75rem;left:1.6rem;background:var(--blue);color:#fff;font-size:.68rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:.25rem .7rem;border-radius:999px}
+.price .p-name{font-family:var(--display);font-weight:600;font-size:1.15rem}
+.price .p-price{font-family:var(--display);font-weight:700;font-size:2.2rem;color:var(--ink);margin:.55rem 0 .05rem;line-height:1}
+.price .p-price small{font-size:.85rem;font-weight:500;color:var(--muted)}
+.price .p-note{font-size:.82rem;color:var(--muted);margin-bottom:1.3rem}
+.price ul{list-style:none;display:flex;flex-direction:column;gap:.55rem;margin-bottom:1.6rem;flex:1}
+.price li{display:flex;gap:.5rem;align-items:flex-start;font-size:.92rem;color:var(--ink-2);line-height:1.4}
+.price li .ck{color:var(--mint);font-weight:700;flex-shrink:0}
+.price .btn{width:100%;justify-content:center}
 /* hero stat card */
 .hstat{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:1.8rem 1.7rem}
 .hstat .hs-eyebrow{font-family:var(--mono);font-size:.7rem;font-weight:600;letter-spacing:.18em;text-transform:uppercase;color:var(--violet)}
@@ -346,6 +359,7 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
   .split{grid-template-columns:1fr}
   .faq{grid-template-columns:1fr}
   .quotes{grid-template-columns:1fr}
+  .pricing{grid-template-columns:1fr}
   .nav-links a.navlink{display:none}
 }
 @media (max-width:560px){
@@ -393,6 +407,7 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
     <nav class="nav-links" aria-label="Primary">
       <a class="navlink" href="#features">Features</a>
       <a class="navlink" href="#how">How it works</a>
+      <a class="navlink" href="#pricing">Pricing</a>
       <a class="navlink" href="#faq">Q&amp;A</a>
       <a class="navlink" href="#contact">Contact</a>
       <a class="btn btn-ghost" href="/login">Sign in</a>
@@ -590,6 +605,57 @@ table.cmp tbody tr:last-child td.hl{border-bottom:1.5px solid rgba(37,99,235,.28
         </table>
       </div>
       <p class="microcopy" style="margin-top:1.2rem">AI proposes the rules. A real engine proves the numbers.</p>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section class="section" id="pricing">
+    <div class="wrap">
+      <div class="section-head">
+        <p class="section-eyebrow">Pricing</p>
+        <h2 class="h">Simple pricing. Start free.</h2>
+        <p class="lead">Every plan starts with a free 7-day trial — no card to begin. Cancel anytime.</p>
+      </div>
+      <div class="pricing">
+        <div class="price">
+          <div class="p-name">Starter</div>
+          <div class="p-price">$19<small> / user / mo</small></div>
+          <div class="p-note">For an individual analyst.</div>
+          <ul>
+            <li><span class="ck">&#10003;</span>All validation modules</li>
+            <li><span class="ck">&#10003;</span>File uploads (CSV, Excel)</li>
+            <li><span class="ck">&#10003;</span>AI copilot — rules in plain English</li>
+            <li><span class="ck">&#10003;</span>Auto keys, breaks &amp; quality scores</li>
+          </ul>
+          <a class="btn btn-ghost" href="/register">Start free</a>
+        </div>
+        <div class="price feat">
+          <span class="p-badge">Most popular</span>
+          <div class="p-name">Pro</div>
+          <div class="p-price">$99<small> / user / mo</small></div>
+          <div class="p-note">For teams that run checks daily.</div>
+          <ul>
+            <li><span class="ck">&#10003;</span>Everything in Starter</li>
+            <li><span class="ck">&#10003;</span>All connectors: databases, APIs, SharePoint, FTP</li>
+            <li><span class="ck">&#10003;</span>Scheduling &amp; automated jobs with email alerts</li>
+            <li><span class="ck">&#10003;</span>Saved rulesets, workspace &amp; history/analytics</li>
+            <li><span class="ck">&#10003;</span>Higher run &amp; volume limits</li>
+          </ul>
+          <a class="btn btn-primary" href="/register">Start free</a>
+        </div>
+        <div class="price">
+          <div class="p-name">Enterprise</div>
+          <div class="p-price">Custom</div>
+          <div class="p-note">For regulated &amp; large teams.</div>
+          <ul>
+            <li><span class="ck">&#10003;</span>Runs in your environment</li>
+            <li><span class="ck">&#10003;</span>SSO, roles &amp; governance</li>
+            <li><span class="ck">&#10003;</span>Volume pricing &amp; security review / DPA</li>
+            <li><span class="ck">&#10003;</span>Priority support &amp; onboarding</li>
+          </ul>
+          <a class="btn btn-ghost" href="mailto:ai-datavalidator@outlook.com?subject=AI%20DataValidator%20Enterprise">Contact us</a>
+        </div>
+      </div>
     </div>
   </section>
 
