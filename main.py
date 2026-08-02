@@ -43,6 +43,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 load_dotenv()
@@ -80,6 +81,8 @@ from agent.feedback_store import (
 
 app = FastAPI(title="Data Validation AGENT")
 templates = Jinja2Templates(directory="templates")
+# self-hosted static assets (landing demo video, poster, etc.)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 from starlette.middleware.gzip import GZipMiddleware
 app.add_middleware(GZipMiddleware, minimum_size=1024)
