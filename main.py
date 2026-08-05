@@ -17039,28 +17039,21 @@ async def rerun_governance_json(session_id: str, request: Request):
     if not dataframes:
         return JSONResponse({"error": "No dataframes."}, status_code=400)
 
-    _hints: dict = {}
-    try:
-        _body = await request.json() if request.headers.get("content-type","").startswith("application/json") else {}
-        _conv = _body.get("conversation","")
-        if _conv:
-            _raw = await _asyncio.to_thread(_ask_llm,[{"role":"user","content":[{"text":
-                f"From this governance conversation:\n{_conv}\n\nExtract PII overrides. "
-                'Return JSON: {"not_pii":"col1,col2","sensitivity":"Confidential"} or {}'
-            }]}])
-            import re as _re5
-            _m5=_re5.search(r'\{.*\}',_raw,_re5.DOTALL)
-
-
-        if _m5:
-            _ex5=json.loads(_m5.group(0))
-            if _ex5.get("not_pii"): _hints["not_pii_columns"]=_ex5["not_pii"]
-            if _ex5.get("sensitivity"): _hints["sensitivity_override"]=_ex5["sensitivity"]
-    except Exception: pass
-
     fname, df = dataframes[0]
+
+    # -- Superset guarantee (mirrors the Data Quality AI run) --
+    # Governance detection is the SAME deterministic analyze_governance() in both
+    # Standard and AI mode, so the AI run already cannot miss a PII / sensitivity
+    # finding Standard reports. We make that hold BY CONSTRUCTION here:
+    #   * pass NO relaxing hints -- the old conversation-derived not_pii /
+    #     sensitivity overrides (which analyze_governance ignored anyway, and which
+    #     could only ever *suppress* a finding) are removed, so nothing can hide a
+    #     PII column or downgrade a classification below what Standard computes;
+    #   * pass the reference-doc data dictionary (an AI-only input) so its
+    #     classifications can only ADD sensitivity, never remove it.
+    _ref_data_dict = (stored.get("_ref_docs") or {}).get("data_dict") or {}
     try:
-        g = await _asyncio.to_thread(analyze_governance, df, fname, {}, user_hints=_hints)
+        g = await _asyncio.to_thread(analyze_governance, df, fname, _ref_data_dict, user_hints={})
         g["file_format"] = df.attrs.get("_format","")
 
         new_sid = str(uuid.uuid4())
