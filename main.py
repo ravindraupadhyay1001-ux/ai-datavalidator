@@ -7684,6 +7684,74 @@ def _compute_col_stats(df: pd.DataFrame) -> dict[str, dict]:
         }
     return stats
 
+def _augment_quality_hints_deterministic(df: pd.DataFrame, hints: dict | None = None,
+                                          bfsi_pack: str = "") -> dict:
+    # Standard DQ's deterministic rule auto-injection -- BFSI Rule Pack + domain
+    # accuracy validators (currency/country/side/...) + temporal / notional>0 /
+    # address-completeness rules, all derived from column names with NO LLM.
+    #
+    # Extracted so BOTH the Standard run and the AI run apply the exact same
+    # deterministic floor. That guarantees the AI run is a strict SUPERSET of
+    # Standard: it can only ADD inferred rules on top, never miss a check
+    # Standard would have flagged. Returns a new dict (input is not mutated).
+    _hints = dict(hints or {})
+    bfsi_pack = (bfsi_pack or "").strip().lower()
+
+    # -- BFSI Rule Pack hints (only fill blanks, never override user input) --
+    if bfsi_pack and bfsi_pack in _BFSI_PACK_HINTS:
+        pack_cfg = _BFSI_PACK_HINTS[bfsi_pack]
+        if not _hints.get("timeliness_hints") and pack_cfg.get("timeliness_hints"):
+            _hints["timeliness_hints"] = pack_cfg["timeliness_hints"]
+        if not _hints.get("nullable_hints") and pack_cfg.get("nullable_hints"):
+            _hints["nullable_hints"] = pack_cfg["nullable_hints"]
+        if pack_cfg.get("bfsi_validators"):
+            _hints["bfsi_validators"] = pack_cfg["bfsi_validators"]
+
+    # -- Auto-inject domain accuracy rules from column names --
+    _domain_col_map = {
+        "currency_code": ["currency", "ccy", "base_currency", "quote_currency",
+                          "settlement_currency", "reporting_currency", "traded_ccy"],
+        "country_code": ["country", "country_code", "domicile", "nationality",
+                         "issuer_country", "country_of_risk"],
+        "asset_class":  ["asset_class", "asset_type", "instrument_class"],
+        "side":         ["side", "direction", "buy_sell", "buysell"],
+        "trade_type":   ["trade_type", "transaction_type", "product_type"],
+        "settlement_type": ["settlement_type", "setl_type", "delivery_type"],
+    }
+    _auto_domain_validators = list(_hints.get("bfsi_validators", []))
+    _existing_v_cols = {v.split(":")[1].lower() for v in _auto_domain_validators if ":" in v}
+    for domain, col_hints in _domain_col_map.items():
+        for col in df.columns:
+            if col.lower() in col_hints and col.lower() not in _existing_v_cols:
+                _auto_domain_validators.append(f"domain_accuracy_{domain}:{col}")
+                _existing_v_cols.add(col.lower())
+    if _auto_domain_validators:
+        _hints["bfsi_validators"] = _auto_domain_validators
+
+    # -- Temporal consistency + notional>0 + address completeness --
+    _auto_cross = [x for x in str(_hints.get("cross_column_rules", "")).split(";") if x.strip()]
+    _df_cols_lower = {c.lower(): c for c in df.columns}
+    _td = next((v for k, v in _df_cols_lower.items() if "trade_date" in k or k == "trd_dt"), None)
+    _sd = next((v for k, v in _df_cols_lower.items()
+                if "settle_date" in k or "settlement_date" in k or k == "setl_dt"), None)
+    if _td and _sd and not any("settle" in r and "trade" in r for r in _auto_cross):
+        _hints["bfsi_validators"] = list(_hints.get("bfsi_validators", [])) + [f"not_future_date:{_td}"]
+    _notional = next((v for k, v in _df_cols_lower.items() if k in
+                      ("notional", "notional_amount", "face_value", "face_amount")), None)
+    if _notional and f"positive:{_notional}" not in set(_hints.get("bfsi_validators", [])):
+        _hints["bfsi_validators"] = list(_hints.get("bfsi_validators", [])) + [f"positive:{_notional}"]
+    _addr_cols = [v for k, v in _df_cols_lower.items()
+                  if any(h in k for h in ("address", "street", "addr", "postal"))]
+    if _addr_cols:
+        _addr_v = list(_hints.get("bfsi_validators", []))
+        for _ac in _addr_cols[:3]:
+            if f"address_complete:{_ac}" not in _addr_v:
+                _addr_v.append(f"address_complete:{_ac}")
+        _hints["bfsi_validators"] = _addr_v
+
+    return _hints
+
+
     # ------------------------------------------------------------------------
     # Merged full DQ -- quality + profile + governance in one pass
     # ------------------------------------------------------------------------
@@ -15155,82 +15223,11 @@ async def analyze(request: Request):
             pass
 
 
-        # -- Merge BFSI Rule Pack hints (only fills blanks, never overrides user input) --
-        if _bfsi_pack and _bfsi_pack in _BFSI_PACK_HINTS:
-          pack_cfg = _BFSI_PACK_HINTS[_bfsi_pack]
-          if not _hints.get("timeliness_hints") and pack_cfg.get("timeliness_hints"):
-            _hints["timeliness_hints"] = pack_cfg["timeliness_hints"]
-          if not _hints.get("nullable_hints") and pack_cfg.get("nullable_hints"):
-            _hints["nullable_hints"] = pack_cfg["nullable_hints"]
-          if pack_cfg.get("bfsi_validators"):
-            _hints["bfsi_validators"] = pack_cfg["bfsi_validators"]
-
-
-        # -- Auto-inject domain accuracy rules from column names ----------------
-        # Detects columns like "currency", "ccy", "country_code", "side" etc.
-        # and injects domain_accuracy validators automatically.
-        _domain_col_map = {
-
-
-          "currency_code": ["currency","ccy","base_currency","quote_currency",
-                    "settlement_currency","reporting_currency","traded_ccy"],
-          "country_code": ["country","country_code","domicile","nationality",
-                   "issuer_country","country_of_risk"],
-          "asset_class":  ["asset_class","asset_type","instrument_class"],
-          "side":     ["side","direction","buy_sell","buysell"],
-          "trade_type":  ["trade_type","transaction_type","product_type"],
-          "settlement_type": ["settlement_type","setl_type","delivery_type"],
-        }
-        _auto_domain_validators = list(_hints.get("bfsi_validators", []))
-        _existing_v_cols = {v.split(":")[1].lower() for v in _auto_domain_validators if ":" in v}
-
-        for domain, col_hints in _domain_col_map.items():
-          for col in df.columns:
-            if col.lower() in col_hints and col.lower() not in _existing_v_cols:
-              _auto_domain_validators.append(f"domain_accuracy_{domain}:{col}")
-              _existing_v_cols.add(col.lower())
-        if _auto_domain_validators:
-          _hints["bfsi_validators"] = _auto_domain_validators
-
-
-        # -- Auto-inject BFSI temporal consistency rules ----------------
-        # Detect trade_date/settle_date pairs and inject T+2 validation.
-        # Also inject quantity>0 when side=BUY, notional>0 always.
-        _auto_cross = list(_hints.get("cross_column_rules", "").split(";"))
-        _auto_cross = [x for x in _auto_cross if x.strip()]
-        _df_cols_lower = {c.lower(): c for c in df.columns}
-
-
-        # trade_date < settle_date
-        _td = next((v for k, v in _df_cols_lower.items() if "trade_date" in k or k == "trd_dt"), None)
-        _sd = next((v for k, v in _df_cols_lower.items() if "settle_date" in k or "settlement_date" in k or k == "setl_dt"), None)
-        if _td and _sd and not any("settle" in r and "trade" in r for r in _auto_cross):
-          _hints["bfsi_validators"] = list(_hints.get("bfsi_validators", [])) + [
-            f"not_future_date:{_td}"
-          ]
-
-
-        # notional > 0
-
-
-        _notional = next((v for k, v in _df_cols_lower.items() if k in
-          ("notional","notional_amount","face_value","face_amount")), None)
-        if _notional:
-          _existing_v = {v for v in _hints.get("bfsi_validators", [])}
-          if f"positive:{_notional}" not in _existing_v:
-            _hints.setdefault("bfsi_validators", [])
-            _hints["bfsi_validators"] = list(_hints["bfsi_validators"]) + [f"positive:{_notional}"]
-
-
-        # -- Auto-inject address completeness for known address columns ----
-        _addr_cols = [v for k, v in _df_cols_lower.items()
-              if any(h in k for h in ("address","street","addr","postal"))]
-        if _addr_cols:
-          _addr_v = list(_hints.get("bfsi_validators", []))
-          for _ac in _addr_cols[:3]:
-            if f"address_complete:{_ac}" not in _addr_v:
-              _addr_v.append(f"address_complete:{_ac}")
-          _hints["bfsi_validators"] = _addr_v
+        # -- Deterministic rule auto-injection (BFSI pack + domain-accuracy +
+        # temporal / notional>0 / address-completeness validators). Shared with
+        # the AI run via this helper so the AI run is a strict SUPERSET of this
+        # Standard run -- it applies the same floor, then only adds on top.
+        _hints = _augment_quality_hints_deterministic(df, _hints, _bfsi_pack)
 
 
         # Pair with the other file for cross-file mapping recon (if two files uploaded)
@@ -16393,6 +16390,22 @@ async def rerun_quality_json(session_id: str, request: Request):
             _hints["col_config"] = list(_hints.get("col_config") or []) + _regex_entries
     except Exception:
         pass
+
+    # -- Guarantee the AI run is a strict SUPERSET of the Standard run --
+    # Apply the SAME deterministic floor Standard uses (domain / temporal /
+    # notional / address validators), then union the LLM-inferred validators on
+    # top. Drop LLM nullable_hints: relaxing nullability could hide a
+    # completeness fail Standard reports, which would break the superset.
+    _hints.pop("nullable_hints", None)
+    _baseline_hints = _augment_quality_hints_deterministic(df, {}, "")
+    _merged_validators = list(_baseline_hints.get("bfsi_validators", []))
+    _seen_val = set(_merged_validators)
+    for _v in _hints.get("bfsi_validators", []):
+        if _v not in _seen_val:
+            _merged_validators.append(_v)
+            _seen_val.add(_v)
+    if _merged_validators:
+        _hints["bfsi_validators"] = _merged_validators
 
     try:
         q = await _asyncio.to_thread(analyze_quality_full, df, fname, {}, [], _hints, None, None)
