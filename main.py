@@ -6233,6 +6233,35 @@ def _dq_score(total_rows: int, dup_rows: int, cols: list[dict],
     else:
         timeliness = None  # inactive -- weight redistributed
 
+    # ---- Integrity (opt-in) -- referential / relational rules --------------
+    # Distinct DAMA/BCBS-239 dimension: does the data hold together across
+    # columns/records (referential integrity, cross-column conditionals, T+2
+    # settlement)? Active only when at least one such rule ran. Severity-weighted
+    # pass rate, same as validity but on the integrity subset.
+    _INTEGRITY_TYPES = {"referential_integrity", "conditional", "settlement_date_t2",
+                        "cross_file", "cross_column"}
+    _integ_rules = [r for r in non_skipped if r.get("rule_type") in _INTEGRITY_TYPES]
+    if _integ_rules:
+        _it = sum(r.get("total", 0) * _SEV_WEIGHT.get(r.get("severity", "major"), 2.0) for r in _integ_rules)
+        _ip = sum(r.get("passed", 0) * _SEV_WEIGHT.get(r.get("severity", "major"), 2.0) for r in _integ_rules)
+        integrity = _ip / _it * 100 if _it else 100.0
+    else:
+        integrity = None  # inactive -- weight redistributed
+
+    # ---- Reasonableness / Plausibility (opt-in) -- value-sanity rules ------
+    # Are the values plausible for the business (positive amounts, in-range,
+    # dates not in the future, row counts within bounds)? Active only when at
+    # least one such rule ran.
+    _REASON_TYPES = {"positive", "min", "max", "range", "between",
+                     "not_future_date", "row_count_min", "row_count_max"}
+    _reason_rules = [r for r in non_skipped if r.get("rule_type") in _REASON_TYPES]
+    if _reason_rules:
+        _rt = sum(r.get("total", 0) * _SEV_WEIGHT.get(r.get("severity", "major"), 2.0) for r in _reason_rules)
+        _rp = sum(r.get("passed", 0) * _SEV_WEIGHT.get(r.get("severity", "major"), 2.0) for r in _reason_rules)
+        reasonableness = _rp / _rt * 100 if _rt else 100.0
+    else:
+        reasonableness = None  # inactive -- weight redistributed
+
     # ---- Dynamic weight allocation ------------------------------------------
     # Inactive dimensions (None) redistribute their weight to Completeness.
     w_completeness = 0.20
@@ -6255,6 +6284,13 @@ def _dq_score(total_rows: int, dup_rows: int, cols: list[dict],
         w_completeness += w_accuracy
         w_accuracy = 0.0
 
+    # Integrity & Reasonableness carve their weight FROM completeness only when
+    # active (net-zero when inactive), so existing runs without such rules score
+    # exactly as before -- no silent re-weighting of the base dimensions.
+    w_integrity = 0.05 if integrity is not None else 0.0
+    w_reasonableness = 0.05 if reasonableness is not None else 0.0
+    w_completeness -= (w_integrity + w_reasonableness)
+
     score = (
         completeness   * w_completeness +
         uniqueness    * w_uniqueness +
@@ -6264,7 +6300,9 @@ def _dq_score(total_rows: int, dup_rows: int, cols: list[dict],
         (precision or 100.0) * w_precision +
 
         (timeliness or 100.0) * w_timeliness +
-        (accuracy or 100.0) * w_accuracy
+        (accuracy or 100.0) * w_accuracy +
+        (integrity or 100.0) * w_integrity +
+        (reasonableness or 100.0) * w_reasonableness
     )
 
     score = round(min(100.0, max(0.0, score)), 1)
@@ -6281,11 +6319,15 @@ def _dq_score(total_rows: int, dup_rows: int, cols: list[dict],
         "precision":   round(precision, 1) if precision is not None else None,
         "timeliness":   round(timeliness, 1) if timeliness is not None else None,
         "accuracy":    round(accuracy, 1) if accuracy is not None else None,
+        "integrity":    round(integrity, 1) if integrity is not None else None,
+        "reasonableness": round(reasonableness, 1) if reasonableness is not None else None,
         "precision_active": precision is not None,
 
 
         "timeliness_active": timeliness is not None,
         "accuracy_active":  accuracy is not None,
+        "integrity_active": integrity is not None,
+        "reasonableness_active": reasonableness is not None,
         "severity_breakdown": severity_breakdown,
         "weights": {
             "completeness": round(w_completeness, 2),
@@ -6296,6 +6338,8 @@ def _dq_score(total_rows: int, dup_rows: int, cols: list[dict],
             "precision":  round(w_precision, 2),
             "timeliness":  round(w_timeliness, 2),
             "accuracy":   round(w_accuracy, 2),
+            "integrity":  round(w_integrity, 2),
+            "reasonableness": round(w_reasonableness, 2),
         },
     }
 
@@ -14544,6 +14588,10 @@ def _quality_response_payload(q: dict, session_id: str, total_elapsed, proc_logs
         dims["Timeliness"] = dq.get("timeliness")
     if dq.get("accuracy_active"):
         dims["Accuracy"] = dq.get("accuracy")
+    if dq.get("integrity_active"):
+        dims["Integrity"] = dq.get("integrity")
+    if dq.get("reasonableness_active"):
+        dims["Reasonableness"] = dq.get("reasonableness")
 
     columns_detail = []
     for c in q.get("columns", []):
@@ -16674,6 +16722,8 @@ async def rerun_quality_json(session_id: str, request: Request):
                 "precision":    dq.get("precision"),
                 "timeliness":   dq.get("timeliness"),
                 "accuracy":     dq.get("accuracy"),
+                "integrity":    dq.get("integrity"),
+                "reasonableness": dq.get("reasonableness"),
                 "rule_fails":   len(fails),
                 "rule_warns":   len(warnings),
                 "rule_total":   len(q.get("rule_results", [])),

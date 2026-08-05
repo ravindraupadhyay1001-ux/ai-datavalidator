@@ -2235,12 +2235,14 @@ function renderAiReportCard(context, data){
     // Show all 8 dimensions. The 3 opt-in ones (precision/timeliness/accuracy)
     // stay null unless activated, so render them greyed with a "why" note --
     // same behaviour as the Standard report so the AI card isn't misleading.
-    const allDims = ['completeness','uniqueness','validity','consistency','conformity','precision','timeliness','accuracy'];
+    const allDims = ['completeness','uniqueness','validity','consistency','conformity','precision','timeliness','accuracy','integrity','reasonableness'];
     const measured = allDims.filter(k => data[k] != null);
     const notMeasured = [
       ['precision','set "Decimals" on a numeric column to measure'],
       ['timeliness','set "Max age (d)" on a date column to measure'],
       ['accuracy','needs reference values to check against (data dictionary / allowed values)'],
+      ['integrity','needs referential / cross-column rules (e.g. FK checks, T+2 settlement)'],
+      ['reasonableness','needs value-sanity rules (positive, min/max, not-future-date)'],
     ].filter(([k]) => data[k] == null);
     return `${_llmErrorBanner(data)}<div class="grid grid-cols-4 gap-3 mb-4">
       ${stat('DQ Score', data.score!=null?data.score.toFixed(1):'&mdash;', '#059669')}
@@ -2514,6 +2516,8 @@ function renderQualityReport(data, elapsedStr, activeTab, aiCardHTML){
       ['Precision','Not measured — set "Decimals" for a numeric column in the override grid below'],
       ['Timeliness','Not measured — set "Max age (d)" for a date column in the override grid below'],
       ['Accuracy','Not measured — needs reference values to check against (upload Reference Docs)'],
+      ['Integrity','Not measured — needs referential / cross-column rules (FK checks, T+2 settlement)'],
+      ['Reasonableness','Not measured — needs value-sanity rules (positive, min/max, not-future-date)'],
     ].filter(([k])=>dim[k]==null).map(([k,why])=>
       `<div class="text-center" title="${why}"><div class="text-2xl font-extrabold text-gray-300">&mdash;</div><div class="text-xs text-gray-400 mt-0.5">${k}</div></div>`
     ).join('')}</div>
