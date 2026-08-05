@@ -244,6 +244,21 @@
         <button type="button" onclick="addCmpSource()" id="cmp-add-source-btn" class="btn-ghost btn rounded-lg px-3 py-1.5 text-xs">&#10011; Add source (for 3+ way reconciliation)</button>
         <span id="cmp-source-count" class="badge hidden" style="background:rgba(31,111,107,.12);color:#1f6f6b"></span>
       </div>
+      <!-- Reference Docs for reconciliation: mapping spec / matching rules /
+           dictionary. AI-Copilot only (toggled by setCmpMode). -->
+      <details id="cmp-advanced" class="card rounded-xl p-4 mb-4 text-sm hidden">
+        <summary class="cursor-pointer text-gray-400">&#128218; Reference Docs for AI Copilot &mdash; mapping spec, matching rules, data dictionary</summary>
+        <div class="mt-3">
+          <div class="text-xs text-gray-500 mb-2">The AI Copilot reads these to learn how the two sides map (column &amp; value mappings), the matching rules and tolerances &mdash; so it reconciles automatically against your spec. Any format is auto-classified.</div>
+          <input id="cmp-refdocs" type="file" multiple class="block w-full text-sm mt-1">
+          <div id="cmp-refdocs-chips" class="flex flex-wrap gap-1 mt-2"></div>
+          <div class="flex items-center gap-2 mt-2 flex-wrap">
+            <span class="text-xs text-gray-500">&hellip;and/or pull from one or more saved connectors (SharePoint, Confluence, DB, S3&hellip;)</span>
+            <select id="cmp-refconn" class="inp text-xs conn-select" style="width:210px"><option value="">&#128268; Add connector&hellip;</option></select>
+          </div>
+          <div id="cmp-refconn-chips" class="flex flex-wrap gap-1 mt-2"></div>
+        </div>
+      </details>
       <div class="flex gap-3 items-center flex-wrap">
         <div class="seg" id="cmp-seg">
           <span class="seg-btn active" data-mode="standard" onclick="setCmpMode('standard')">Standard</span>
@@ -1146,7 +1161,7 @@ async function emailReport(sessionId){
   toast(r.error ? ('❌ '+r.error) : '✅ Email sent.');
 }
 
-async function postForm(action, fileInputs, extra, refDocInputId){
+async function postForm(action, fileInputs, extra, refDocInputId, extraFiles){
   const fd = new FormData(); fd.append('action', action);
   for (const spec of fileInputs){
     const [field, id, connField, connId] = spec;
@@ -1173,6 +1188,12 @@ async function postForm(action, fileInputs, extra, refDocInputId){
   if (refDocInputId){
     const el = document.getElementById(refDocInputId);
     if (el && el.files) for (const f of el.files) fd.append('ref_docs', f);
+  }
+  // extraFiles: {backendFieldName: File[]} -- lets a caller send an accumulated
+  // file bucket under a chosen field name (e.g. recon's ref_docs_cmp -> ref_docs)
+  // without colliding with another tab's bucket of the same field name.
+  for (const [field, files] of Object.entries(extraFiles||{})) {
+    for (const f of (files||[])) fd.append(field, f);
   }
   const r = await fetch('/analyze',{method:'POST',body:fd});
   return { ok:r.ok, data: await r.json() };
@@ -1302,6 +1323,23 @@ function removeMultiConn(field, idx, chipId, fileField){
   .forEach(([selectId,chipId,field,fileField])=>wireMultiConnSelect(selectId,chipId,field,fileField));
 // DQ Reference Docs: allow picking multiple connectors (chips), sent as kb_conn_ids.
 wireMultiConnSelect('q-refconn','q-refconn-chips','kb_conn_ids', null);
+// Reconciliation Reference Docs: same multi-file + multi-connector accumulation.
+// Uses its own field names (ref_docs_cmp / kb_conn_ids_cmp) so it never collides
+// with the Data Quality pickers' _multiFiles/_multiConns buckets.
+wireMultiConnSelect('cmp-refconn','cmp-refconn-chips','kb_conn_ids_cmp', null);
+(function(){
+  const inp = document.getElementById('cmp-refdocs');
+  if(!inp) return;
+  _multiFiles['ref_docs_cmp'] = _multiFiles['ref_docs_cmp'] || [];
+  inp.addEventListener('change', () => {
+    for(const f of inp.files){
+      if(!_multiFiles['ref_docs_cmp'].some(e=>e.name===f.name && e.size===f.size))
+        _multiFiles['ref_docs_cmp'].push(f);
+    }
+    inp.value = '';
+    _renderMultiChips('cmp-refdocs-chips','ref_docs_cmp', null);
+  });
+})();
 // DQ Reference Docs uploads: a native <input multiple> REPLACES its selection on
 // every pick, so accumulate files across picks into _multiFiles['ref_docs'] and
 // show removable chips -- same UX as the dataset dropzones/connector picker.
@@ -1413,6 +1451,8 @@ function setCmpMode(mode){
   // Document Diff is a Standard-only option -- hide (and clear) it in AI mode.
   const dd = document.getElementById('cmp-docdiff-wrap');
   if(dd){ dd.classList.toggle('hidden', mode!=='standard'); if(mode!=='standard') document.getElementById('cmp-docdiff').checked=false; }
+  // Reference Docs is an AI-only capability -- show only in AI mode.
+  document.getElementById('cmp-advanced')?.classList.toggle('hidden', mode!=='ai');
 }
 function runReconciliation(){ return cmpMode==='standard' ? runCompare() : runCompareAI(); }
 
@@ -2130,9 +2170,14 @@ async function runCompareAI(){
   // "0 upload(s) + 0 connection(s)" even though the connector chip showed
   // as selected in the UI.
   try{
+    // Reference Docs (mapping spec / rules / dictionary) for the recon AI run --
+    // uploads from the cmp-refdocs bucket + any picked connectors.
+    const _cmpExtra = {ai_prep:'1'};
+    const _cmpRefConns = (_multiConns['kb_conn_ids_cmp']||[]).map(c=>c.id);
+    if(_cmpRefConns.length) _cmpExtra.kb_conn_ids = _cmpRefConns.join(',');
     const {ok,data}=await postForm('compare',
       [['files_a','cmp-f1','conn_a_ids','cmp-conn1'],['files_b','cmp-f2','conn_b_ids','cmp-conn2'],...cmpExtraFileInputs()],
-      {ai_prep:'1'}, null);
+      _cmpExtra, null, {ref_docs: _multiFiles['ref_docs_cmp']||[]});
     if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
     out.innerHTML='<span class="text-gray-400">Applying saved rules and running the AI-driven reconciliation&hellip;</span>';
     let finalData = data;
