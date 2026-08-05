@@ -2688,10 +2688,6 @@ async function saveOverridesToMemory(){
 function _aiQualityExtras(rd){
   if(!rd) return '';
   const gc = v => v>=90?'#059669':v>=70?'#b45309':'#dc2626';
-  const dimsExtra = [
-    ['precision',  rd.precision,  'Not measured — needs a decimals rule on a numeric column'],
-    ['timeliness', rd.timeliness, 'Not measured — needs a max-age rule on a date column'],
-  ];
   const cc = rd.col_completeness || [];
   // Categorical drift, numeric clusters and per-column/multivariate anomalies live
   // on the dedicated Anomalies tab -- keep only baseline drift and consistency here.
@@ -2704,12 +2700,6 @@ function _aiQualityExtras(rd){
   return `
   <div class="grid grid-cols-3 gap-3 mb-4 text-sm">
     ${stat('Rows', rd.total_rows!=null?rd.total_rows:'&mdash;', '#a855f7')}${stat('Columns', rd.total_cols!=null?rd.total_cols:'&mdash;', '#38bdf8')}${stat('Duplicate rows', rd.duplicate_rows||0, '#f59e0b')}</div>
-  <div class="card rounded-xl p-4 mb-4 text-xs">
-    <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Other dimensions</div>
-    <div class="grid grid-cols-3 gap-3">${dimsExtra.map(([k,v,why])=>v!=null
-      ? `<div class="text-center"><div class="text-xl font-extrabold" style="color:${gc(+v)}">${(+v).toFixed(1)}<span class="text-xs">%</span></div><div class="text-gray-500 mt-0.5">${k}</div></div>`
-      : `<div class="text-center" title="${why}"><div class="text-xl font-extrabold text-gray-300">&mdash;</div><div class="text-gray-400 mt-0.5">${k}</div></div>`).join('')}</div>
-  </div>
   ${cc.length ? `<div class="card rounded-xl p-3 overflow-auto mb-4">
     <div class="text-xs text-gray-400 mb-2">Per-column quality (${cc.length} columns)</div>
     <table class="w-full text-xs"><thead class="text-gray-400"><tr>
