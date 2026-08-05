@@ -16627,6 +16627,7 @@ async def rerun_quality_json(session_id: str, request: Request):
 
                 "precision":    dq.get("precision"),
                 "timeliness":   dq.get("timeliness"),
+                "accuracy":     dq.get("accuracy"),
                 "rule_fails":   len(fails),
                 "rule_warns":   len(warnings),
                 "rule_total":   len(q.get("rule_results", [])),

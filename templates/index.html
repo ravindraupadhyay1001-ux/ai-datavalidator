@@ -2232,18 +2232,30 @@ function _llmErrorBanner(data){
 function renderAiReportCard(context, data){
   if(!data) return '';
   if(context === 'quality'){
-    const dims = ['completeness','uniqueness','validity','consistency','conformity']
-      .filter(k => data[k] != null);
+    // Show all 8 dimensions. The 3 opt-in ones (precision/timeliness/accuracy)
+    // stay null unless activated, so render them greyed with a "why" note --
+    // same behaviour as the Standard report so the AI card isn't misleading.
+    const allDims = ['completeness','uniqueness','validity','consistency','conformity','precision','timeliness','accuracy'];
+    const measured = allDims.filter(k => data[k] != null);
+    const notMeasured = [
+      ['precision','set "Decimals" on a numeric column to measure'],
+      ['timeliness','set "Max age (d)" on a date column to measure'],
+      ['accuracy','needs reference values to check against (data dictionary / allowed values)'],
+    ].filter(([k]) => data[k] == null);
     return `${_llmErrorBanner(data)}<div class="grid grid-cols-4 gap-3 mb-4">
       ${stat('DQ Score', data.score!=null?data.score.toFixed(1):'&mdash;', '#059669')}
       ${stat('Grade', esc(data.grade||'&mdash;'), '#0284c7')}
       ${stat('Rule Fails', data.rule_fails??0, '#dc2626')}
       ${stat('Rule Warnings', data.rule_warns??0, '#b45309')}
     </div>
-    ${dims.length?`<div class="card rounded-xl p-4 mb-4 text-xs">
+    <div class="card rounded-xl p-4 mb-4 text-xs">
       <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Dimensions</div>
-      <div class="grid grid-cols-3 gap-2">${dims.map(k=>`<div><span class="text-gray-500">${esc(k)}:</span> <b>${(+data[k]).toFixed(1)}%</b></div>`).join('')}</div>
-    </div>`:''}
+      <div class="grid grid-cols-4 gap-2">
+        ${measured.map(k=>`<div><span class="text-gray-500">${esc(k)}:</span> <b>${(+data[k]).toFixed(1)}%</b></div>`).join('')}
+        ${notMeasured.map(([k,why])=>`<div title="${esc(why)}"><span class="text-gray-500">${esc(k)}:</span> <b class="text-gray-400">&mdash;</b></div>`).join('')}
+      </div>
+      ${notMeasured.length?`<div class="text-gray-500 mt-2 leading-relaxed">${notMeasured.map(([k,why])=>`<b>${esc(k)}</b> &mdash; ${esc(why)}`).join(' &middot; ')}</div>`:''}
+    </div>
     ${data.ai_summary?`<div class="card rounded-xl p-4 mb-4 text-sm text-gray-300">&#9889; ${esc(data.ai_summary)}</div>`:''}`;
   }
   if(context === 'profile'){
