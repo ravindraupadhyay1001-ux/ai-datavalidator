@@ -295,6 +295,7 @@
         <div class="mt-3">
           <div class="text-xs text-gray-500 mb-2">The AI Copilot reads these to learn your org's terms, rules &amp; mappings (semantic search) and author the right checks. Any format is auto-classified &mdash; upload files, or pull from a saved connector.</div>
           <input id="q-refdocs" type="file" multiple class="block w-full text-sm mt-1">
+          <div id="q-refdocs-chips" class="flex flex-wrap gap-1 mt-2"></div>
           <div class="flex items-center gap-2 mt-2 flex-wrap">
             <span class="text-xs text-gray-500">&hellip;and/or pull from one or more saved connectors (SharePoint, Confluence, DB, S3&hellip;)</span>
             <select id="q-refconn" class="inp text-xs conn-select" style="width:210px"><option value="">&#128268; Add connector&hellip;</option></select>
@@ -1301,6 +1302,22 @@ function removeMultiConn(field, idx, chipId, fileField){
   .forEach(([selectId,chipId,field,fileField])=>wireMultiConnSelect(selectId,chipId,field,fileField));
 // DQ Reference Docs: allow picking multiple connectors (chips), sent as kb_conn_ids.
 wireMultiConnSelect('q-refconn','q-refconn-chips','kb_conn_ids', null);
+// DQ Reference Docs uploads: a native <input multiple> REPLACES its selection on
+// every pick, so accumulate files across picks into _multiFiles['ref_docs'] and
+// show removable chips -- same UX as the dataset dropzones/connector picker.
+(function(){
+  const inp = document.getElementById('q-refdocs');
+  if(!inp) return;
+  _multiFiles['ref_docs'] = _multiFiles['ref_docs'] || [];
+  inp.addEventListener('change', () => {
+    for(const f of inp.files){
+      if(!_multiFiles['ref_docs'].some(e=>e.name===f.name && e.size===f.size))
+        _multiFiles['ref_docs'].push(f);
+    }
+    inp.value = '';  // reset so the next pick ADDS instead of replacing
+    _renderMultiChips('q-refdocs-chips','ref_docs', null);
+  });
+})();
 
 // Fuzzy matching has no pre-run UI -- teach it via Dataset Memory instead
 // (e.g. "remember: fuzzy match on customer_name"); the AI run routes to the
@@ -2703,7 +2720,7 @@ async function runQualityAI(){
   const _aiExtra = {};
   const _refConnIds = (_multiConns['kb_conn_ids']||[]).map(c=>c.id);
   if(_refConnIds.length) _aiExtra.kb_conn_ids = _refConnIds.join(',');
-  const {ok,data}=await postForm('quality_ai',[['files','q-f1','conn_ids','q-conn1']], _aiExtra, 'q-refdocs');
+  const {ok,data}=await postForm('quality_ai',[['files','q-f1','conn_ids','q-conn1'],['ref_docs','q-refdocs']], _aiExtra, null);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||data.error||'Error'}</div>`; return; }
   out.innerHTML = '<span class="text-gray-400">Applying saved rules and running the AI-driven data quality analysis&hellip;</span>';
   let reportData = null, activeSession = data.session_id;
