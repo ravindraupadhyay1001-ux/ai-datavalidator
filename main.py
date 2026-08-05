@@ -15735,6 +15735,16 @@ async def analyze(request: Request):
       "excluded_cols": excluded_cols,
       "key_columns":  key_columns,
       "dataset_fingerprint": _dataset_fingerprint,
+      # Classified reference docs (dictionary / rules / mapping) shaped for the
+      # AI Copilot's semantic-search tool (agent/rag.py). Only non-empty when the
+      # user attached reference material in an AI run -- /agent-chat feeds this to
+      # make_tool_dispatch() so query_reference_docs actually searches them.
+      "_ref_docs": {
+          "data_dict": ref_result.get("data_dict") or {},
+          "rules":     ref_result.get("rules") or [],
+          "mapping":   ref_result.get("mapping_spec") or [],
+          "documents": {},
+      },
     }
 
     # -- Register files with LangChain agent (enables /agent-chat memory + tools) --
@@ -18986,7 +18996,10 @@ async def agent_chat(request: Request):
         # not the raw internal storage (quality_reports/pairs/dataframes/...) --
         # merge in the digest snapshot captured when that response was built.
         session_results = {**_raw_results, **_raw_results.get("_digest", {})}
-        dispatch = make_tool_dispatch(session_results, {})
+        # Reference docs attached in an AI run -- lets the Copilot's
+        # query_reference_docs tool (hybrid semantic + keyword search) actually
+        # search the org's dictionary/rules/mapping instead of getting nothing.
+        dispatch = make_tool_dispatch(session_results, session_results.get("_ref_docs") or {})
         tools_called: list[str] = []
 
         def _tracked_dispatch(name, arguments):
