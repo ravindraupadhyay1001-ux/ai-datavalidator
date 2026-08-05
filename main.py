@@ -1880,6 +1880,183 @@ def _parse_pdf(raw: bytes) -> tuple[pd.DataFrame, str]:
     return pd.DataFrame(), full_text
 
 
+# ----------------------------------------------------------------------
+# Document Diff -- text-level reconciliation for unstructured files
+# ----------------------------------------------------------------------
+# When two inputs are real documents (PDF prose, DOCX, logs, plain text) the
+# normal keyed row-by-row recon is meaningless -- the DataFrame it compares is
+# an inferred/guessed table. Document Diff instead extracts each file's actual
+# text and produces a git-style line diff with word-level highlighting, which is
+# the "real" diff a human expects for such files. Stdlib only (difflib/zipfile).
+
+def _docx_to_text(raw: bytes) -> str:
+    # Extract paragraph text from a .docx (Office Open XML) without python-docx:
+    # a .docx is a zip whose word/document.xml holds the body. We pull the text
+    # runs (<w:t>) per paragraph (<w:p>) and join paragraphs with newlines.
+    import zipfile
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as z:
+            xml = z.read("word/document.xml").decode("utf-8", "replace")
+    except Exception:
+        return ""
+    paras = re.split(r"</w:p>", xml)
+    lines: list[str] = []
+    for p in paras:
+        runs = re.findall(r"<w:t[^>]*>(.*?)</w:t>", p, re.DOTALL)
+        line = "".join(runs)
+        # Un-escape the handful of XML entities Word emits
+        for a, b in (("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"),
+                     ("&quot;", '"'), ("&apos;", "'")):
+            line = line.replace(a, b)
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _extract_document_text(raw: bytes, filename: str) -> str:
+    # Best-effort plain-text extraction for Document Diff. Handles PDF and DOCX
+    # specially; everything else (.log/.txt/.csv/.json/.xml/...) is decoded as
+    # text so ANY file type can be diffed ("compare all possible").
+    ext = os.path.splitext(filename or "")[1].lower()
+    try:
+        if ext == ".pdf":
+            _df, text = _parse_pdf(raw)
+            if text.strip():
+                return text
+            # Scanned/image PDF with no extractable text
+            return ""
+        if ext in (".docx",):
+            txt = _docx_to_text(raw)
+            if txt.strip():
+                return txt
+            # Fall through to raw decode if it wasn't a real OOXML docx
+        enc = chardet.detect(raw).get("encoding") or "utf-8"
+        return raw.decode(enc, errors="replace")
+    except Exception:
+        try:
+            return raw.decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+
+
+def _word_segments(a: str, b: str) -> tuple[list[dict], list[dict]]:
+    # Word-level diff of two changed lines. Returns (left_segments, right_segments)
+    # where each segment is {"t": text, "c": 1 if changed else 0}. The frontend
+    # escapes the text and highlights c==1 spans.
+    aw = re.findall(r"\S+|\s+", a)
+    bw = re.findall(r"\S+|\s+", b)
+    sm = SequenceMatcher(None, aw, bw)
+    left: list[dict] = []
+    right: list[dict] = []
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        lt = "".join(aw[i1:i2])
+        rt = "".join(bw[j1:j2])
+        if tag == "equal":
+            if lt:
+                left.append({"t": lt, "c": 0})
+            if rt:
+                right.append({"t": rt, "c": 0})
+        elif tag == "replace":
+            left.append({"t": lt, "c": 1})
+            right.append({"t": rt, "c": 1})
+        elif tag == "delete":
+            left.append({"t": lt, "c": 1})
+        elif tag == "insert":
+            right.append({"t": rt, "c": 1})
+    return left, right
+
+
+def _collapse_equal(rows: list[dict], context: int = 3) -> list[dict]:
+    # Collapse long runs of unchanged lines into a {"type":"gap","count":N}
+    # marker, keeping `context` lines of surrounding context around each change
+    # (git-style). Keeps the payload small for large documents.
+    n = len(rows)
+    keep = [False] * n
+    for idx in range(n):
+        if rows[idx]["type"] != "equal":
+            for j in range(max(0, idx - context), min(n, idx + context + 1)):
+                keep[j] = True
+    out: list[dict] = []
+    i = 0
+    while i < n:
+        if keep[i]:
+            out.append(rows[i])
+            i += 1
+        else:
+            j = i
+            while j < n and not keep[j]:
+                j += 1
+            out.append({"type": "gap", "count": j - i})
+            i = j
+    return out
+
+
+def _build_document_diff(name_a: str, text_a: str,
+                         name_b: str, text_b: str) -> dict:
+    # Produce a side-by-side line diff (with word-level highlighting on changed
+    # lines) between two documents' extracted text. Returned shape is consumed
+    # by renderDocDiff() in the frontend.
+    a = text_a.splitlines()
+    b = text_b.splitlines()
+    sm = SequenceMatcher(None, a, b)
+    rows: list[dict] = []
+    added = removed = changed = unchanged = 0
+    la = lb = 0
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            for k in range(i2 - i1):
+                la += 1
+                lb += 1
+                unchanged += 1
+                rows.append({"type": "equal", "ln_l": la, "ln_r": lb,
+                             "left": a[i1 + k], "right": b[j1 + k]})
+        elif tag == "replace":
+            left_lines = a[i1:i2]
+            right_lines = b[j1:j2]
+            for k in range(max(len(left_lines), len(right_lines))):
+                l = left_lines[k] if k < len(left_lines) else None
+                r = right_lines[k] if k < len(right_lines) else None
+                if l is not None and r is not None:
+                    la += 1
+                    lb += 1
+                    changed += 1
+                    ls, rs = _word_segments(l, r)
+                    rows.append({"type": "change", "ln_l": la, "ln_r": lb,
+                                 "left": l, "right": r,
+                                 "left_segs": ls, "right_segs": rs})
+                elif l is not None:
+                    la += 1
+                    removed += 1
+                    rows.append({"type": "del", "ln_l": la, "left": l})
+                else:
+                    lb += 1
+                    added += 1
+                    rows.append({"type": "add", "ln_r": lb, "right": r})
+        elif tag == "delete":
+            for k in range(i1, i2):
+                la += 1
+                removed += 1
+                rows.append({"type": "del", "ln_l": la, "left": a[k]})
+        elif tag == "insert":
+            for k in range(j1, j2):
+                lb += 1
+                added += 1
+                rows.append({"type": "add", "ln_r": lb, "right": b[k]})
+
+    identical = (added == 0 and removed == 0 and changed == 0)
+    return {
+        "doc_diff": True,
+        "identical": identical,
+        "files": {
+            "file1": {"name": name_a, "lines": len(a), "chars": len(text_a)},
+            "file2": {"name": name_b, "lines": len(b), "chars": len(text_b)},
+        },
+        "counts": {"added": added, "removed": removed,
+                   "changed": changed, "unchanged": unchanged},
+        "similarity": round(sm.ratio() * 100, 1),
+        "rows": _collapse_equal(rows),
+    }
+
+
 def _parse_bloomberg_dlx(raw: bytes, enc: str) -> pd.DataFrame:
     # Parse Bloomberg Data License eXchange (BDL/DLX) pipe-delimited files.
     # Bloomberg DL files have a metadata header section (START-OF-FILE ...
@@ -14528,6 +14705,46 @@ async def analyze(request: Request):
             raise HTTPException(400, "No data files or connections provided. Please upload a file or select a saved connection.")
         if len(files) + len(_conn_ids) > 6:
             raise HTTPException(400, "Maximum 6 data sources supported.")
+
+    # -- Document Diff short-circuit (Standard reconciliation only) --
+    # When the user ticks "Compare as documents", skip the keyed row-by-row recon
+    # entirely and return a text-level diff of the two files' actual content. This
+    # is the sensible result for PDFs/DOCX/logs/text whose inferred table would
+    # otherwise produce a meaningless reconciliation.
+    _document_diff = str(form.get("document_diff", "")).strip().lower() in ("1", "true", "on", "yes")
+    if action == "compare" and _document_diff:
+        if not files_a_uploads or not files_b_uploads:
+            raise HTTPException(
+                400,
+                "Document Diff compares uploaded files' text. Please upload a file on "
+                "both Dataset A and Dataset B (live connections aren't supported for this mode).",
+            )
+
+        def _side_text(uploads: list[UploadFile]) -> tuple[str, str]:
+            # Concatenate the text of all files on one side; return (label, text).
+            names: list[str] = []
+            chunks: list[str] = []
+            for f in uploads:
+                f.file.seek(0)
+                raw = f.file.read()
+                names.append(f.filename)
+                chunks.append(_extract_document_text(raw, f.filename))
+            return ", ".join(names), "\n".join(chunks)
+
+        name_a, text_a = _side_text(files_a_uploads)
+        name_b, text_b = _side_text(files_b_uploads)
+        _log(f"Document Diff: '{name_a}' ({len(text_a)} chars) vs '{name_b}' ({len(text_b)} chars)")
+        if not text_a.strip() and not text_b.strip():
+            raise HTTPException(
+                400,
+                "Could not extract any readable text from either file (a scanned/image-only "
+                "PDF has no selectable text, for example).",
+            )
+        diff = _build_document_diff(name_a, text_a, name_b, text_b)
+        diff["session_id"] = uuid.uuid4().hex
+        diff["logs"] = proc_logs
+        diff["elapsed"] = round(time.time() - _t0, 3)
+        return JSONResponse(diff)
 
     def _load_upload_list(upload_list: list[UploadFile]) -> list[tuple[str, pd.DataFrame]]:
         # Load a list of UploadFile objects into (filename, DataFrame) tuples.

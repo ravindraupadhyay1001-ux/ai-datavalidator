@@ -252,6 +252,12 @@
         <button onclick="runReconciliation()" class="btn px-5 py-2 rounded-lg text-sm font-semibold shadow-lg shadow-sky-900/30">&#10005; Run Reconciliation</button>
         <span class="text-gray-500 text-xs" id="cmp-mode-help">Standard &mdash; direct apple-to-apple match on auto-inferred keys, for files that already line up.</span>
       </div>
+      <label id="cmp-docdiff-wrap" class="flex items-start gap-2 mt-3 text-sm cursor-pointer">
+        <input type="checkbox" id="cmp-docdiff" class="accent-sky-500 mt-0.5">
+        <span class="text-gray-400">&#128196; Compare as documents (real text diff)
+          <span class="block text-xs text-gray-500">For PDFs, DOCX, logs &amp; text where the files aren't tables &mdash; shows a side-by-side line diff of the actual content instead of a row-by-row reconciliation.</span>
+        </span>
+      </label>
       <div id="cmp-out" class="mt-6"></div>
     </section>
 
@@ -1383,6 +1389,9 @@ function setCmpMode(mode){
   document.getElementById('cmp-mode-help').textContent = mode==='standard'
     ? 'Standard — direct apple-to-apple match on auto-inferred keys, for files that already line up.'
     : 'AI Copilot — for misaligned/complex files: applies your saved rules (rename, combine/split, fallback & computed keys, tolerances) to translate both sides into an apple-to-apple match, then reconciles.';
+  // Document Diff is a Standard-only option -- hide (and clear) it in AI mode.
+  const dd = document.getElementById('cmp-docdiff-wrap');
+  if(dd){ dd.classList.toggle('hidden', mode!=='standard'); if(mode!=='standard') document.getElementById('cmp-docdiff').checked=false; }
 }
 function runReconciliation(){ return cmpMode==='standard' ? runCompare() : runCompareAI(); }
 
@@ -1842,13 +1851,92 @@ async function runCompare(){
   const out=document.getElementById('cmp-out'); out.innerHTML='<span class="text-gray-400">Comparing&hellip;</span>';
   const t0 = performance.now();
   const extra = {};
+  if(document.getElementById('cmp-docdiff')?.checked) extra.document_diff='1';
   const {ok,data}=await postForm('compare',
     [['files_a','cmp-f1','conn_a_ids','cmp-conn1'],['files_b','cmp-f2','conn_b_ids','cmp-conn2'],...cmpExtraFileInputs()],
     extra, null);
   if(!ok){ out.innerHTML=`<div class="text-red-400">${data.detail||'Error'}</div>`; return; }
+  if(data.doc_diff){ renderDocDiff(data, t0); return; }  // text-level document diff (opt-in)
   if(data.nway){ renderNwayResult(data, t0); return; }  // handles both exact-key and fuzzy N-way shapes
   if(data.fuzzy){ renderFuzzyResult(data, t0); return; }
   renderCompareResult(data, t0);
+}
+
+// ---------- Reconciliation: Document Diff (text-level) result ----------
+function _docSegHTML(segs){
+  // Render word-level segments; changed words (c==1) get a highlight background.
+  return (segs||[]).map(s=> s.c
+    ? `<span class="dd-word">${esc(s.t)}</span>`
+    : esc(s.t)).join('');
+}
+function renderDocDiff(data, t0){
+  const out=document.getElementById('cmp-out');
+  const f1=data.files?.file1||{}, f2=data.files?.file2||{};
+  const c=data.counts||{};
+  const sim = data.similarity;
+  const simColor = sim>=95?'#059669':(sim>=70?'#b45309':'#dc2626');
+  const changes = (c.added||0)+(c.removed||0)+(c.changed||0);
+
+  const summaryHTML = `
+    <style>
+      .dd-tbl{width:100%;border-collapse:collapse;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;table-layout:fixed}
+      .dd-tbl td{vertical-align:top;padding:1px 8px;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere}
+      .dd-ln{width:44px;text-align:right;color:#94a3b8;user-select:none;background:rgba(148,163,184,.06)}
+      .dd-side{width:calc(50% - 44px)}
+      .dd-del{background:rgba(220,38,38,.09)} .dd-add{background:rgba(5,150,105,.10)}
+      .dd-chg{background:rgba(217,119,6,.08)}
+      .dd-word{background:rgba(217,119,6,.28);border-radius:2px}
+      .dd-add .dd-word{background:rgba(5,150,105,.28)} .dd-del .dd-word{background:rgba(220,38,38,.24)}
+      .dd-gap td{background:rgba(148,163,184,.05);color:#94a3b8;text-align:center;font-style:italic;padding:3px}
+      .dd-empty{background:rgba(148,163,184,.04)}
+    </style>
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+      <span class="badge" style="background:rgba(2,132,199,.12);color:#0369a1">&#128196; Document diff</span>
+      ${data.identical
+        ? `<span class="badge" style="background:rgba(5,150,105,.14);color:#059669">&#10003; Files are identical</span>`
+        : `<span class="badge" style="background:${simColor}22;color:${simColor}">${sim}% similar</span>`}
+    </div>
+    <div class="grid grid-cols-2 gap-4 mb-4">
+      <div class="card rounded-xl p-4"><div class="text-xs font-semibold text-gray-300 mb-1 truncate">FILE 1 &mdash; ${esc((f1.name||'').toUpperCase())}</div>
+        <div class="flex gap-6 mt-2"><div><div class="text-2xl font-bold">${f1.lines??'&mdash;'}</div><div class="text-xs text-gray-500">lines</div></div>
+        <div><div class="text-2xl font-bold">${(f1.chars??0).toLocaleString()}</div><div class="text-xs text-gray-500">chars</div></div></div></div>
+      <div class="card rounded-xl p-4"><div class="text-xs font-semibold text-gray-300 mb-1 truncate">FILE 2 &mdash; ${esc((f2.name||'').toUpperCase())}</div>
+        <div class="flex gap-6 mt-2"><div><div class="text-2xl font-bold">${f2.lines??'&mdash;'}</div><div class="text-xs text-gray-500">lines</div></div>
+        <div><div class="text-2xl font-bold">${(f2.chars??0).toLocaleString()}</div><div class="text-xs text-gray-500">chars</div></div></div></div>
+    </div>
+    <div class="grid grid-cols-4 gap-3 mb-4">
+      ${stat('Lines changed', c.changed??0, '#b45309')}
+      ${stat('Lines added', c.added??0, '#059669')}
+      ${stat('Lines removed', c.removed??0, '#dc2626')}
+      ${stat('Unchanged', c.unchanged??0, '#38bdf8')}
+    </div>`;
+
+  let diffHTML;
+  if(data.identical){
+    diffHTML = `<div class="card rounded-xl p-6 text-center text-sm text-gray-400">&#10003; The two documents' text is identical &mdash; no differences to show.</div>`;
+  } else {
+    const body = (data.rows||[]).map(r=>{
+      if(r.type==='gap') return `<tr class="dd-gap"><td colspan="4">&middot;&middot;&middot; ${r.count} unchanged line${r.count===1?'':'s'} &middot;&middot;&middot;</td></tr>`;
+      if(r.type==='equal') return `<tr><td class="dd-ln">${r.ln_l}</td><td class="dd-side">${esc(r.left)}</td><td class="dd-ln">${r.ln_r}</td><td class="dd-side">${esc(r.right)}</td></tr>`;
+      if(r.type==='change') return `<tr><td class="dd-ln">${r.ln_l}</td><td class="dd-side dd-chg">${_docSegHTML(r.left_segs)}</td><td class="dd-ln">${r.ln_r}</td><td class="dd-side dd-chg">${_docSegHTML(r.right_segs)}</td></tr>`;
+      if(r.type==='del') return `<tr><td class="dd-ln">${r.ln_l}</td><td class="dd-side dd-del">${esc(r.left)}</td><td class="dd-ln"></td><td class="dd-side dd-empty"></td></tr>`;
+      if(r.type==='add') return `<tr><td class="dd-ln"></td><td class="dd-side dd-empty"></td><td class="dd-ln">${r.ln_r}</td><td class="dd-side dd-add">${esc(r.right)}</td></tr>`;
+      return '';
+    }).join('');
+    diffHTML = `<div class="card rounded-xl overflow-hidden"><div class="overflow-x-auto"><table class="dd-tbl"><tbody>${body}</tbody></table></div></div>
+      <div class="mt-2 text-xs text-gray-500">Highlighted words show the exact change within a line. Long runs of identical lines are collapsed.</div>`;
+  }
+
+  const elapsed = t0!=null?((performance.now()-t0)/1000).toFixed(3):data.elapsed;
+  const bar = `<div class="card rounded-xl p-3 mb-4 flex items-center gap-2 flex-wrap">
+    <span class="text-xs text-gray-500">&#128196; Document diff &mdash; a text-level comparison; Excel/CSV export doesn't apply here.</span>
+    ${elapsed!=null?`<span class="ml-auto text-xs text-gray-500">&#9201; ${elapsed}s</span>`:''}
+  </div>`;
+  out.innerHTML = bar + resultTabsShell('cmp', [
+    {key:'summary', label:'Summary', content: summaryHTML},
+    {key:'diff', label:`Diff (${changes})`, content: diffHTML},
+    {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
+  ], 'summary');
 }
 
 // ---------- Reconciliation: N-way (3+ files) result ----------
