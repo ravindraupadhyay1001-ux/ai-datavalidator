@@ -16727,44 +16727,24 @@ async def rerun_quality_json(session_id: str, request: Request):
             except Exception as _eh:
                 pass  # non-fatal
 
-            return JSONResponse(_sanitize_json({
-                "session_id":  new_sid,
-                "file_name":   fname,
-                "file_format": df.attrs.get("_format", ""),
-                "total_rows":  q["total_rows"],
-                "total_cols":  q.get("total_cols", len(df.columns)),
-                "duplicate_rows": q.get("duplicate_rows", 0),
-                "score":     dq["score"],
-                "grade":     dq["grade"],
-                "completeness": dq.get("completeness"),
-                "uniqueness":   dq.get("uniqueness"),
-                "validity":     dq.get("validity"),
-                "consistency":  dq.get("consistency"),
-                "conformity":   dq.get("conformity"),
-
-
-                "precision":    dq.get("precision"),
-                "timeliness":   dq.get("timeliness"),
-                "accuracy":     dq.get("accuracy"),
-                "integrity":    dq.get("integrity"),
-                "reasonableness": dq.get("reasonableness"),
-                "rule_fails":   len(fails),
-                "rule_warns":   len(warnings),
-                "rule_total":   len(q.get("rule_results", [])),
-                "all_rules":    all_rules,
+            # Return the SAME rich shape the Standard run uses (dimensions,
+            # columns_detail, near_key_columns, correlations, rule_results,
+            # anomalies...) so the frontend can render the identical rich Summary
+            # via renderQualityReport -- then layer the AI-only extras on top.
+            _payload = _quality_response_payload(q, new_sid, 0, [])
+            _payload.update({
+                "file_name":        fname,
+                "file_format":      df.attrs.get("_format", ""),
+                "rule_fails":       len(fails),
+                "rule_warns":       len(warnings),
+                "all_rules":        all_rules,
                 "col_completeness": col_completeness,
-                "anomalies":    anomaly_data,
-                "cat_drift":    cat_data,
-                "consistency_issues": consistency_data,
-                "drift_alerts": drift_data,
-                "numeric_clusters": cluster_data,
-                "multivariate_anomalies": q.get("multivariate_anomalies", {}),
-                "trend_anomalies": q.get("trend_anomalies", []),
-                "ai_hints_used": list(_hints.keys()),
-                "ai_rules":     ai_rules,
-                "ai_summary":   _exec_summary,
+                "ai_hints_used":    list(_hints.keys()),
+                "ai_rules":         ai_rules,
+                "ai_summary":       _exec_summary,
                 "ai_summary_error": _exec_summary_error,
-            }))
+            })
+            return JSONResponse(_sanitize_json(_payload))
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 

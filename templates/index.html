@@ -2681,43 +2681,6 @@ async function saveOverridesToMemory(){
 }
 
 // ---------- Quality: AI Copilot mode ----------
-// Extra Summary blocks for a Data Quality AI run, built from the AI payload
-// (total_rows / col_completeness / precision / drift_alerts / ai_rules...).
-// Restores the per-column and dimension detail the Standard summary shows but
-// the compact AI report card omits.
-function _aiQualityExtras(rd){
-  if(!rd) return '';
-  const gc = v => v>=90?'#059669':v>=70?'#b45309':'#dc2626';
-  const cc = rd.col_completeness || [];
-  // Categorical drift, numeric clusters and per-column/multivariate anomalies live
-  // on the dedicated Anomalies tab -- keep only baseline drift and consistency here.
-  const lists = [
-    ['Drift alerts (vs baseline)', (rd.drift_alerts||[]).map(a=>`<b class="text-sky-300">${esc(a.col||'')}</b> &middot; ${esc(a.metric||'')}: ${esc(a.detail||'')}`)],
-    ['Consistency issues', (rd.consistency_issues||[]).map(c=>`<b class="text-sky-300">${esc(c.col||'')}</b> ${esc(c.check||'')} &mdash; ${c.failed||0} failed`)],
-  ].filter(([,a])=>a.length);
-  const aiRules = (rd.ai_rules||[]).map(r=>typeof r==='string'?r:(r.rule||r.name||''))
-                                   .filter(Boolean);
-  return `
-  <div class="grid grid-cols-3 gap-3 mb-4 text-sm">
-    ${stat('Rows', rd.total_rows!=null?rd.total_rows:'&mdash;', '#a855f7')}${stat('Columns', rd.total_cols!=null?rd.total_cols:'&mdash;', '#38bdf8')}${stat('Duplicate rows', rd.duplicate_rows||0, '#f59e0b')}</div>
-  ${cc.length ? `<div class="card rounded-xl p-3 overflow-auto mb-4">
-    <div class="text-xs text-gray-400 mb-2">Per-column quality (${cc.length} columns)</div>
-    <table class="w-full text-xs"><thead class="text-gray-400"><tr>
-      <th class="text-left p-1">Column</th><th>Null %</th><th>Score</th><th>Grade</th></tr></thead><tbody>
-      ${cc.map(c=>`<tr class="border-t border-[var(--line)]">
-        <td class="p-1">${esc(c.name||'')}</td>
-        <td class="text-center">${c.null_pct!=null?(+c.null_pct).toFixed(1):'&mdash;'}</td>
-        <td class="text-center">${c.dq_score!=null?`<span style="color:${gc(+c.dq_score)}">${(+c.dq_score).toFixed(1)}</span>`:'&mdash;'}</td>
-        <td class="text-center">${c.dq_grade?esc(c.dq_grade):'&mdash;'}</td></tr>`).join('')}
-    </tbody></table></div>` : ''}
-  ${lists.map(([t,arr])=>`<div class="card rounded-xl p-3 mb-3 text-xs">
-    <div class="text-gray-400 mb-1">${t} (${arr.length})</div>
-    <div class="space-y-1">${arr.map(x=>`<div>${x}</div>`).join('')}</div></div>`).join('')}
-  ${aiRules.length ? `<div class="card rounded-xl p-3 mb-3 text-xs">
-    <div class="text-gray-400 mb-1">AI-defined rules (${aiRules.length})</div>
-    <div class="flex flex-wrap gap-1">${aiRules.map(r=>`<span class="badge" style="background:rgba(56,189,248,.12);color:#0284c7">${esc(r)}</span>`).join('')}</div></div>` : ''}`;
-}
-
 async function runQualityAI(){
   const out=document.getElementById('q-out'); out.innerHTML='<span class="text-gray-400">Loading file for the AI Copilot&hellip;</span>';
   const t0 = performance.now();
@@ -2736,35 +2699,18 @@ async function runQualityAI(){
   }catch(e){ /* fall back to chat-only below */ }
   setSession(activeSession);
   const _elapsed = ((performance.now()-t0)/1000).toFixed(3);
-  const _aiCard = `<div id="q-ai-report">${renderAiReportCard('quality', reportData)}</div>`;
-  // /rerun-quality-json returns its OWN flat shape (score/grade/all_rules/anomalies),
-  // not the Standard /quality shape (rule_results/columns_detail). Reusing
-  // renderQualityReport here produced an empty, misleading Summary -- "Rule Fails 1"
-  // next to "Exceptions (0)". So render the AI shape directly: the AI report card
-  // IS the summary, and Exceptions is built from all_rules so the counts agree.
+  // The AI run now returns the SAME rich shape as Standard, so render it with the
+  // shared renderQualityReport -- identical rich Summary (hero score/grade, Fix-first,
+  // interactive column table, near-key/correlations), Exceptions and Anomalies. The
+  // AI-only extras (exec summary + AI-defined rules) go into the Copilot tab.
   if(reportData){
-    const _fails = (reportData.all_rules||[]).filter(r=>r.status==='FAIL');
-    const _total = (reportData.all_rules||[]).length;
-    const _exHTML = `
-      <div class="text-sm text-gray-400 mb-2">Rule failures: <span class="text-red-400 font-semibold">${_fails.length}</span> of ${_total}</div>
-      ${_fails.length ? `<div class="card rounded-xl p-3 text-xs space-y-2">${_fails.map(r=>`<div>
-        <b class="text-sky-300">${esc(r.col||'')}</b> &middot; ${esc(r.rule||r.type||'')}
-        ${r.failed!=null?`<span class="text-gray-500"> &mdash; ${r.failed} row${r.failed===1?'':'s'} failed${r.pass_pct!=null?` (${r.pass_pct}% pass)`:''}</span>`:''}
-        ${r.severity?`<span class="badge ml-1" style="background:rgba(220,38,38,.12);color:#dc2626">${esc(r.severity)}</span>`:''}
-        ${(r.examples||[]).length?`<div class="text-gray-500 ml-3 mt-0.5">e.g. ${r.examples.map(x=>esc(''+x)).join(', ')}</div>`:''}
-      </div>`).join('')}</div>` : '<div class="text-sm text-gray-500">No rule failures.</div>'}`;
-    const _anomCount = (reportData.anomalies||[]).length + (reportData.cat_drift||[]).length
-      + ((reportData.multivariate_anomalies||{}).anomaly_count||0) + (reportData.trend_anomalies||[]).length;
-    out.innerHTML = actionBar(activeSession, _elapsed) + resultTabsShell('q', [
-      {key:'summary', label:'Summary', content: _aiCard + _aiQualityExtras(reportData)},
-      {key:'exceptions', label:`Exceptions (${_fails.length})`, content: _exHTML},
-      {key:'anomalies', label:`Anomalies (${_anomCount})`, content: renderAnomaliesHTML(reportData)},
-      {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('q','quality', qualityChips(reportData.file_name || data.file_names?.[0]))},
-      {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
-    ], 'copilot');
+    const _aiExtras = `${reportData.ai_summary?`<div class="card rounded-xl p-4 mb-4 text-sm text-gray-300">&#9889; ${esc(reportData.ai_summary)}</div>`:''}${(reportData.ai_rules||[]).length?`<div class="card rounded-xl p-3 mb-4 text-xs">
+      <div class="text-gray-400 mb-1">AI-defined rules (${reportData.ai_rules.length})</div>
+      <div class="flex flex-wrap gap-1">${reportData.ai_rules.map(r=>{const t=typeof r==='string'?r:(r.rule||r.name||'');return t?`<span class="badge" style="background:rgba(56,189,248,.12);color:#0284c7">${esc(t)}</span>`:'';}).join('')}</div></div>`:''}`;
+    renderQualityReport(reportData, _elapsed, 'copilot', _aiExtras);
   } else {
     out.innerHTML = actionBar(activeSession, _elapsed) + resultTabsShell('q', [
-      {key:'copilot', label:'&#9889; AI Copilot', content: _aiCard + copilotPanelHTML('q','quality', qualityChips(data.file_names?.[0]))},
+      {key:'copilot', label:'&#9889; AI Copilot', content: `<div id="q-ai-report">${renderAiReportCard('quality', reportData)}</div>` + copilotPanelHTML('q','quality', qualityChips(data.file_names?.[0]))},
       {key:'logs', label:'Logs', content: logsPanelHTML(data.logs||[])},
     ], 'copilot');
   }
