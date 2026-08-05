@@ -2225,7 +2225,7 @@ function renderAiReportCard(context, data){
     </div>
     ${dims.length?`<div class="card rounded-xl p-4 mb-4 text-xs">
       <div class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Dimensions</div>
-      <div class="grid grid-cols-3 gap-2">${dims.map(k=>`<div><span class="text-gray-500">${esc(k)}:</span> <b>${(+data[k]).toFixed(1)}</b></div>`).join('')}</div>
+      <div class="grid grid-cols-3 gap-2">${dims.map(k=>`<div><span class="text-gray-500">${esc(k)}:</span> <b>${(+data[k]).toFixed(1)}%</b></div>`).join('')}</div>
     </div>`:''}
     ${data.ai_summary?`<div class="card rounded-xl p-4 mb-4 text-sm text-gray-300">&#9889; ${esc(data.ai_summary)}</div>`:''}`;
   }
