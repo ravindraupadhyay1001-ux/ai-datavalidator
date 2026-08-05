@@ -2827,6 +2827,48 @@ def _extract_kb_as_ref_doc(raw_bytes: bytes, filename: str) -> dict:
     import io as _io
 
     fname_lower = filename.lower()
+    ext = os.path.splitext(fname_lower)[1]
+
+    # -- Multi-sheet Excel: classify EVERY sheet (a workbook may keep the data
+    #    dictionary, business rules and mapping on separate tabs), not just the
+    #    first sheet pd.read_excel() returns by default. --
+    if ext in (".xlsx", ".xls", ".xlsm"):
+        try:
+            _sheets = pd.read_excel(_io.BytesIO(raw_bytes), sheet_name=None, dtype=str)
+            _merged = {"doc_type": "general", "data_dict": {}, "rules": [], "mapping_spec": []}
+            for _sdf in (_sheets or {}).values():
+                if _sdf is None or _sdf.empty or len(_sdf.columns) < 2:
+                    continue
+                # Column-name heuristics overlap (e.g. "allowed_values" reads as a
+                # rules keyword on a dictionary sheet), so prefer the classified
+                # type but fall back to whatever actually parsed -- otherwise a
+                # misclassified sheet silently contributes nothing.
+                _dt = _classify_ref_doc(_sdf)
+                _dd = _parse_data_dictionary(_sdf)
+                _rl = _parse_business_rules(_sdf)
+                _mp = _parse_mapping_spec(_sdf)
+                if _dt == "mapping" and _mp:
+                    _merged["mapping_spec"].extend(_mp)
+                elif _dt == "rules" and _rl:
+                    _merged["rules"].extend(_rl)
+                elif _dt == "data_dict" and _dd:
+                    _merged["data_dict"].update(_dd)
+                elif _rl and not _dd:
+                    _merged["rules"].extend(_rl)
+                elif _dd:
+                    _merged["data_dict"].update(_dd)
+                elif _mp:
+                    _merged["mapping_spec"].extend(_mp)
+            if _merged["data_dict"]:
+                _merged["doc_type"] = "data_dict"
+            elif _merged["rules"]:
+                _merged["doc_type"] = "rules"
+            elif _merged["mapping_spec"]:
+                _merged["doc_type"] = "mapping"
+            if _merged["data_dict"] or _merged["rules"] or _merged["mapping_spec"]:
+                return _merged
+        except Exception:
+            pass  # fall through to the generic paths below
 
     # -- Try structured parse first --
 
@@ -2839,24 +2881,30 @@ def _extract_kb_as_ref_doc(raw_bytes: bytes, filename: str) -> dict:
         df = _load_file(_FakeUpload(filename, raw_bytes))
         doc_type = _classify_ref_doc(df)
         if doc_type != "general" or len(df.columns) > 1:
-            # Successfully parsed as tabular -- use existing pipeline
+            # Resilient routing (same as the multi-sheet path): prefer the
+            # classified type, but fall back to whatever actually parsed. The
+            # column-name heuristic reads a dictionary with an "allowed_values"
+            # column as "rules"; without this fallback such a dictionary would
+            # parse to nothing and be silently dropped.
+            dd = _parse_data_dictionary(df)
+            rls = _parse_business_rules(df)
+            mp = _parse_mapping_spec(df)
             result = {"doc_type": doc_type, "data_dict": {}, "rules": [], "mapping_spec": []}
-            if doc_type == "data_dict":
-                result["data_dict"] = _parse_data_dictionary(df)
-            elif doc_type == "rules":
-                result["rules"] = _parse_business_rules(df)
-            elif doc_type == "mapping":
-                result["mapping_spec"] = _parse_mapping_spec(df)
-            else:
-                # Tabular but unclassified -- try all parsers and take best result
-                dd = _parse_data_dictionary(df)
-                rls = _parse_business_rules(df)
-                if dd:
-                    result["doc_type"] = "data_dict"
-                    result["data_dict"] = dd
-                elif rls:
-                    result["doc_type"] = "rules"
-                    result["rules"] = rls
+            if doc_type == "mapping" and mp:
+                result["mapping_spec"] = mp
+            elif doc_type == "rules" and rls:
+                result["rules"] = rls
+            elif doc_type == "data_dict" and dd:
+                result["data_dict"] = dd
+            elif rls and not dd:
+                result["doc_type"] = "rules"
+                result["rules"] = rls
+            elif dd:
+                result["doc_type"] = "data_dict"
+                result["data_dict"] = dd
+            elif mp:
+                result["doc_type"] = "mapping"
+                result["mapping_spec"] = mp
             return result
     except Exception:
         pass  # Fall through to unstructured LLM extraction
@@ -2864,12 +2912,10 @@ def _extract_kb_as_ref_doc(raw_bytes: bytes, filename: str) -> dict:
     # -- Unstructured extraction via LLM --------------------------------------
     # Handles: PDF free-text, Notepad prose, Word/HTML/Confluence exports,
     #     any file where tabular parsing failed or produced 1 column
-    try:
-        import chardet as _cd
-        enc = _cd.detect(raw_bytes[:4096]).get("encoding") or "utf-8"
-        raw_text = raw_bytes.decode(enc, errors="replace")
-    except Exception:
-        raw_text = raw_bytes.decode("utf-8", errors="replace")
+    # Proper text extraction for binary formats: pdfplumber for PDF, zip/XML for
+    # DOCX, decoded text otherwise. A raw byte-decode of a PDF/DOCX would be
+    # garbage, so reuse the Document Diff extractor here instead.
+    raw_text = _extract_document_text(raw_bytes, filename)
 
     # Trim to 8000 chars -- enough for a full data dictionary
     text_sample = raw_text[:8000]
