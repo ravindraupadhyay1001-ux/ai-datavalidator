@@ -6856,6 +6856,27 @@ def analyze_quality(df: pd.DataFrame, name: str,
         if m and m.group(1) in df.columns:
             _user_precision_cols.add(m.group(1))
 
+    # ---- Accuracy from the data dictionary's allowed_values ----------------
+    # Auto-activates the Accuracy dimension when a reference data dictionary is
+    # attached (upload or connector) -- no manual accuracy_ref_values needed.
+    # % of a column's values found in its dictionary allowed-value set is its
+    # accuracy score. col_config entries set above win (skip if already scored).
+    for _dd_col, _dd_meta in data_dict.items():
+        if _dd_col not in df.columns or _dd_col in accuracy_scores:
+            continue
+        _av = _dd_meta.get("allowed_values")
+        if isinstance(_av, (list, tuple)):
+            _ref_set = {str(v).strip() for v in _av if str(v).strip()}
+        elif isinstance(_av, str):
+            _ref_set = {v.strip() for v in re.split(r"[|,]", _av) if v.strip()}
+        else:
+            _ref_set = set()
+        if not _ref_set:
+            continue
+        _nn = df[_dd_col].dropna()
+        if len(_nn):
+            _match = int(_nn.astype(str).str.strip().isin(_ref_set).sum())
+            accuracy_scores[_dd_col] = _match / len(_nn) * 100
 
     # ---- Column-level profiling ----
     cols = []
@@ -16501,8 +16522,11 @@ async def rerun_quality_json(session_id: str, request: Request):
     if _merged_validators:
         _hints["bfsi_validators"] = _merged_validators
 
+    # Pass the reference-doc data dictionary so the AI run's Accuracy dimension
+    # (and PK / not-null dict checks) activate from its allowed_values.
+    _ref_dd = (stored.get("_ref_docs") or {}).get("data_dict") or {}
     try:
-        q = await _asyncio.to_thread(analyze_quality_full, df, fname, {}, [], _hints, None, None)
+        q = await _asyncio.to_thread(analyze_quality_full, df, fname, _ref_dd, [], _hints, None, None)
         dq = q["dq_score"]
 
         # Run anomaly detection, clustering and categorical drift (same as main pipeline)
