@@ -18385,23 +18385,6 @@ def _run_llm_recon_full(session_id: str, username: str = "default") -> dict | No
     params = _parse_recon_rules_to_params(recon_rules, list(base_df.columns), list(cmp_df.columns))
     llm_error = params.pop("_llm_error", None)
 
-    # Auto-apply the reference-doc mapping spec: rename each source column to its
-    # target name so both sides align for comparison -- no hand-authored rules
-    # needed. Any col_map derived from saved rules takes precedence over the doc.
-    _ref_mapping = (stored.get("_ref_docs") or {}).get("mapping") or []
-    ref_map_pairs: list[str] = []
-    if _ref_mapping:
-        _cm = dict(params.get("col_map") or {})
-        _cols = set(base_df.columns) | set(cmp_df.columns)
-        for _m in _ref_mapping:
-            _s = str(_m.get("source_column") or "").strip()
-            _t = str(_m.get("target_column") or "").strip()
-            if _s and _t and _s != _t and _s not in _cm and _s in _cols:
-                _cm[_s] = _t
-                ref_map_pairs.append(f"{_s} → {_t}")
-        if ref_map_pairs:
-            params["col_map"] = _cm
-
     src_df, tgt_df, manual_keys, exclude, key_warning, force_data_cols = _prepare_recon(
         base_df.copy(), cmp_df.copy(), params
     )
@@ -18549,9 +18532,6 @@ def _run_llm_recon_full(session_id: str, username: str = "default") -> dict | No
         "logs": [],
         "rules_applied": len(recon_rules),
         "params_applied": params,
-        # Column mappings auto-applied from the attached reference-doc mapping spec
-        # (surfaced as an "assumption" the user can review).
-        "ref_mapping_applied": ref_map_pairs,
         "key_warning": key_warning,
         "llm_error": llm_error,
     }
