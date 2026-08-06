@@ -17682,7 +17682,7 @@ def _parse_recon_rules_to_params(rules: list[dict], src_cols: list[str], tgt_col
     # _PROMPT_VER bumps whenever the parser prompt changes, so cached results
     # from an older prompt don't mask an improvement (e.g. the "exact key, don't
     # pad" and precedence rules). Bump it on any prompt edit below.
-    _PROMPT_VER = "v5-fuzzy-text-tolerance"
+    _PROMPT_VER = "v6-transform-defined-key"
     _cache_key = hashlib.md5(
         f"{_PROMPT_VER}||{rule_text}||{sorted(src_cols)}||{sorted(tgt_cols)}".encode("utf-8")
     ).hexdigest()
@@ -17798,6 +17798,18 @@ Key rules:
   "key on First plus Last"), emit BOTH: a combine_cols entry that builds the new column on the side
   that has the parts, AND key_cols set to just that new column. The other side is expected to
   already have that column.
+- CRITICAL -- a key defined VIA A TRANSFORMATION. When the user says the key on one side is another
+  column after a change (e.g. "the key is Deal Ref with the TRD- prefix removed, matched to txn_id",
+  "key on ISIN extracted from Security", "match Acct after stripping leading zeros to account_id"),
+  the RAW values will NOT be identical -- that is expected, the transformation is what makes them match.
+  You MUST still emit the full recipe so the key resolves on BOTH sides:
+    1. col_map to rename that column to the target key name (e.g. {{"Deal Ref":"txn_id"}}), or parse_cols
+       to extract it (e.g. Security -> isin),
+    2. the transform that normalises the values (e.g. strip_prefix "TRD-", isin_strip, to_numeric),
+    3. key_cols set to the FINAL shared name (e.g. ["txn_id"] or ["txn_id","isin"]).
+  NEVER drop or refuse a key mapping just because the raw values differ or "aren't an exact match" --
+  applying the user's stated transformation is precisely your job. A key the user named must appear in
+  key_cols and must exist on both sides after your col_map/parse/transforms.
 - "fuzzy match" has TWO cases -- pick the right one:
   (a) There IS a real key and the user only wants ONE TEXT column's near-matches forgiven (e.g. "key on
       txn_id but fuzzy match Counterparty / it may be spelled differently") -> KEEP the exact key_cols and
@@ -18626,6 +18638,17 @@ def _run_llm_recon_full(session_id: str, username: str = "default") -> dict | No
             f"The key uses all {len(manual_keys)} shared column(s), so there are no columns left "
             f"to compare -- no value breaks can appear (matches are all-or-nothing). Key on fewer "
             f"columns (e.g. just the identifier) so the rest can be compared for differences.")
+    # Safety net: saved rules were applied but NO explicit key from them resolved on
+    # both files, so the engine auto-detected one (key_method contains "auto"). That
+    # auto key is often a coincidentally-unique column (e.g. a name field) and yields
+    # a misleading FAIL. Make it clear the intended key did not take effect.
+    if recon_rules and not manual_keys and "auto" in str(diff.get("key_method", "")).lower():
+        key_warning = ((key_warning + " ") if key_warning else "") + (
+            f"Your saved rules were applied, but no explicit key from them resolved on BOTH files -- so "
+            f"the engine auto-detected the key ({diff.get('key_method','')}), which is likely wrong. "
+            f"If you named a key that needs a rename/transform to exist on both sides (e.g. 'key on Deal "
+            f"Ref with the TRD- prefix removed = txn_id'), that rule must ALSO create the matching column "
+            f"on the other file. This result used the auto-detected key, not your intended one.")
     mapping = analyze_mapping(src_df, tgt_df, base_name, cmp_name, None)
 
     new_session_id = str(uuid.uuid4())
