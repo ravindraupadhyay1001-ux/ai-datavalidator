@@ -17856,9 +17856,31 @@ def _safe_arith_eval(expr: str, df: pd.DataFrame):
     allowed. No function calls, attribute access, subscripts, or names other
     than columns -- so it can never execute arbitrary code (never uses eval()).
     Returns a numeric Series; raises ValueError on anything unsupported."""
-    import ast, operator
+    import ast, operator, re as _re
     ops = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
            ast.Div: operator.truediv, ast.Mod: operator.mod, ast.Pow: operator.pow}
+
+    # Column names may contain spaces/punctuation (e.g. "Unit Price"), which are
+    # not valid Python identifiers and would make ast.parse fail. Alias every
+    # column name (LONGEST first, so "Unit Price" wins over "Unit") to a safe
+    # token before parsing, and resolve the token back to the column in _ev.
+    alias_to_col: dict = {}
+    safe_expr = expr
+    for i, col in enumerate(sorted(df.columns, key=lambda c: -len(str(c)))):
+        token = f"__col{i}__"
+        pattern = r"(?<![A-Za-z0-9_])" + _re.escape(str(col)) + r"(?![A-Za-z0-9_])"
+        new_expr = _re.sub(pattern, token, safe_expr, flags=_re.IGNORECASE)
+        if new_expr != safe_expr:
+            alias_to_col[token] = col
+            safe_expr = new_expr
+
+    def _to_num(series):
+        # Coerce to numeric AFTER stripping thousands separators / currency
+        # symbols, so a compute like "Units * Unit Price" works even when the raw
+        # values are comma-formatted strings ("10,000") the transforms have not
+        # cleaned yet (computed_cols run before value transforms).
+        cleaned = series.astype(str).str.replace(r"[,$£€\s]", "", regex=True)
+        return pd.to_numeric(cleaned, errors="coerce")
 
     def _ev(node):
         if isinstance(node, ast.Expression):
@@ -17871,13 +17893,15 @@ def _safe_arith_eval(expr: str, df: pd.DataFrame):
         if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
             return node.value
         if isinstance(node, ast.Name):
-            col = next((c for c in df.columns if c.lower() == node.id.lower()), None)
-            if col is None:
+            real = alias_to_col.get(node.id)
+            if real is None:
+                real = next((c for c in df.columns if c.lower() == node.id.lower()), None)
+            if real is None:
                 raise ValueError(f"unknown column '{node.id}'")
-            return pd.to_numeric(df[col], errors="coerce")
+            return _to_num(df[real])
         raise ValueError("unsupported expression element")
 
-    return _ev(ast.parse(expr, mode="eval"))
+    return _ev(ast.parse(safe_expr, mode="eval"))
 
 
 def _infer_recon_params(base_df: pd.DataFrame, cmp_df: pd.DataFrame,
@@ -18133,7 +18157,10 @@ def _apply_recon_params(
             elif op == "abs_numeric":
                 df[c] = pd.to_numeric(df[c], errors="coerce").abs()
             elif op == "parse_date":
-                df[c] = pd.to_datetime(df[c], errors="coerce").dt.strftime("%Y-%m-%d")
+                # Cast to str first: an integer YYYYMMDD column (e.g. 20260317)
+                # is otherwise read by to_datetime as an epoch offset (-> 1970),
+                # so "20260317" and "17-Mar-2026" for the same day never match.
+                df[c] = pd.to_datetime(df[c].astype(str).str.strip(), errors="coerce").dt.strftime("%Y-%m-%d")
             elif op == "floor_numeric":
                 cleaned = df[c].astype(str).str.replace(",", "", regex=False).str.strip()
                 df[c] = pd.to_numeric(cleaned, errors="coerce").apply(
@@ -18205,12 +18232,13 @@ def _apply_recon_params(
 
             # -- Date / Time ----------------------------------------
             elif op == "date_format":
-                # Reformat date to arg format string (default YYYY-MM-DD)
+                # Reformat date to arg format string (default YYYY-MM-DD).
+                # astype(str) first -- see parse_date: integer YYYYMMDD dates.
                 fmt = str(t.get("arg", "%Y-%m-%d"))
-                df[c] = pd.to_datetime(df[c], errors="coerce").dt.strftime(fmt)
+                df[c] = pd.to_datetime(df[c].astype(str).str.strip(), errors="coerce").dt.strftime(fmt)
             elif op == "extract_date":
                 # Strip time component -- keep date only
-                df[c] = pd.to_datetime(df[c], errors="coerce").dt.strftime("%Y-%m-%d")
+                df[c] = pd.to_datetime(df[c].astype(str).str.strip(), errors="coerce").dt.strftime("%Y-%m-%d")
 
 
             # -- Financial / domain-specific ----------------------------------------
