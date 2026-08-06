@@ -17863,6 +17863,75 @@ def _safe_arith_eval(expr: str, df: pd.DataFrame):
     return _ev(ast.parse(expr, mode="eval"))
 
 
+def _infer_recon_params(base_df: pd.DataFrame, cmp_df: pd.DataFrame,
+                        base_name: str = "File 1", cmp_name: str = "File 2") -> dict:
+    # Auto-infer reconciliation params from the two files themselves -- no saved
+    # rules, no reference docs. The LLM proposes key_cols, col_map and exclude
+    # from both schemas + a few sample rows, plus a confidence and a
+    # human-readable list of the rules it chose (so the user can review, edit and
+    # save them to Dataset Memory). Returns a params dict augmented with
+    # "_confidence", "_proposed_rules", "_llm_error"; falls back to {} (plain
+    # auto-key compare) on any failure so a first run never hard-errors.
+    import json as _json
+    src_cols = list(base_df.columns)
+    tgt_cols = list(cmp_df.columns)
+
+    def _samples(df, n=3):
+        try:
+            return df.head(n).astype(str).to_dict("records")
+        except Exception:
+            return []
+
+    prompt = f"""You are a reconciliation configuration engine. Two files should reconcile
+against each other. Infer how to ALIGN them, and output ONLY a JSON object.
+
+FILE 1 ("{base_name}") columns: {src_cols}
+FILE 1 sample rows: {_json.dumps(_samples(base_df))[:1500]}
+
+FILE 2 ("{cmp_name}") columns: {tgt_cols}
+FILE 2 sample rows: {_json.dumps(_samples(cmp_df))[:1500]}
+
+Decide:
+- key_cols: the column(s) that identify the SAME record on both sides (use the FINAL names, i.e. after col_map is applied).
+- col_map: {{"file1_col": "file2_col"}} to rename a FILE 1 column whose data matches a differently-named FILE 2 column (e.g. TRD_ID->TradeID, CCY->Currency). ONLY when the names differ but the meaning/values clearly match.
+- exclude: audit/metadata columns to ignore in the comparison (created_at, updated_at, batch_id, load_ts...).
+
+Return ONLY this JSON (omit a key if empty):
+{{
+  "key_cols": ["TradeID"],
+  "col_map": {{"TRD_ID": "TradeID", "CCY": "Currency"}},
+  "exclude": ["load_ts"],
+  "confidence": 0.0,
+  "proposed_rules": ["key on TradeID", "map TRD_ID -> TradeID", "map CCY -> Currency", "ignore load_ts"]
+}}
+Set "confidence" (0.0-1.0) LOW (<0.5) when you are guessing the key or a mapping.
+Return {{}} if you genuinely cannot tell how they align."""
+
+    try:
+        raw = _ask_llm([{"role": "user", "content": [{"text": prompt}]}],
+                       system="You are a reconciliation config engine. Output ONLY valid JSON.")
+        import re as _re
+        m = _re.search(r"\{.*\}", raw, _re.DOTALL)
+        parsed = _json.loads(m.group(0)) if m else {}
+    except Exception as exc:
+        return {"_confidence": 0.0, "_proposed_rules": [], "_llm_error": str(exc)}
+
+    params: dict = {}
+    if isinstance(parsed.get("key_cols"), list) and parsed["key_cols"]:
+        params["key_cols"] = [str(c) for c in parsed["key_cols"] if str(c).strip()]
+    if isinstance(parsed.get("col_map"), dict) and parsed["col_map"]:
+        params["col_map"] = {str(k): str(v) for k, v in parsed["col_map"].items() if str(k) and str(v)}
+    if isinstance(parsed.get("exclude"), list) and parsed["exclude"]:
+        params["exclude"] = [str(c) for c in parsed["exclude"] if str(c).strip()]
+    try:
+        params["_confidence"] = max(0.0, min(1.0, float(parsed.get("confidence", 0.0) or 0.0)))
+    except (TypeError, ValueError):
+        params["_confidence"] = 0.0
+    params["_proposed_rules"] = [str(r) for r in (parsed.get("proposed_rules") or []) if str(r).strip()]
+    params["_llm_error"] = None
+    return params
+
+
 def _apply_recon_params(
     df: pd.DataFrame,
     agg: dict | None,
@@ -18382,7 +18451,21 @@ def _run_llm_recon_full(session_id: str, username: str = "default") -> dict | No
     saved_rules = _fp_get_rules(username, fingerprint, cols1=list(base_df.columns), cols2=list(cmp_df.columns),
                                  file_names=[base_name, cmp_name])
     recon_rules = [r for r in saved_rules if r.get("category") not in ("recon_hints",)]
-    params = _parse_recon_rules_to_params(recon_rules, list(base_df.columns), list(cmp_df.columns))
+    auto_inferred: dict | None = None
+    if recon_rules:
+        # Saved rules exist -> use them (first-time work is done; reruns are automatic).
+        params = _parse_recon_rules_to_params(recon_rules, list(base_df.columns), list(cmp_df.columns))
+    else:
+        # No saved rules yet -> auto-infer the alignment (key / column mapping /
+        # exclusions) from the data itself, so the FIRST AI run produces a real
+        # report automatically instead of a blind auto-key compare. The proposed
+        # rules + confidence are surfaced for the user to review, edit and save;
+        # once saved, every rerun uses the saved rules.
+        params = _infer_recon_params(base_df, cmp_df, base_name, cmp_name)
+        auto_inferred = {
+            "rules": params.pop("_proposed_rules", []),
+            "confidence": params.pop("_confidence", 0.0),
+        }
     llm_error = params.pop("_llm_error", None)
 
     src_df, tgt_df, manual_keys, exclude, key_warning, force_data_cols = _prepare_recon(
@@ -18435,6 +18518,7 @@ def _run_llm_recon_full(session_id: str, username: str = "default") -> dict | No
                 "only_in_file2": fr["file2_only"],
                 "fingerprint": fingerprint,
                 "rules_applied": len(recon_rules),
+                "auto_inferred": auto_inferred,
                 "llm_error": llm_error,
             }
 
@@ -18532,6 +18616,9 @@ def _run_llm_recon_full(session_id: str, username: str = "default") -> dict | No
         "logs": [],
         "rules_applied": len(recon_rules),
         "params_applied": params,
+        # AI-auto-suggested rules + confidence when this was a first run with no
+        # saved rules (surfaced for the user to review / edit / save).
+        "auto_inferred": auto_inferred,
         "key_warning": key_warning,
         "llm_error": llm_error,
     }
