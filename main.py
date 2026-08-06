@@ -17971,6 +17971,12 @@ def _apply_recon_params(
 
     df = df.copy()
 
+    # Defensive: if the uploaded file itself has duplicate column labels, df[c]
+    # returns a DataFrame (not a Series) and every str/numeric transform below
+    # crashes. Collapse to the first occurrence so the pipeline is safe.
+    if df.columns.duplicated().any():
+        df = df.loc[:, ~df.columns.duplicated()]
+
     # 0. Combine columns -- concatenate 2+ source columns into one new column
     #    (e.g. First + Last -> Full Name when the other file has a single name
     #    column). Deterministic; lets a keyless split/merged-column recon resolve.
@@ -18059,7 +18065,21 @@ def _apply_recon_params(
 
     # 2. Column rename (col_map applied to both sides so keys align)
     if col_map:
+        # If a rename TARGET already exists on this side (e.g. rule "rename
+        # Settlement Ccy -> ccy" when a ccy column is already present), a plain
+        # rename produces TWO columns with the same label. df[label] then returns
+        # a DataFrame, not a Series, and the next transform crashes with
+        # "'DataFrame' object has no attribute 'str'". Drop the pre-existing
+        # target first so the user's explicit mapping wins and labels stay unique.
+        _drop_targets = [v for k, v in col_map.items()
+                         if k in df.columns and v in df.columns and k != v]
+        if _drop_targets:
+            df = df.drop(columns=list(dict.fromkeys(_drop_targets)))
         df = df.rename(columns=col_map)
+        # Safety net: two sources mapped to the same target (or any other
+        # collision) -- keep the first occurrence so every label is a Series.
+        if df.columns.duplicated().any():
+            df = df.loc[:, ~df.columns.duplicated()]
 
     # 3. Value transforms
     for t in transforms:
