@@ -17941,6 +17941,16 @@ fx_convert.
 - key_cols must name columns that EXIST AFTER parse_cols and col_map apply.
 - Use fuzzy_fields (NOT key_cols) only for approximate name matching -- it replaces exact-key matching.
 
+WORKED EXAMPLE -- reason from the SAMPLE VALUES like this (side = whichever file has that column):
+  "TRD-1001"  vs  "1001"                        -> strip_prefix "TRD-" (op strip_prefix arg "TRD-"); key on the id
+  "Apple Inc (US0378331005)"  vs  "US0378331005"-> parse_cols: pull the code inside the parentheses into a new col
+  "B" / "S"  vs  "BUY" / "SELL"                 -> op side_normalize (or map_values)
+  "10,000"  vs  10000                           -> op to_numeric (strips commas)
+  "17-Mar-2026"  vs  20260317                   -> op parse_date on BOTH sides (integer YYYYMMDD counts as a date)
+Then key_cols on the id PLUS the parsed code (e.g. ["txn_id","isin"]); align the rest via col_map; the
+remaining columns (direction, quantity, date, ccy, counterparty) become the compared values. Exclude
+columns that exist on only one side and cannot be derived (e.g. a unit price with no matching total).
+
 RULES:
 - "proposed_rules" MUST describe EXACTLY the params you emit -- one line each, same order. Do not
   describe a step you did not encode, and do not encode a step you did not describe.
@@ -18156,7 +18166,11 @@ def _apply_recon_params(
             elif op == "abs_numeric":
                 df[c] = pd.to_numeric(df[c], errors="coerce").abs()
             elif op == "parse_date":
-                df[c] = pd.to_datetime(df[c], errors="coerce").dt.strftime("%Y-%m-%d")
+                # Cast to str first: an integer YYYYMMDD column (e.g. 20260317)
+                # is otherwise read by to_datetime as an epoch offset (-> 1970),
+                # so a "20260317" and a "17-Mar-2026" for the same date would
+                # never reconcile. As text, pandas infers YYYYMMDD correctly.
+                df[c] = pd.to_datetime(df[c].astype(str).str.strip(), errors="coerce").dt.strftime("%Y-%m-%d")
             elif op == "floor_numeric":
                 cleaned = df[c].astype(str).str.replace(",", "", regex=False).str.strip()
                 df[c] = pd.to_numeric(cleaned, errors="coerce").apply(
@@ -18228,12 +18242,13 @@ def _apply_recon_params(
 
             # -- Date / Time ----------------------------------------
             elif op == "date_format":
-                # Reformat date to arg format string (default YYYY-MM-DD)
+                # Reformat date to arg format string (default YYYY-MM-DD).
+                # astype(str) first -- see parse_date: integer YYYYMMDD dates.
                 fmt = str(t.get("arg", "%Y-%m-%d"))
-                df[c] = pd.to_datetime(df[c], errors="coerce").dt.strftime(fmt)
+                df[c] = pd.to_datetime(df[c].astype(str).str.strip(), errors="coerce").dt.strftime(fmt)
             elif op == "extract_date":
                 # Strip time component -- keep date only
-                df[c] = pd.to_datetime(df[c], errors="coerce").dt.strftime("%Y-%m-%d")
+                df[c] = pd.to_datetime(df[c].astype(str).str.strip(), errors="coerce").dt.strftime("%Y-%m-%d")
 
 
             # -- Financial / domain-specific ----------------------------------------
