@@ -17865,47 +17865,87 @@ def _safe_arith_eval(expr: str, df: pd.DataFrame):
 
 def _infer_recon_params(base_df: pd.DataFrame, cmp_df: pd.DataFrame,
                         base_name: str = "File 1", cmp_name: str = "File 2") -> dict:
-    # Auto-infer reconciliation params from the two files themselves -- no saved
-    # rules, no reference docs. The LLM proposes key_cols, col_map and exclude
-    # from both schemas + a few sample rows, plus a confidence and a
-    # human-readable list of the rules it chose (so the user can review, edit and
-    # save them to Dataset Memory). Returns a params dict augmented with
-    # "_confidence", "_proposed_rules", "_llm_error"; falls back to {} (plain
-    # auto-key compare) on any failure so a first run never hard-errors.
+    # Auto-infer the FULL reconciliation param set from the two files themselves --
+    # not just key / rename / exclude but the transforms that make a recon
+    # "complex": parse_cols (regex extraction, e.g. strip a "TRD-" prefix or pull
+    # an ISIN out of free text), value transforms (B->BUY, strip commas, date
+    # normalise, uppercase), computed_cols (amount = qty * price), combine/coalesce
+    # keys, aggregation and fuzzy matching. The deterministic engine
+    # (_prepare_recon / _apply_recon_params) already applies every one of these --
+    # this step just produces them, plus a confidence and a human-readable rule
+    # list that MATCHES the emitted params. Falls back to {} (plain auto-key
+    # compare) on any failure so a first run never hard-errors.
     import json as _json
     src_cols = list(base_df.columns)
     tgt_cols = list(cmp_df.columns)
 
-    def _samples(df, n=3):
+    def _samples(df, n=5):
         try:
             return df.head(n).astype(str).to_dict("records")
         except Exception:
             return []
 
-    prompt = f"""You are a reconciliation configuration engine. Two files should reconcile
-against each other. Infer how to ALIGN them, and output ONLY a JSON object.
+    prompt = f"""You are a reconciliation configuration engine. FILE 1 and FILE 2 hold the SAME
+records expressed differently. Infer the FULL set of steps to ALIGN them so a
+deterministic engine can reconcile, and output ONLY a JSON object.
 
 FILE 1 ("{base_name}") columns: {src_cols}
-FILE 1 sample rows: {_json.dumps(_samples(base_df))[:1500]}
+FILE 1 sample rows: {_json.dumps(_samples(base_df))[:2000]}
 
 FILE 2 ("{cmp_name}") columns: {tgt_cols}
-FILE 2 sample rows: {_json.dumps(_samples(cmp_df))[:1500]}
+FILE 2 sample rows: {_json.dumps(_samples(cmp_df))[:2000]}
 
-Decide:
-- key_cols: the column(s) that identify the SAME record on both sides (use the FINAL names, i.e. after col_map is applied).
-- col_map: {{"file1_col": "file2_col"}} to rename a FILE 1 column whose data matches a differently-named FILE 2 column (e.g. TRD_ID->TradeID, CCY->Currency). ONLY when the names differ but the meaning/values clearly match.
-- exclude: audit/metadata columns to ignore in the comparison (created_at, updated_at, batch_id, load_ts...).
+Study the SAMPLE VALUES, not just the names. Look for: a key that needs a prefix/suffix
+stripped or a code extracted; columns with the same meaning but different names; values
+encoded differently (B vs BUY, 1 vs NEW); numbers with commas; dates in different formats;
+a value that must be COMPUTED on one side (e.g. amount = quantity * price); an identifier
+split across columns or embedded in free text; names that only match approximately.
 
-Return ONLY this JSON (omit a key if empty):
+Emit ONLY the keys you actually need (omit empty ones):
 {{
-  "key_cols": ["TradeID"],
-  "col_map": {{"TRD_ID": "TradeID", "CCY": "Currency"}},
+  "key_cols": ["<final key column name(s), i.e. AFTER col_map / parse_cols apply>"],
+  "col_map": {{"file1_col": "file2_col"}},
+  "parse_cols": [{{"side":"src|tgt|both","source_col":"Security","new_col":"isin","pattern":"\\\\(([^)]+)\\\\)","transform":""}}],
+  "combine_cols": [{{"side":"src","source_cols":["First","Last"],"new_col":"Full Name","sep":" "}}],
+  "coalesce_cols": [{{"side":"src","source_cols":["ISIN","CUSIP"],"new_col":"instrument_id"}}],
+  "computed_cols": [{{"side":"src","new_col":"gross_amount","expr":"Units * UnitPrice"}}],
+  "src_agg": {{"group_by":["book","ccy"],"agg_col":"gross_amount","agg_fn":"sum"}},
+  "tgt_agg": {{"group_by":["book","ccy"],"agg_col":"Amount","agg_fn":"sum"}},
+  "src_value_col": "gross_amount",
+  "tgt_value_col": "Amount",
+  "transforms": [{{"side":"both","col":"direction","op":"map_values","arg":{{"B":"BUY","S":"SELL"}}}}, {{"side":"src","col":"Units","op":"strip_commas"}}, {{"side":"both","col":"trade_settle_dt","op":"parse_date"}}],
   "exclude": ["load_ts"],
+  "fuzzy_fields": ["Counterparty"],
+  "fuzzy_threshold": 0.8,
+  "exception_rules": [{{"type":"tolerance","column":"gross_amount","mode":"abs","threshold":1}}],
   "confidence": 0.0,
-  "proposed_rules": ["key on TradeID", "map TRD_ID -> TradeID", "map CCY -> Currency", "ignore load_ts"]
+  "proposed_rules": ["one plain-English line per step you emit above, in order"]
 }}
-Set "confidence" (0.0-1.0) LOW (<0.5) when you are guessing the key or a mapping.
-Return {{}} if you genuinely cannot tell how they align."""
+
+Transform ops: upper, lower, strip, strip_commas, strip_prefix, strip_suffix, regex_replace,
+replace_text, to_numeric, round_numeric, parse_date, date_format, map_values, ticker_strip,
+isin_strip, side_normalize, negate, abs_numeric, fillna_text, scale, pad_left, sign_to_side,
+fx_convert.
+- Strip a "TRD-" prefix: parse_cols with a regex, OR transforms op strip_prefix arg "TRD-".
+- Extract an ISIN from "Apple Inc (US0378331005)": parse_cols pattern capturing inside parentheses.
+- B->BUY / S->SELL: transforms op map_values arg {{"B":"BUY","S":"SELL"}}.
+- Units in thousands vs ones: transforms op scale arg 0.001 (or 1000) to align the magnitudes.
+- Zero-pad an 8-digit CUSIP to 9: transforms op pad_left arg 9.
+- Signed quantity (+100 / -100) vs a BUY/SELL flag: transforms op sign_to_side on the qty column.
+- Amounts in different currencies: transforms op fx_convert, ccy_col="<currency column>",
+  arg={{"USD":1.0,"EUR":1.087,"GBP":1.27}} (units of base ccy per 1 unit) -- then tolerance-compare.
+- When each side reports MANY rows per identifier and they should net/total before comparing,
+  use src_agg / tgt_agg (group_by the key column(s), agg_col the numeric value, agg_fn sum|mean|max|min).
+- src_value_col / tgt_value_col: name the single numeric column to COMPARE on each side when the
+  two files call it different things (e.g. FILE 1 "gross_amount" vs FILE 2 "Amount").
+- key_cols must name columns that EXIST AFTER parse_cols and col_map apply.
+- Use fuzzy_fields (NOT key_cols) only for approximate name matching -- it replaces exact-key matching.
+
+RULES:
+- "proposed_rules" MUST describe EXACTLY the params you emit -- one line each, same order. Do not
+  describe a step you did not encode, and do not encode a step you did not describe.
+- Set "confidence" (0.0-1.0) LOW (<0.5) when guessing the key or a mapping.
+- Return {{}} if you genuinely cannot tell how they align."""
 
     try:
         raw = _ask_llm([{"role": "user", "content": [{"text": prompt}]}],
@@ -17917,12 +17957,32 @@ Return {{}} if you genuinely cannot tell how they align."""
         return {"_confidence": 0.0, "_proposed_rules": [], "_llm_error": str(exc)}
 
     params: dict = {}
+    # Structured list/dict params passed straight to the engine, which already
+    # knows how to apply each (parse -> combine/coalesce/computed -> col_map ->
+    # transforms -> agg -> key resolution; fuzzy_fields routes to the fuzzy engine).
+    for _k in ("parse_cols", "combine_cols", "coalesce_cols", "computed_cols",
+               "transforms", "exception_rules"):
+        _v = parsed.get(_k)
+        if isinstance(_v, list) and _v:
+            params[_k] = _v
+    for _agg in ("src_agg", "tgt_agg"):
+        if isinstance(parsed.get(_agg), dict) and parsed[_agg]:
+            params[_agg] = parsed[_agg]
     if isinstance(parsed.get("key_cols"), list) and parsed["key_cols"]:
         params["key_cols"] = [str(c) for c in parsed["key_cols"] if str(c).strip()]
     if isinstance(parsed.get("col_map"), dict) and parsed["col_map"]:
         params["col_map"] = {str(k): str(v) for k, v in parsed["col_map"].items() if str(k) and str(v)}
     if isinstance(parsed.get("exclude"), list) and parsed["exclude"]:
         params["exclude"] = [str(c) for c in parsed["exclude"] if str(c).strip()]
+    for _sc in ("src_value_col", "tgt_value_col"):
+        if parsed.get(_sc):
+            params[_sc] = str(parsed[_sc])
+    if isinstance(parsed.get("fuzzy_fields"), list) and parsed["fuzzy_fields"]:
+        params["fuzzy_fields"] = [str(c) for c in parsed["fuzzy_fields"] if str(c).strip()]
+        try:
+            params["fuzzy_threshold"] = float(parsed.get("fuzzy_threshold") or 0.75)
+        except (TypeError, ValueError):
+            params["fuzzy_threshold"] = 0.75
     try:
         params["_confidence"] = max(0.0, min(1.0, float(parsed.get("confidence", 0.0) or 0.0)))
     except (TypeError, ValueError):
