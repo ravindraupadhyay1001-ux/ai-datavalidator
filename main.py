@@ -17682,7 +17682,7 @@ def _parse_recon_rules_to_params(rules: list[dict], src_cols: list[str], tgt_col
     # _PROMPT_VER bumps whenever the parser prompt changes, so cached results
     # from an older prompt don't mask an improvement (e.g. the "exact key, don't
     # pad" and precedence rules). Bump it on any prompt edit below.
-    _PROMPT_VER = "v4-explicit-key-override"
+    _PROMPT_VER = "v5-fuzzy-text-tolerance"
     _cache_key = hashlib.md5(
         f"{_PROMPT_VER}||{rule_text}||{sorted(src_cols)}||{sorted(tgt_cols)}".encode("utf-8")
     ).hexdigest()
@@ -17770,13 +17770,15 @@ JSON schema (omit any key that is not needed):
   "exclude": ["col1", "col2"],
   "exception_rules": [                // custom exception handling beyond exact match
     {{
-      "type": "tolerance",           // a value difference within threshold is NOT a break
+      "type": "tolerance",           // a difference within threshold is NOT counted as a break
       "column": "amount",            // column name, or "*" for all compared value columns
-      "mode": "pct",                 // "pct" (percentage) or "abs" (absolute difference)
-      "threshold": 1                 // e.g. 1 = within 1% (pct) or within 1.0 (abs) is tolerated
+      "mode": "pct",                 // "pct" (percentage), "abs" (absolute), or "fuzzy" (text similarity)
+      "threshold": 1                 // pct: within 1% ; abs: within 1.0 ; fuzzy: 0-1 similarity (e.g. 0.85)
     }}
-  ],                                 // Use when the user says values within a small tolerance
-                                     // shouldn't count as breaks -- rounding, FX, minor precision.
+  ],                                 // Numeric (pct/abs): rounding, FX, minor precision noise.
+                                     // fuzzy: a TEXT column whose near-matches shouldn't count as breaks
+                                     // (e.g. "Goldman Sachs" vs "Goldman Sachs & Co.") while STILL keying
+                                     // exactly on the real key -- name the text column and mode "fuzzy".
   "fuzzy_fields": ["customer_name", "address"],  // set ONLY when the user describes an approximate/
                                           // probabilistic match (typos, formatting drift, no clean
                                           // shared key) -- column name(s) to match by similarity
@@ -17796,10 +17798,14 @@ Key rules:
   "key on First plus Last"), emit BOTH: a combine_cols entry that builds the new column on the side
   that has the parts, AND key_cols set to just that new column. The other side is expected to
   already have that column.
-- Set fuzzy_fields (not key_cols) when the user asks for "fuzzy match", "approximate match", "similar
-  values", "no exact key available", or names a field known to have typos/formatting differences
-  across the two sources (e.g. "match on customer name even if spelled slightly differently").
-  fuzzy_fields and key_cols are mutually exclusive -- fuzzy matching does not use a join key.
+- "fuzzy match" has TWO cases -- pick the right one:
+  (a) There IS a real key and the user only wants ONE TEXT column's near-matches forgiven (e.g. "key on
+      txn_id but fuzzy match Counterparty / it may be spelled differently") -> KEEP the exact key_cols and
+      add an exception_rules entry {{"type":"tolerance","column":"<that text col>","mode":"fuzzy","threshold":0.85}}.
+      Do NOT put that column in fuzzy_fields.
+  (b) There is NO clean shared key and rows can only be matched by overall similarity -> set fuzzy_fields
+      (not key_cols) to the column(s) to match on. fuzzy_fields and key_cols are mutually exclusive --
+      fuzzy_fields replaces the join key entirely, so only use it when no exact key exists.
 - parse_cols runs BEFORE key resolution and aggregation -- use it to create derived columns from free text.
 - col_map renames columns so both sides share identical names; apply after parse_cols.
 - key_cols / key_col must reference column names that will exist AFTER parse_cols and col_map are applied.
@@ -18433,13 +18439,18 @@ def _prepare_recon(src_df: pd.DataFrame, tgt_df: pd.DataFrame, params: dict):
 def _apply_exception_rules(diff: dict, rules: list[dict]) -> dict:
     """Post-process a compare_dataframes() result with LLM-authored custom
     exception rules -- deterministic, runs AFTER the engine has computed the
-    matches (the engine still owns every number). Currently supports TOLERANCE
-    rules: a value break whose numeric difference is within the allowed
-    threshold is downgraded from a real break to 'within tolerance', so trivial
-    rounding / FX / precision noise stops inflating the break count -- an
+    matches (the engine still owns every number). Supports TOLERANCE rules: a
+    value break within the allowed threshold is downgraded from a real break to
+    'within tolerance', so trivial noise stops inflating the break count -- an
     exception variety Standard mode can't express.
 
-      rule: {"type":"tolerance", "column":"*"|name, "mode":"pct"|"abs", "threshold":num}
+      numeric: {"type":"tolerance", "column":"*"|name, "mode":"pct"|"abs", "threshold":num}
+      fuzzy:   {"type":"tolerance", "column":name,     "mode":"fuzzy",      "threshold":0-1}
+
+    'fuzzy' mode compares TEXT by similarity (e.g. "Goldman Sachs" vs "Goldman
+    Sachs & Co."): a change whose similarity >= threshold is tolerated. This lets
+    a normal EXACT-key reconciliation fuzzy-forgive a single text column, which
+    fuzzy_fields (which replaces the key entirely) cannot do.
 
     Adds diff['within_tolerance'] (+ _count) and shrinks modified_rows/
     modified_count to exclude the tolerated rows. Unknown rule types are ignored."""
@@ -18454,19 +18465,37 @@ def _apply_exception_rules(diff: dict, rules: list[dict]) -> dict:
             return None
 
     def _col_within_tol(col, f1, f2):
-        a, b = _num(f1), _num(f2)
-        if a is None or b is None:
-            return False  # non-numeric -> tolerance can't apply, stays a break
-        d = abs(a - b)
         for r in tol_rules:
             rc = str(r.get("column", "*"))
             if rc != "*" and rc.lower() != str(col).lower():
                 continue
+            mode = str(r.get("mode", "pct")).lower()
+            if mode == "fuzzy":
+                # Text similarity tolerance. threshold is a 0-1 ratio; accept an
+                # 0-100 form too (80 -> 0.8). Case/space-insensitive compare.
+                try:
+                    thr = float(r.get("threshold", 0.8))
+                except (TypeError, ValueError):
+                    thr = 0.8
+                if thr > 1:
+                    thr = thr / 100.0
+                s1 = str(f1 if f1 is not None else "").strip().lower()
+                s2 = str(f2 if f2 is not None else "").strip().lower()
+                if not s1 and not s2:
+                    return True
+                if SequenceMatcher(None, s1, s2).ratio() >= thr:
+                    return True
+                continue
+            # numeric modes (pct / abs)
+            a, b = _num(f1), _num(f2)
+            if a is None or b is None:
+                continue  # this rule can't apply to a non-numeric value; try next
             try:
                 thr = float(r.get("threshold"))
             except (TypeError, ValueError):
                 continue
-            if str(r.get("mode", "pct")).lower() == "abs":
+            d = abs(a - b)
+            if mode == "abs":
                 if d <= thr:
                     return True
             else:
