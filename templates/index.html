@@ -1643,6 +1643,22 @@ function renderCompareResult(data, t0, mode){
   mode = mode || 'standard'; // 'standard' -> Summary/Exceptions/Logs; 'ai' -> AI Copilot (report + chat combined)/Logs
   const out=document.getElementById('cmp-out');
   window._cmpAutoRules = (data.auto_inferred && data.auto_inferred.rules) || [];
+  // AI auto-suggested rules live in the AI Copilot tab (not the Summary).
+  const autoRulesHTML = (data.auto_inferred && (data.auto_inferred.rules||[]).length) ? (()=>{
+    const conf = +(data.auto_inferred.confidence ?? 0);
+    const cc = conf>=0.7?'#059669':conf>=0.5?'#b45309':'#dc2626';
+    return `<div class="card rounded-xl p-4 mb-4" style="border-left:3px solid ${cc}">
+      <div class="flex items-center gap-2 mb-2 flex-wrap">
+        <span class="text-sm font-semibold">&#129302; AI auto-suggested these rules</span>
+        <span class="badge" style="background:${cc}22;color:${cc}">confidence ${(conf*100).toFixed(0)}%${conf<0.5?' &mdash; review before trusting':''}</span>
+      </div>
+      <ul class="text-xs text-gray-300 ml-5 space-y-0.5" style="list-style:disc">${data.auto_inferred.rules.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>
+      <div class="flex items-center gap-2 mt-3 flex-wrap">
+        <button onclick="saveAutoInferredRules(window._cmpAutoRules)" class="btn rounded-lg px-3 py-1.5 text-xs font-medium">&#128190; Save these to Dataset Memory</button>
+        <span class="text-xs text-gray-500">Once saved, every rerun applies them automatically. Wrong? Adjust below and re-run.</span>
+      </div>
+    </div>`;
+  })() : '';
   setSession(data.session_id); const c=data.counts||{};
   const f1=data.files?.file1||{}, f2=data.files?.file2||{};
   const allCols = data.common_columns_list || [];
@@ -1665,21 +1681,6 @@ function renderCompareResult(data, t0, mode){
       <span class="badge" style="background:rgba(56,189,248,.12);color:#0369a1">Match rate: ${_matchRate}%</span>
       <span class="badge" style="background:rgba(217,119,6,.12);color:#b45309">&#9889; Key method: ${esc(data.method||'n/a')}</span>
       ${(data.keys||[]).length?` &mdash; ${esc((data.keys||[]).join(', '))}`:''}</div>
-    ${data.auto_inferred && (data.auto_inferred.rules||[]).length ? (()=>{
-      const conf = +(data.auto_inferred.confidence ?? 0);
-      const cc = conf>=0.7?'#059669':conf>=0.5?'#b45309':'#dc2626';
-      return `<div class="card rounded-xl p-4 mb-4" style="border-left:3px solid ${cc}">
-        <div class="flex items-center gap-2 mb-2 flex-wrap">
-          <span class="text-sm font-semibold">&#129302; AI auto-suggested these rules</span>
-          <span class="badge" style="background:${cc}22;color:${cc}">confidence ${(conf*100).toFixed(0)}%${conf<0.5?' &mdash; review before trusting':''}</span>
-        </div>
-        <ul class="text-xs text-gray-300 ml-5 space-y-0.5" style="list-style:disc">${data.auto_inferred.rules.map(r=>`<li>${esc(r)}</li>`).join('')}</ul>
-        <div class="flex items-center gap-2 mt-3 flex-wrap">
-          <button onclick="saveAutoInferredRules(window._cmpAutoRules)" class="btn rounded-lg px-3 py-1.5 text-xs font-medium">&#128190; Save these to Dataset Memory</button>
-          <span class="text-xs text-gray-500">Once saved, every rerun applies them automatically. Wrong? Adjust in the AI Copilot tab and re-run.</span>
-        </div>
-      </div>`;
-    })() : ''}
     <div class="grid grid-cols-2 gap-4 mb-4">
       <div class="card rounded-xl p-4"><div class="text-xs font-semibold text-gray-300 mb-1">FILE 1 &mdash; ${esc((f1.name||'').toUpperCase())} ${f1.format?`<span class="badge ml-1" style="background:rgba(2,132,199,.12);color:#0369a1">${esc(f1.format)} (AUTO-DETECTED)</span>`:''}</div>
         <div class="flex gap-6 mt-2"><div><div class="text-2xl font-bold">${f1.rows??'&mdash;'}</div><div class="text-xs text-gray-500">rows</div></div>
@@ -1827,7 +1828,7 @@ function renderCompareResult(data, t0, mode){
     cmpTabs = [
       {key:'summary', label:'Summary', content: aiBanner + summaryHTML},
       {key:'exceptions', label:`Exceptions (${(c.modified||0)+(c.file1_only||0)+(c.file2_only||0)})`, content: aiBanner + exceptionsHTML},
-      {key:'copilot', label:'&#9889; AI Copilot', content: copilotPanelHTML('cmp','compare', chips)},
+      {key:'copilot', label:'&#9889; AI Copilot', content: autoRulesHTML + copilotPanelHTML('cmp','compare', chips)},
       {key:'logs', label:`Logs (${(data.logs||[]).length})`, content: logsPanelHTML(data.logs)},
     ];
     // Initial AI entry (t0 set) opens on the chat to start the conversation;
