@@ -17865,97 +17865,47 @@ def _safe_arith_eval(expr: str, df: pd.DataFrame):
 
 def _infer_recon_params(base_df: pd.DataFrame, cmp_df: pd.DataFrame,
                         base_name: str = "File 1", cmp_name: str = "File 2") -> dict:
-    # Auto-infer the FULL reconciliation param set from the two files themselves --
-    # not just key / rename / exclude but the transforms that make a recon
-    # "complex": parse_cols (regex extraction, e.g. strip a "TRD-" prefix or pull
-    # an ISIN out of free text), value transforms (B->BUY, strip commas, date
-    # normalise, uppercase), computed_cols (amount = qty * price), combine/coalesce
-    # keys, aggregation and fuzzy matching. The deterministic engine
-    # (_prepare_recon / _apply_recon_params) already applies every one of these --
-    # this step just produces them, plus a confidence and a human-readable rule
-    # list that MATCHES the emitted params. Falls back to {} (plain auto-key
-    # compare) on any failure so a first run never hard-errors.
+    # Auto-infer reconciliation params from the two files themselves -- no saved
+    # rules, no reference docs. The LLM proposes key_cols, col_map and exclude
+    # from both schemas + a few sample rows, plus a confidence and a
+    # human-readable list of the rules it chose (so the user can review, edit and
+    # save them to Dataset Memory). Returns a params dict augmented with
+    # "_confidence", "_proposed_rules", "_llm_error"; falls back to {} (plain
+    # auto-key compare) on any failure so a first run never hard-errors.
     import json as _json
     src_cols = list(base_df.columns)
     tgt_cols = list(cmp_df.columns)
 
-    def _samples(df, n=5):
+    def _samples(df, n=3):
         try:
             return df.head(n).astype(str).to_dict("records")
         except Exception:
             return []
 
-    prompt = f"""You are a reconciliation configuration engine. FILE 1 and FILE 2 hold the SAME
-records expressed differently. Infer the FULL set of steps to ALIGN them so a
-deterministic engine can reconcile, and output ONLY a JSON object.
+    prompt = f"""You are a reconciliation configuration engine. Two files should reconcile
+against each other. Infer how to ALIGN them, and output ONLY a JSON object.
 
 FILE 1 ("{base_name}") columns: {src_cols}
-FILE 1 sample rows: {_json.dumps(_samples(base_df))[:2000]}
+FILE 1 sample rows: {_json.dumps(_samples(base_df))[:1500]}
 
 FILE 2 ("{cmp_name}") columns: {tgt_cols}
-FILE 2 sample rows: {_json.dumps(_samples(cmp_df))[:2000]}
+FILE 2 sample rows: {_json.dumps(_samples(cmp_df))[:1500]}
 
-Study the SAMPLE VALUES, not just the names. Look for: a key that needs a prefix/suffix
-stripped or a code extracted; columns with the same meaning but different names; values
-encoded differently (B vs BUY, 1 vs NEW); numbers with commas; dates in different formats;
-a value that must be COMPUTED on one side (e.g. amount = quantity * price); an identifier
-split across columns or embedded in free text; names that only match approximately.
+Decide:
+- key_cols: the column(s) that identify the SAME record on both sides (use the FINAL names, i.e. after col_map is applied).
+- col_map: {{"file1_col": "file2_col"}} to rename a FILE 1 column whose data matches a differently-named FILE 2 column (e.g. TRD_ID->TradeID, CCY->Currency). ONLY when the names differ but the meaning/values clearly match.
+- exclude: audit/metadata columns to ignore in the comparison (created_at, updated_at, batch_id, load_ts...).
 
-Emit ONLY the keys you actually need (omit empty ones):
+Return ONLY this JSON (omit a key if empty):
 {{
-  "key_cols": ["<final key column name(s), i.e. AFTER col_map / parse_cols apply>"],
-  "col_map": {{"file1_col": "file2_col"}},
-  "parse_cols": [{{"side":"src|tgt|both","source_col":"Security","new_col":"isin","pattern":"\\\\(([^)]+)\\\\)","transform":""}}],
-  "combine_cols": [{{"side":"src","source_cols":["First","Last"],"new_col":"Full Name","sep":" "}}],
-  "coalesce_cols": [{{"side":"src","source_cols":["ISIN","CUSIP"],"new_col":"instrument_id"}}],
-  "computed_cols": [{{"side":"src","new_col":"gross_amount","expr":"Units * UnitPrice"}}],
-  "src_agg": {{"group_by":["book","ccy"],"agg_col":"gross_amount","agg_fn":"sum"}},
-  "tgt_agg": {{"group_by":["book","ccy"],"agg_col":"Amount","agg_fn":"sum"}},
-  "src_value_col": "gross_amount",
-  "tgt_value_col": "Amount",
-  "transforms": [{{"side":"both","col":"direction","op":"map_values","arg":{{"B":"BUY","S":"SELL"}}}}, {{"side":"src","col":"Units","op":"strip_commas"}}, {{"side":"both","col":"trade_settle_dt","op":"parse_date"}}],
+  "key_cols": ["TradeID"],
+  "col_map": {{"TRD_ID": "TradeID", "CCY": "Currency"}},
   "exclude": ["load_ts"],
-  "fuzzy_fields": ["Counterparty"],
-  "fuzzy_threshold": 0.8,
-  "exception_rules": [{{"type":"tolerance","column":"gross_amount","mode":"abs","threshold":1}}],
   "confidence": 0.0,
-  "proposed_rules": ["one plain-English line per step you emit above, in order"]
+  "proposed_rules": ["key on TradeID", "map TRD_ID -> TradeID", "map CCY -> Currency", "ignore load_ts"]
 }}
-
-Transform ops: upper, lower, strip, strip_commas, strip_prefix, strip_suffix, regex_replace,
-replace_text, to_numeric, round_numeric, parse_date, date_format, map_values, ticker_strip,
-isin_strip, side_normalize, negate, abs_numeric, fillna_text, scale, pad_left, sign_to_side,
-fx_convert.
-- Strip a "TRD-" prefix: parse_cols with a regex, OR transforms op strip_prefix arg "TRD-".
-- Extract an ISIN from "Apple Inc (US0378331005)": parse_cols pattern capturing inside parentheses.
-- B->BUY / S->SELL: transforms op map_values arg {{"B":"BUY","S":"SELL"}}.
-- Units in thousands vs ones: transforms op scale arg 0.001 (or 1000) to align the magnitudes.
-- Zero-pad an 8-digit CUSIP to 9: transforms op pad_left arg 9.
-- Signed quantity (+100 / -100) vs a BUY/SELL flag: transforms op sign_to_side on the qty column.
-- Amounts in different currencies: transforms op fx_convert, ccy_col="<currency column>",
-  arg={{"USD":1.0,"EUR":1.087,"GBP":1.27}} (units of base ccy per 1 unit) -- then tolerance-compare.
-- When each side reports MANY rows per identifier and they should net/total before comparing,
-  use src_agg / tgt_agg (group_by the key column(s), agg_col the numeric value, agg_fn sum|mean|max|min).
-- src_value_col / tgt_value_col: name the single numeric column to COMPARE on each side when the
-  two files call it different things (e.g. FILE 1 "gross_amount" vs FILE 2 "Amount").
-- key_cols must name columns that EXIST AFTER parse_cols and col_map apply.
-- Use fuzzy_fields (NOT key_cols) only for approximate name matching -- it replaces exact-key matching.
-
-WORKED EXAMPLE -- reason from the SAMPLE VALUES like this (side = whichever file has that column):
-  "TRD-1001"  vs  "1001"                        -> strip_prefix "TRD-" (op strip_prefix arg "TRD-"); key on the id
-  "Apple Inc (US0378331005)"  vs  "US0378331005"-> parse_cols: pull the code inside the parentheses into a new col
-  "B" / "S"  vs  "BUY" / "SELL"                 -> op side_normalize (or map_values)
-  "10,000"  vs  10000                           -> op to_numeric (strips commas)
-  "17-Mar-2026"  vs  20260317                   -> op parse_date on BOTH sides (integer YYYYMMDD counts as a date)
-Then key_cols on the id PLUS the parsed code (e.g. ["txn_id","isin"]); align the rest via col_map; the
-remaining columns (direction, quantity, date, ccy, counterparty) become the compared values. Exclude
-columns that exist on only one side and cannot be derived (e.g. a unit price with no matching total).
-
-RULES:
-- "proposed_rules" MUST describe EXACTLY the params you emit -- one line each, same order. Do not
-  describe a step you did not encode, and do not encode a step you did not describe.
-- Set "confidence" (0.0-1.0) LOW (<0.5) when guessing the key or a mapping.
-- Return {{}} if you genuinely cannot tell how they align."""
+Set "confidence" (0.0-1.0) LOW (<0.5) when you are guessing the key or a mapping.
+Return {{}} if you genuinely cannot tell how they align."""
 
     try:
         raw = _ask_llm([{"role": "user", "content": [{"text": prompt}]}],
@@ -17967,32 +17917,12 @@ RULES:
         return {"_confidence": 0.0, "_proposed_rules": [], "_llm_error": str(exc)}
 
     params: dict = {}
-    # Structured list/dict params passed straight to the engine, which already
-    # knows how to apply each (parse -> combine/coalesce/computed -> col_map ->
-    # transforms -> agg -> key resolution; fuzzy_fields routes to the fuzzy engine).
-    for _k in ("parse_cols", "combine_cols", "coalesce_cols", "computed_cols",
-               "transforms", "exception_rules"):
-        _v = parsed.get(_k)
-        if isinstance(_v, list) and _v:
-            params[_k] = _v
-    for _agg in ("src_agg", "tgt_agg"):
-        if isinstance(parsed.get(_agg), dict) and parsed[_agg]:
-            params[_agg] = parsed[_agg]
     if isinstance(parsed.get("key_cols"), list) and parsed["key_cols"]:
         params["key_cols"] = [str(c) for c in parsed["key_cols"] if str(c).strip()]
     if isinstance(parsed.get("col_map"), dict) and parsed["col_map"]:
         params["col_map"] = {str(k): str(v) for k, v in parsed["col_map"].items() if str(k) and str(v)}
     if isinstance(parsed.get("exclude"), list) and parsed["exclude"]:
         params["exclude"] = [str(c) for c in parsed["exclude"] if str(c).strip()]
-    for _sc in ("src_value_col", "tgt_value_col"):
-        if parsed.get(_sc):
-            params[_sc] = str(parsed[_sc])
-    if isinstance(parsed.get("fuzzy_fields"), list) and parsed["fuzzy_fields"]:
-        params["fuzzy_fields"] = [str(c) for c in parsed["fuzzy_fields"] if str(c).strip()]
-        try:
-            params["fuzzy_threshold"] = float(parsed.get("fuzzy_threshold") or 0.75)
-        except (TypeError, ValueError):
-            params["fuzzy_threshold"] = 0.75
     try:
         params["_confidence"] = max(0.0, min(1.0, float(parsed.get("confidence", 0.0) or 0.0)))
     except (TypeError, ValueError):
@@ -18166,11 +18096,7 @@ def _apply_recon_params(
             elif op == "abs_numeric":
                 df[c] = pd.to_numeric(df[c], errors="coerce").abs()
             elif op == "parse_date":
-                # Cast to str first: an integer YYYYMMDD column (e.g. 20260317)
-                # is otherwise read by to_datetime as an epoch offset (-> 1970),
-                # so a "20260317" and a "17-Mar-2026" for the same date would
-                # never reconcile. As text, pandas infers YYYYMMDD correctly.
-                df[c] = pd.to_datetime(df[c].astype(str).str.strip(), errors="coerce").dt.strftime("%Y-%m-%d")
+                df[c] = pd.to_datetime(df[c], errors="coerce").dt.strftime("%Y-%m-%d")
             elif op == "floor_numeric":
                 cleaned = df[c].astype(str).str.replace(",", "", regex=False).str.strip()
                 df[c] = pd.to_numeric(cleaned, errors="coerce").apply(
@@ -18242,13 +18168,12 @@ def _apply_recon_params(
 
             # -- Date / Time ----------------------------------------
             elif op == "date_format":
-                # Reformat date to arg format string (default YYYY-MM-DD).
-                # astype(str) first -- see parse_date: integer YYYYMMDD dates.
+                # Reformat date to arg format string (default YYYY-MM-DD)
                 fmt = str(t.get("arg", "%Y-%m-%d"))
-                df[c] = pd.to_datetime(df[c].astype(str).str.strip(), errors="coerce").dt.strftime(fmt)
+                df[c] = pd.to_datetime(df[c], errors="coerce").dt.strftime(fmt)
             elif op == "extract_date":
                 # Strip time component -- keep date only
-                df[c] = pd.to_datetime(df[c].astype(str).str.strip(), errors="coerce").dt.strftime("%Y-%m-%d")
+                df[c] = pd.to_datetime(df[c], errors="coerce").dt.strftime("%Y-%m-%d")
 
 
             # -- Financial / domain-specific ----------------------------------------
@@ -18599,23 +18524,7 @@ def _run_llm_recon_full(session_id: str, username: str = "default") -> dict | No
 
     diff = compare_dataframes(src_df, tgt_df, manual_keys, True, exclude, force_data_cols=force_data_cols)
     diff = _apply_exception_rules(diff, params.get("exception_rules") or [])
-    # Safety net #0: the two files share NO comparable column after the inferred
-    # rules were applied (0 common columns -- e.g. the AI could not align a pair
-    # whose columns are named completely differently). Nothing was compared, so
-    # added/removed/modified are all 0 and the report would otherwise show a
-    # falsely reassuring "PASS / 100% match". Surface it as a hard alignment
-    # failure that drives the recovery banner instead of a clean pass.
-    _common_after = set(src_df.columns) & set(tgt_df.columns)
-    if not _common_after:
-        _src_lbl = ("The AI's auto-inferred rules"
-                    if auto_inferred else "The saved rules")
-        key_warning = ((key_warning + " ") if key_warning else "") + (
-            f"{_src_lbl} could not align these two files -- after applying them the files still "
-            f"share no comparable columns (0 common columns), so nothing was actually reconciled "
-            f"(a 100% match here is not meaningful). Add a mapping step in the AI Copilot tab -- "
-            f"e.g. tell it which column identifies the same record on each side, and how the values "
-            f"differ (a prefix to strip, an id embedded in text, a code like B/S vs BUY/SELL).")
-    # Safety net #1: if the key uses every shared column there is nothing left to
+    # Safety net: if the key uses every shared column there is nothing left to
     # compare, so no value break can EVER appear and the report shows a
     # confusing "0". Surface it (drives the recovery banner) instead of hiding it.
     if manual_keys and not diff.get("data_columns"):

@@ -1665,13 +1665,8 @@ function renderCompareResult(data, t0, mode){
   const _maxRows = Math.max(f1.rows||0, f2.rows||0);
   const _breaks = (c.file1_only||0)+(c.file2_only||0)+(c.modified||0);
   const _breakRate = _maxRows ? _breaks/_maxRows : 0;
-  // Nothing was actually reconciled when the two files share no comparable
-  // column (0 common columns) -- the engine reports "content-based (empty
-  // dataframe)". In that case every count is trivially 0, so guard against
-  // showing a falsely reassuring PASS / 100% match.
-  const _noAlign = (data.common_columns||0)===0 || /empty dataframe/i.test(data.method||'');
-  const _status = _noAlign ? "COULDN'T ALIGN" : (_breaks===0 ? 'PASS' : (_breakRate < 0.05 ? 'WARN' : 'FAIL'));
-  const _statusColor = {PASS:'#059669', WARN:'#b45309', FAIL:'#dc2626'}[_status] || '#dc2626';
+  const _status = _breaks===0 ? 'PASS' : (_breakRate < 0.05 ? 'WARN' : 'FAIL');
+  const _statusColor = {PASS:'#059669', WARN:'#b45309', FAIL:'#dc2626'}[_status];
   const _matchRate = _maxRows ? (((c.matched||0)/_maxRows)*100).toFixed(1) : '0.0';
 
   const summaryHTML = `
@@ -1683,7 +1678,7 @@ function renderCompareResult(data, t0, mode){
     </div>` : ''}
     <div class="mb-4 flex flex-wrap items-center gap-2">
       <span class="badge" style="background:${_statusColor}22;color:${_statusColor}">${_status==='PASS'?'&#10003;':'&#9888;'} ${_status}</span>
-      ${_noAlign ? '' : `<span class="badge" style="background:rgba(56,189,248,.12);color:#0369a1">Match rate: ${_matchRate}%</span>`}
+      <span class="badge" style="background:rgba(56,189,248,.12);color:#0369a1">Match rate: ${_matchRate}%</span>
       <span class="badge" style="background:rgba(217,119,6,.12);color:#b45309">&#9889; Key method: ${esc(data.method||'n/a')}</span>
       ${(data.keys||[]).length?` &mdash; ${esc((data.keys||[]).join(', '))}`:''}</div>
     <div class="grid grid-cols-2 gap-4 mb-4">
