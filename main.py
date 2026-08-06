@@ -17491,7 +17491,15 @@ async def chat(request: Request):
         )})
 
     if _is_run_recon and context.get("mode") == "recon":
-        result = await asyncio.to_thread(_run_llm_recon_full, session_id, _chat_username)
+        try:
+            result = await asyncio.to_thread(_run_llm_recon_full, session_id, _chat_username)
+        except Exception as exc:
+            import traceback as _tb
+            _tb.print_exc()
+            return JSONResponse({"reply": (
+                f"⚠️ Reconciliation could not run: {type(exc).__name__}: {exc}\n\n"
+                "This usually means the saved rules could not be applied to these two files. "
+                "Review or edit the saved rules for this schema (or remove the offending one) and try again.")})
         if result is None:
             return JSONResponse({"reply": "I couldn't find both files for this session anymore -- please re-upload and run Reconciliation again."})
         c = result["counts"]
@@ -18717,7 +18725,21 @@ async def recon_run_llm(session_id: str, request: Request):
     # slip past the subscription block that Standard mode enforces.
     _gate_run(request)
     _rrl_username = _ws_resolve_username(request) or "default"
-    result = await asyncio.to_thread(_run_llm_recon_full, session_id, _rrl_username)
+    try:
+        result = await asyncio.to_thread(_run_llm_recon_full, session_id, _rrl_username)
+    except Exception as exc:
+        # Surface the real failure instead of a blank HTTP 500 -- return it as a
+        # readable error the Copilot renders (and log the traceback for the
+        # server logs). A malformed saved-rule -> params conversion is the usual
+        # cause once Dataset Memory persists rules.
+        import traceback as _tb
+        _tb.print_exc()
+        return JSONResponse(
+            {"error": f"Reconciliation could not run: {type(exc).__name__}: {exc}",
+             "recovery": "This usually means the saved rules could not be applied to "
+                         "these two files. Open the AI Copilot tab to review/edit the "
+                         "saved rules, or remove the offending rule and re-run."},
+            status_code=200)
     if result is None:
         raise HTTPException(404, "Session not found or missing stored files -- please re-upload.")
     try:
