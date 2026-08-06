@@ -18584,7 +18584,23 @@ def _run_llm_recon_full(session_id: str, username: str = "default") -> dict | No
 
     diff = compare_dataframes(src_df, tgt_df, manual_keys, True, exclude, force_data_cols=force_data_cols)
     diff = _apply_exception_rules(diff, params.get("exception_rules") or [])
-    # Safety net: if the key uses every shared column there is nothing left to
+    # Safety net #0: the two files share NO comparable column after the inferred
+    # rules were applied (0 common columns -- e.g. the AI could not align a pair
+    # whose columns are named completely differently). Nothing was compared, so
+    # added/removed/modified are all 0 and the report would otherwise show a
+    # falsely reassuring "PASS / 100% match". Surface it as a hard alignment
+    # failure that drives the recovery banner instead of a clean pass.
+    _common_after = set(src_df.columns) & set(tgt_df.columns)
+    if not _common_after:
+        _src_lbl = ("The AI's auto-inferred rules"
+                    if auto_inferred else "The saved rules")
+        key_warning = ((key_warning + " ") if key_warning else "") + (
+            f"{_src_lbl} could not align these two files -- after applying them the files still "
+            f"share no comparable columns (0 common columns), so nothing was actually reconciled "
+            f"(a 100% match here is not meaningful). Add a mapping step in the AI Copilot tab -- "
+            f"e.g. tell it which column identifies the same record on each side, and how the values "
+            f"differ (a prefix to strip, an id embedded in text, a code like B/S vs BUY/SELL).")
+    # Safety net #1: if the key uses every shared column there is nothing left to
     # compare, so no value break can EVER appear and the report shows a
     # confusing "0". Surface it (drives the recovery banner) instead of hiding it.
     if manual_keys and not diff.get("data_columns"):
