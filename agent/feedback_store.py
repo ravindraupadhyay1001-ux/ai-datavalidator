@@ -118,13 +118,25 @@ def _fuzzy_lookup_in(bucket: dict, cols1: list, cols2: list,
     if best_fp and best_score >= threshold:
         return best_fp
     # Fall back to matching by file name when the column-based match is
-    # inconclusive (e.g. very few shared/renamed columns) -- the same
-    # source files being re-uploaded is a strong signal on its own.
+    # inconclusive (e.g. very few shared/renamed columns, or the entry was saved
+    # via a path that recorded no cols -- the Dataset Memory tab) -- the same
+    # source files being re-uploaded is a strong signal on its own. Mine the
+    # entry's human LABEL for names too: every save path writes the file names
+    # into the label (e.g. "compliance_extract.csv vs settlement_export.csv"),
+    # even when the structured file_names / cols fields are empty, so this is
+    # what bridges a fingerprint mismatch for rules saved from the memory tab.
     if file_names:
+        import re as _re
         current_names = {_norm_name(n) for n in file_names if n}
         if current_names:
             for fp, entry in bucket.items():
                 saved_names = {_norm_name(n) for n in entry.get("file_names", [])}
+                label = str(entry.get("label", ""))
+                for part in _re.split(r"\s*(?:/|vs\.?|→|->|,|&)\s*", label, flags=_re.IGNORECASE):
+                    part = part.strip()
+                    if part:
+                        saved_names.add(_norm_name(part))
+                saved_names.discard("")
                 if saved_names and current_names & saved_names:
                     return fp
     return None
