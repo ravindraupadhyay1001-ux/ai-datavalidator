@@ -17577,7 +17577,16 @@ async def chat(request: Request):
             fp = context.get("dataset_fingerprint", "")
             if fp and rule_text:
                 label = f"{context.get('src_name','')} vs {context.get('tgt_name','')}"
-                _fp_save(_chat_username, fp, rule_text, category="recon_rule", dataset_label=label)
+                # Record the schema columns + file names on the saved entry so the
+                # store's fuzzy fingerprint fallback can still find these rules if the
+                # fingerprint drifts slightly on a later upload (renamed/reordered
+                # column, extra audit field). Without this the rules are only
+                # retrievable by an exact fingerprint match.
+                _src_cols = [s.get("column") for s in context.get("src_schema", []) if s.get("column")]
+                _tgt_cols = [s.get("column") for s in context.get("tgt_schema", []) if s.get("column")]
+                _fnames = [n for n in (context.get("src_name"), context.get("tgt_name")) if n]
+                _fp_save(_chat_username, fp, rule_text, category="recon_rule", dataset_label=label,
+                         cols1=_src_cols, cols2=_tgt_cols, file_names=_fnames)
                 # Refresh saved rules in context
                 context["saved_rules"] = _fp_get_rules(_chat_username, fp)
 
