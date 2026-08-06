@@ -17935,36 +17935,55 @@ def _infer_recon_params(base_df: pd.DataFrame, cmp_df: pd.DataFrame,
     src_cols = list(base_df.columns)
     tgt_cols = list(cmp_df.columns)
 
-    def _samples(df, n=3):
+    def _samples(df, n=4):
         try:
             return df.head(n).astype(str).to_dict("records")
         except Exception:
             return []
 
-    prompt = f"""You are a reconciliation configuration engine. Two files should reconcile
-against each other. Infer how to ALIGN them, and output ONLY a JSON object.
+    prompt = f"""You are a reconciliation configuration engine. FILE 1 and FILE 2 hold the SAME
+records expressed differently. Infer how to ALIGN them so a deterministic engine can
+reconcile, and output ONLY a JSON object. Study the SAMPLE VALUES, not just the names.
 
 FILE 1 ("{base_name}") columns: {src_cols}
-FILE 1 sample rows: {_json.dumps(_samples(base_df))[:1500]}
+FILE 1 sample rows: {_json.dumps(_samples(base_df))[:1800]}
 
 FILE 2 ("{cmp_name}") columns: {tgt_cols}
-FILE 2 sample rows: {_json.dumps(_samples(cmp_df))[:1500]}
+FILE 2 sample rows: {_json.dumps(_samples(cmp_df))[:1800]}
 
-Decide:
-- key_cols: the column(s) that identify the SAME record on both sides (use the FINAL names, i.e. after col_map is applied).
-- col_map: {{"file1_col": "file2_col"}} to rename a FILE 1 column whose data matches a differently-named FILE 2 column (e.g. TRD_ID->TradeID, CCY->Currency). ONLY when the names differ but the meaning/values clearly match.
-- exclude: audit/metadata columns to ignore in the comparison (created_at, updated_at, batch_id, load_ts...).
-
-Return ONLY this JSON (omit a key if empty):
+Emit EXECUTABLE steps, not observations. If two columns are the SAME identifier but one side
+needs a change to match (a prefix/suffix to strip, a code embedded in free text), you MUST emit
+the transformation that MAKES them equal -- never just note that they "look related" or "seem to
+be a version of" each other. Output ONLY this JSON (omit any key you don't need):
 {{
-  "key_cols": ["TradeID"],
-  "col_map": {{"TRD_ID": "TradeID", "CCY": "Currency"}},
+  "key_cols": ["<final key name(s), AFTER col_map/parse apply>"],
+  "col_map": {{"differently_named_col": "shared_target_name"}},
+  "parse_cols": [{{"side":"src|tgt","source_col":"Security","new_col":"isin","pattern":"\\\\(([^)]+)\\\\)"}}],
+  "transforms": [{{"side":"both","col":"txn_id","op":"strip_prefix","arg":"TRD-"}}, {{"side":"both","col":"direction","op":"map_values","arg":{{"B":"BUY","S":"SELL"}}}}],
   "exclude": ["load_ts"],
   "confidence": 0.0,
-  "proposed_rules": ["key on TradeID", "map TRD_ID -> TradeID", "map CCY -> Currency", "ignore load_ts"]
+  "proposed_rules": ["one PRESCRIPTIVE line per step you emit, in order"]
 }}
-Set "confidence" (0.0-1.0) LOW (<0.5) when you are guessing the key or a mapping.
-Return {{}} if you genuinely cannot tell how they align."""
+
+Transform ops you may use: strip_prefix, strip_suffix, strip_commas, to_numeric, parse_date,
+map_values, side_normalize, isin_strip, upper, lower, round_numeric.
+- A key that needs a prefix removed (e.g. Deal Ref "TRD-1001" vs txn_id "1001"): emit col_map to
+  rename it to the shared name ({{"Deal Ref":"txn_id"}}) + a strip_prefix transform on that name
+  (arg "TRD-") + key_cols ["txn_id"]. The RAW values differ -- that is exactly why the transform
+  is required; do NOT skip the mapping because they aren't already identical.
+- An id embedded in free text ("Apple Inc (US0378331005)"): parse_cols to pull it into a new column
+  (pattern capturing inside the parentheses), then key on that new column.
+- Coded values (B/S vs BUY/SELL, dates in different formats, comma'd numbers): map_values /
+  side_normalize / parse_date / strip_commas as needed so the compared values line up.
+- key_cols must name columns that EXIST ON BOTH SIDES after your col_map / parse_cols / transforms.
+
+RULES:
+- "proposed_rules" MUST be PRESCRIPTIVE (say what to DO) and match the params EXACTLY -- one line
+  each, same order, so the user can save them verbatim and they still work. Write
+  "rename Deal Ref to txn_id, strip the 'TRD-' prefix, and key on txn_id" -- NEVER a vague
+  observation like "Deal Ref seems to be a transformed version of txn_id".
+- Set "confidence" (0.0-1.0) LOW (<0.5) when you are guessing the key or a mapping.
+- Return {{}} if you genuinely cannot tell how they align."""
 
     try:
         raw = _ask_llm([{"role": "user", "content": [{"text": prompt}]}],
@@ -17976,6 +17995,13 @@ Return {{}} if you genuinely cannot tell how they align."""
         return {"_confidence": 0.0, "_proposed_rules": [], "_llm_error": str(exc)}
 
     params: dict = {}
+    # Structured transform params (executable steps) passed straight to the engine,
+    # which already knows how to apply each -- so a saved auto-suggestion actually
+    # resolves a transform-defined key instead of only describing it.
+    for _k in ("parse_cols", "transforms"):
+        _v = parsed.get(_k)
+        if isinstance(_v, list) and _v:
+            params[_k] = [x for x in _v if isinstance(x, dict)]
     if isinstance(parsed.get("key_cols"), list) and parsed["key_cols"]:
         params["key_cols"] = [str(c) for c in parsed["key_cols"] if str(c).strip()]
     if isinstance(parsed.get("col_map"), dict) and parsed["col_map"]:
