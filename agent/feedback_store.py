@@ -128,7 +128,14 @@ def _fuzzy_lookup_in(bucket: dict, cols1: list, cols2: list,
     if file_names:
         import re as _re
         current_names = {_norm_name(n) for n in file_names if n}
-        if current_names:
+        current_names.discard("")
+        # Require the FULL pair to match -- EVERY current file name must be present
+        # in the saved entry, and at least two of them. A different pairing that
+        # merely shares ONE file (e.g. "prod.csv vs uatA.csv" vs "prod.csv vs
+        # uatB.csv", or two unrelated recons that both use compliance_extract.csv)
+        # must NOT pull in the wrong dataset's rules -- that cross-dataset leak is
+        # worse than falling through to cold inference.
+        if len(current_names) >= 2:
             for fp, entry in bucket.items():
                 saved_names = {_norm_name(n) for n in entry.get("file_names", [])}
                 label = str(entry.get("label", ""))
@@ -137,7 +144,7 @@ def _fuzzy_lookup_in(bucket: dict, cols1: list, cols2: list,
                     if part:
                         saved_names.add(_norm_name(part))
                 saved_names.discard("")
-                if saved_names and current_names & saved_names:
+                if saved_names and current_names <= saved_names:
                     return fp
     return None
 
